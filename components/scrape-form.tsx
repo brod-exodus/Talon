@@ -2,16 +2,15 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Rocket, Info, Settings } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useToast } from "@/hooks/use-toast"
+import { Rocket, Settings, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
 
 export function ScrapeForm() {
   const [type, setType] = useState("organization")
@@ -19,114 +18,144 @@ export function ScrapeForm() {
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
 
-    const token = localStorage.getItem("github_token")
-    if (!token) {
-      toast({
-        title: "GitHub token required",
-        description: "Please add your GitHub token in Settings first",
-        variant: "destructive",
-      })
-      return
-    }
+      const token = localStorage.getItem("github_token")
 
-    setIsLoading(true)
-
-    try {
-      const response = await fetch("/api/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, target, token }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to start scrape")
+      if (!token) {
+        toast({
+          title: "GitHub token required",
+          description: "Please add your GitHub token in Settings first",
+          variant: "destructive",
+        })
+        return
       }
 
-      const data = await response.json()
+      setIsLoading(true)
 
-      fetch(`/api/scrape/${data.scrapeId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, target, token }),
-      })
+      try {
+        const response = await fetch("/api/scrape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, target, token }),
+        })
 
-      toast({
-        title: "Scrape started",
-        description: `Processing ${target}... Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}`,
-      })
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || "Failed to start scrape")
+        }
 
-      setTarget("")
-    } catch (error) {
-      console.error("[v0] Scrape error:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start scrape",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
+        const data = await response.json()
+
+        fetch(`/api/scrape/${data.scrapeId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, target, token }),
+        })
+
+        const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
+        toast({
+          title: "Scrape started",
+          description: `Processing ${target}...${rateLimitMsg}`,
+        })
+
+        setTarget("")
+      } catch (error) {
+        console.error("[v0] Scrape error:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to start scrape",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [type, target, toast],
+  )
+
+  const getPlaceholder = () => {
+    switch (type) {
+      case "organization":
+        return "e.g. vercel"
+      case "repository":
+        return "owner/repo"
+      default:
+        return ""
+    }
+  }
+
+  const getLabel = () => {
+    switch (type) {
+      case "organization":
+        return "Owner/Organization"
+      case "repository":
+        return "Repository"
+      default:
+        return "Target"
     }
   }
 
   return (
-    <Card className="border-border bg-card sticky top-24">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Rocket className="w-5 h-5 text-primary" />
-          Add New Scrape
+    <Card className="border-border/50 bg-card/50 backdrop-blur-sm sticky top-24 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
+      <CardHeader className="relative">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Sparkles className="w-5 h-5 text-primary" />
+          New Scrape
         </CardTitle>
-        <CardDescription>Extract contributor intelligence from GitHub</CardDescription>
+        <CardDescription className="text-xs">Discover contributors with contact information</CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <CardContent className="relative">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
+            <Label htmlFor="type" className="text-sm font-medium">
+              Source Type
+            </Label>
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger id="type">
+              <SelectTrigger id="type" className="bg-input/50 border-border/50">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="repository">Repository</SelectItem>
+                <SelectItem value="organization">GitHub Organization</SelectItem>
+                <SelectItem value="repository">GitHub Repository</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target">{type === "organization" ? "Owner/Organization" : "Repository"}</Label>
+            <Label htmlFor="target" className="text-sm font-medium">
+              {getLabel()}
+            </Label>
             <Input
               id="target"
-              placeholder={type === "organization" ? "metaplex-foundation" : "owner/repo"}
+              placeholder={getPlaceholder()}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              className="bg-input border-border"
+              className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
             />
           </div>
 
-          {type === "organization" && (
-            <Alert className="bg-primary/10 border-primary/20">
-              <Info className="h-4 w-4 text-primary" />
-              <AlertDescription className="text-sm text-foreground">
-                Organization scrapes will get contributors from all repositories
-              </AlertDescription>
-            </Alert>
-          )}
-
           <Button
             type="submit"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium relative overflow-hidden group"
             disabled={!target || isLoading}
           >
-            {isLoading ? "Starting Scrape..." : "Start Scrape"}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            <Rocket className="w-4 h-4 mr-2" />
+            {isLoading ? "Starting..." : "Start Scrape"}
           </Button>
 
-          <Link href="/settings">
-            <Button type="button" variant="outline" className="w-full bg-transparent" size="sm">
-              <Settings className="w-4 h-4 mr-2" />
+          <Link href="/settings" className="block">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground hover:text-foreground"
+              size="sm"
+            >
+              <Settings className="w-3 h-3 mr-2" />
               Configure GitHub Token
             </Button>
           </Link>

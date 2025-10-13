@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createGitHubClient } from "@/lib/github"
+import { scrapeStorage } from "@/lib/storage"
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,8 +15,6 @@ export async function POST(request: NextRequest) {
     }
 
     const githubClient = createGitHubClient(token)
-
-    // Check rate limit
     const rateLimit = await githubClient.getRateLimit()
     const remaining = rateLimit.resources.core.remaining
 
@@ -26,10 +25,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Start scrape in background (in production, use a queue system)
-    const scrapeId = `scrape_${Date.now()}`
+    const scrapeId = `scrape-${Date.now()}-${Math.random().toString(36).substring(7)}`
 
-    // Return immediately with scrape ID
+    scrapeStorage.set(scrapeId, {
+      id: scrapeId,
+      type,
+      target,
+      status: "active",
+      progress: 0,
+      current: 0,
+      total: 0,
+      startedAt: new Date(),
+      contributors: [],
+    })
+
     return NextResponse.json({
       scrapeId,
       message: "Scrape started",

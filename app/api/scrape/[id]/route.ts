@@ -1,17 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createGitHubClient, type Contributor } from "@/lib/github"
-import { scrapeStorage, type ScrapeData } from "@/lib/storage"
+import { createGitHubClient } from "@/lib/github"
+import { scrapeStorage } from "@/lib/storage"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const scrapeId = params.id
-    const scrapeData = scrapeStorage.get(scrapeId)
+    const { id: scrapeId } = params
+    const scrape = scrapeStorage.get(scrapeId)
 
-    if (!scrapeData) {
+    if (!scrape) {
       return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
     }
 
-    return NextResponse.json(scrapeData)
+    return NextResponse.json(scrape)
   } catch (error) {
     console.error("[v0] Get scrape error:", error)
     return NextResponse.json({ error: "Failed to get scrape status" }, { status: 500 })
@@ -21,46 +21,26 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { type, target, token } = await request.json()
-    const scrapeId = params.id
+    const { id: scrapeId } = params
 
     console.log("[v0] Starting scrape:", { scrapeId, type, target })
 
-    const initialData: ScrapeData = {
-      id: scrapeId,
-      type,
-      target,
-      status: "active",
-      progress: 0,
-      current: 0,
-      total: 0,
-      contributors: [],
-      startedAt: new Date(),
-    }
-    scrapeStorage.set(scrapeId, initialData)
-
-    // Process scrape in background
     if (type === "organization") {
       scrapeOrganization(scrapeId, target, token).catch((error) => {
         console.error("[v0] Organization scrape failed:", error)
-        const scrapeData = scrapeStorage.get(scrapeId)
-        if (scrapeData) {
-          scrapeStorage.set(scrapeId, {
-            ...scrapeData,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Unknown error",
-          })
+        const scrape = scrapeStorage.get(scrapeId)
+        if (scrape) {
+          scrape.status = "failed"
+          scrape.error = error instanceof Error ? error.message : "Unknown error"
         }
       })
-    } else {
+    } else if (type === "repository") {
       scrapeRepository(scrapeId, target, token).catch((error) => {
         console.error("[v0] Repository scrape failed:", error)
-        const scrapeData = scrapeStorage.get(scrapeId)
-        if (scrapeData) {
-          scrapeStorage.set(scrapeId, {
-            ...scrapeData,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Unknown error",
-          })
+        const scrape = scrapeStorage.get(scrapeId)
+        if (scrape) {
+          scrape.status = "failed"
+          scrape.error = error instanceof Error ? error.message : "Unknown error"
         }
       })
     }
@@ -68,14 +48,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Process scrape error:", error)
-
-    const scrapeData = scrapeStorage.get(params.id)
-    if (scrapeData) {
-      scrapeStorage.set(params.id, {
-        ...scrapeData,
-        status: "failed",
-        error: error instanceof Error ? error.message : "Failed to process scrape",
-      })
+    const scrape = scrapeStorage.get(params.id)
+    if (scrape) {
+      scrape.status = "failed"
+      scrape.error = error instanceof Error ? error.message : "Failed to process scrape"
     }
 
     return NextResponse.json(
@@ -85,171 +61,161 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 }
 
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const { id: scrapeId } = params
+    scrapeStorage.delete(scrapeId)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[v0] Delete scrape error:", error)
+    return NextResponse.json({ error: "Failed to delete scrape" }, { status: 500 })
+  }
+}
+
 async function scrapeOrganization(scrapeId: string, org: string, token?: string) {
   const githubClient = createGitHubClient(token)
+  const scrape = scrapeStorage.get(scrapeId)
+  if (!scrape) return
 
-  // Get all repos
-  const repos = await githubClient.getOrgRepos(org)
+  try {
+    const repos = await githubClient.getOrgRepos(org)
 
-  const allContributors = new Map<string, Contributor>()
-  let processedRepos = 0
+    if (!repos || repos.length === 0) {
+      scrape.status = "failed"
+      scrape.error = `No repositories found for organization "${org}". Please check the organization name.`
+      return
+    }
 
-  for (const repo of repos) {
-    try {
-      const contributors = await githubClient.getRepoContributors(repo)
+    scrape.total = repos.length
 
-      for (const contributor of contributors) {
-        if (!allContributors.has(contributor.login)) {
-          allContributors.set(contributor.login, contributor)
-        } else {
-          const existing = allContributors.get(contributor.login)!
-          existing.contributions += contributor.contributions
+    const contributorMap = new Map<
+      string,
+      {
+        username: string
+        name: string
+        avatar: string
+        contributions: number
+        bio?: string
+        location?: string
+        company?: string
+        contacts: {
+          email?: string
+          twitter?: string
+          linkedin?: string
+          website?: string
         }
       }
-    } catch (error) {
-      console.error(`[v0] Failed to get contributors for ${repo}:`, error)
-      // Continue with next repo instead of failing entire scrape
-    }
+    >()
 
-    processedRepos++
+    for (let i = 0; i < repos.length; i++) {
+      const repo = repos[i]
+      scrape.current = i + 1
+      scrape.progress = Math.round(((i + 1) / repos.length) * 100)
 
-    // Update progress for repo processing phase
-    const scrapeData = scrapeStorage.get(scrapeId)
-    if (scrapeData) {
-      scrapeStorage.set(scrapeId, {
-        ...scrapeData,
-        progress: Math.round((processedRepos / repos.length) * 50), // First 50% is repo processing
-        current: processedRepos,
-        total: repos.length,
-      })
-    }
-  }
+      try {
+        const contributors = await githubClient.getRepoContributors(repo)
 
-  const contributorsArray = Array.from(allContributors.values())
-  const detailedContributors: any[] = []
-
-  // Update total to reflect contributor count
-  const scrapeData = scrapeStorage.get(scrapeId)
-  if (scrapeData) {
-    scrapeStorage.set(scrapeId, {
-      ...scrapeData,
-      current: 0,
-      total: contributorsArray.length,
-      progress: 50, // Starting contributor processing phase
-    })
-  }
-
-  for (let i = 0; i < contributorsArray.length; i++) {
-    const contributor = contributorsArray[i]
-
-    try {
-      const details = await githubClient.getUserDetails(contributor.login)
-      detailedContributors.push({
-        username: contributor.login,
-        name: details.name || contributor.login,
-        avatar: details.avatar_url,
-        contributions: contributor.contributions,
-        contacts: {
-          email: details.email || undefined,
-          twitter: details.twitter_username || undefined,
-          linkedin: details.blog?.includes("linkedin.com") ? details.blog.split("/").pop() : undefined,
-          website: details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
-        },
-      })
-
-      const scrapeData = scrapeStorage.get(scrapeId)
-      if (scrapeData) {
-        scrapeStorage.set(scrapeId, {
-          ...scrapeData,
-          progress: 50 + Math.round(((i + 1) / contributorsArray.length) * 50),
-          current: i + 1,
-          total: contributorsArray.length,
-          currentUser: contributor.login,
-          contributors: detailedContributors,
-        })
+        for (const contributor of contributors) {
+          const existing = contributorMap.get(contributor.login)
+          if (existing) {
+            existing.contributions += contributor.contributions
+          } else {
+            try {
+              scrape.currentUser = contributor.login
+              const details = await githubClient.getUserDetails(contributor.login)
+              contributorMap.set(contributor.login, {
+                username: contributor.login,
+                name: details.name || contributor.login,
+                avatar: details.avatar_url,
+                contributions: contributor.contributions,
+                bio: details.bio || undefined,
+                location: details.location || undefined,
+                company: details.company || undefined,
+                contacts: {
+                  email: details.email || undefined,
+                  twitter: details.twitter_username || undefined,
+                  website: details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+                },
+              })
+            } catch (error) {
+              console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[v0] Failed to get contributors for ${repo}:`, error)
       }
-    } catch (error) {
-      console.error(`[v0] Failed to fetch details for ${contributor.login}:`, error)
-      detailedContributors.push({
-        username: contributor.login,
-        name: contributor.login,
-        avatar: contributor.avatar_url,
-        contributions: contributor.contributions,
-        contacts: {},
-      })
     }
-  }
 
-  // Mark as complete
-  const finalScrapeData = scrapeStorage.get(scrapeId)
-  if (finalScrapeData) {
-    scrapeStorage.set(scrapeId, {
-      ...finalScrapeData,
-      status: "completed",
-      progress: 100,
-      contributors: detailedContributors,
-      completedAt: new Date(),
-    })
+    scrape.contributors = Array.from(contributorMap.values())
+    scrape.status = "completed"
+    scrape.completedAt = new Date()
+    scrape.currentUser = undefined
+  } catch (error) {
+    scrape.status = "failed"
+    if (error instanceof Error && error.message.includes("404")) {
+      scrape.error = `Organization "${org}" not found. Please check the spelling and try again.`
+    } else {
+      scrape.error = error instanceof Error ? error.message : "Failed to scrape organization"
+    }
+    throw error
   }
 }
 
 async function scrapeRepository(scrapeId: string, repo: string, token?: string) {
   const githubClient = createGitHubClient(token)
+  const scrape = scrapeStorage.get(scrapeId)
+  if (!scrape) return
 
-  const contributors = await githubClient.getRepoContributors(repo)
-  const detailedContributors: any[] = []
+  try {
+    const contributors = await githubClient.getRepoContributors(repo)
 
-  for (let i = 0; i < contributors.length; i++) {
-    const contributor = contributors[i]
-
-    try {
-      const details = await githubClient.getUserDetails(contributor.login)
-      detailedContributors.push({
-        username: contributor.login,
-        name: details.name || contributor.login,
-        avatar: details.avatar_url,
-        contributions: contributor.contributions,
-        contacts: {
-          email: details.email || undefined,
-          twitter: details.twitter_username || undefined,
-          linkedin: details.blog?.includes("linkedin.com") ? details.blog.split("/").pop() : undefined,
-          website: details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
-        },
-      })
-
-      // Update progress
-      const scrapeData = scrapeStorage.get(scrapeId)
-      if (scrapeData) {
-        scrapeStorage.set(scrapeId, {
-          ...scrapeData,
-          progress: Math.round(((i + 1) / contributors.length) * 100),
-          current: i + 1,
-          total: contributors.length,
-          currentUser: contributor.login,
-          contributors: detailedContributors,
-        })
-      }
-    } catch (error) {
-      console.error(`[v0] Failed to fetch details for ${contributor.login}:`, error)
-      detailedContributors.push({
-        username: contributor.login,
-        name: contributor.login,
-        avatar: contributor.avatar_url,
-        contributions: contributor.contributions,
-        contacts: {},
-      })
+    if (!contributors || contributors.length === 0) {
+      scrape.status = "failed"
+      scrape.error = `No contributors found for repository "${repo}". Please check the repository name.`
+      return
     }
-  }
 
-  // Mark as complete
-  const finalScrapeData = scrapeStorage.get(scrapeId)
-  if (finalScrapeData) {
-    scrapeStorage.set(scrapeId, {
-      ...finalScrapeData,
-      status: "completed",
-      progress: 100,
-      contributors: detailedContributors,
-      completedAt: new Date(),
-    })
+    scrape.total = contributors.length
+
+    for (let i = 0; i < contributors.length; i++) {
+      const contributor = contributors[i]
+      scrape.current = i + 1
+      scrape.progress = Math.round(((i + 1) / contributors.length) * 100)
+      scrape.currentUser = contributor.login
+
+      try {
+        const details = await githubClient.getUserDetails(contributor.login)
+
+        scrape.contributors.push({
+          username: contributor.login,
+          name: details.name || contributor.login,
+          avatar: details.avatar_url,
+          contributions: contributor.contributions,
+          bio: details.bio || undefined,
+          location: details.location || undefined,
+          company: details.company || undefined,
+          contacts: {
+            email: details.email || undefined,
+            twitter: details.twitter_username || undefined,
+            website: details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+          },
+        })
+      } catch (error) {
+        console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
+      }
+    }
+
+    scrape.status = "completed"
+    scrape.completedAt = new Date()
+    scrape.currentUser = undefined
+  } catch (error) {
+    scrape.status = "failed"
+    if (error instanceof Error && error.message.includes("404")) {
+      scrape.error = `Repository "${repo}" not found. Please check the spelling and try again.`
+    } else {
+      scrape.error = error instanceof Error ? error.message : "Failed to scrape repository"
+    }
+    throw error
   }
 }

@@ -17,6 +17,9 @@ export type ScrapeData = {
     name: string
     avatar: string
     contributions: number
+    bio?: string
+    location?: string
+    company?: string
     contacts: {
       email?: string
       twitter?: string

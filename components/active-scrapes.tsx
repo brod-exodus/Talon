@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, memo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Users, Clock } from "lucide-react"
+import { motion } from "framer-motion"
 
 type ActiveScrape = {
   id: string
@@ -17,7 +18,7 @@ type ActiveScrape = {
   startedAt: Date
 }
 
-export function ActiveScrapes() {
+export const ActiveScrapes = memo(function ActiveScrapes() {
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function ActiveScrapes() {
     }
 
     fetchScrapes()
-    // Poll every 2 seconds for updates
+    // Poll every 2 seconds for updates (kept at 2s for active scrapes)
     const interval = setInterval(fetchScrapes, 2000)
     return () => clearInterval(interval)
   }, [])
@@ -58,52 +59,71 @@ export function ActiveScrapes() {
       </div>
 
       <div className="space-y-4">
-        {scrapes.map((scrape) => (
-          <Card key={scrape.id} className="border-border bg-card">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-xl font-mono">{scrape.target}</CardTitle>
-                  <CardDescription className="flex items-center gap-2">
-                    <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                      {scrape.type}
-                    </Badge>
-                    <span className="flex items-center gap-1 text-xs">
-                      <Clock className="w-3 h-3" />
-                      {formatTimeAgo(scrape.startedAt)}
+        {scrapes.map((scrape, index) => (
+          <motion.div
+            key={scrape.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: index * 0.1 }}
+          >
+            <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-xl font-mono">{scrape.target}</CardTitle>
+                    <CardDescription className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                        {scrape.type}
+                      </Badge>
+                      <span className="flex items-center gap-1 text-xs">
+                        <Clock className="w-3 h-3" />
+                        {formatTimeAgo(scrape.startedAt)}
+                      </span>
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="bg-chart-2/10 text-chart-2 border-chart-2/20 animate-pulse">
+                    Processing
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Processing contributor
                     </span>
-                  </CardDescription>
+                    <motion.span
+                      key={`${scrape.current}-${scrape.total}`}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="font-mono text-foreground"
+                    >
+                      {scrape.current} / {scrape.total}
+                    </motion.span>
+                  </div>
+                  <Progress value={scrape.progress} className="h-2 transition-all duration-300" />
                 </div>
-                <Badge variant="outline" className="bg-chart-2/10 text-chart-2 border-chart-2/20">
-                  Processing
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Processing contributor
-                  </span>
-                  <span className="font-mono text-foreground">
-                    {scrape.current} / {scrape.total}
-                  </span>
-                </div>
-                <Progress value={scrape.progress} className="h-2" />
-              </div>
 
-              {scrape.currentUser && (
-                <div className="pt-2 border-t border-border">
-                  <p className="text-sm text-muted-foreground">
-                    Current: <span className="font-mono text-foreground">{scrape.currentUser}</span>
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {scrape.currentUser && (
+                  <div className="pt-2 border-t border-border">
+                    <motion.p
+                      key={scrape.currentUser}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-sm text-muted-foreground"
+                    >
+                      Current: <span className="font-mono text-foreground">{scrape.currentUser}</span>
+                    </motion.p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
     </div>
   )
-}
+})
