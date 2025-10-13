@@ -4,11 +4,11 @@ A modern GitHub contributor intelligence tool that scrapes repositories and orga
 
 ## Features
 
-- 🎯 Scrape GitHub organizations or individual repositories
-- 👥 Extract contributor details including email, Twitter/X, LinkedIn, and websites
-- 📊 Real-time progress tracking
-- ⚡ 5,000 requests/hour rate limit with authenticated GitHub API
-- 🎨 Modern, sleek UI with dark theme
+- Scrape GitHub organizations or individual repositories
+- Extract contributor details including email, Twitter/X, LinkedIn, and websites
+- Real-time progress tracking
+- 5,000 requests/hour rate limit with authenticated GitHub API
+- Modern, sleek UI with dark theme
 
 ## Setup
 
@@ -48,7 +48,7 @@ A modern GitHub contributor intelligence tool that scrapes repositories and orga
 ## Rate Limits
 
 - **Unauthenticated:** 60 requests/hour
-- **Authenticated:** 5,000 requests/hour ✅
+- **Authenticated:** 5,000 requests/hour
 
 With a GitHub token, you get 5,000 requests per hour, allowing you to scrape large organizations efficiently.
 
