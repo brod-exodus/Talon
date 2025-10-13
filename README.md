@@ -1,4 +1,4 @@
-# Groq Talent Intelligence
+# GitHub Scraper / Find GitHub contributors with contact information
 
 A modern GitHub contributor intelligence tool that scrapes repositories and organizations to extract contributor contact information.
 
