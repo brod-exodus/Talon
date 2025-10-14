@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Users, Clock } from "lucide-react"
 import { motion } from "framer-motion"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type ActiveScrape = {
   id: string
@@ -20,6 +21,7 @@ type ActiveScrape = {
 
 export const ActiveScrapes = memo(function ActiveScrapes() {
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const fetchScrapes = async () => {
@@ -29,18 +31,15 @@ export const ActiveScrapes = memo(function ActiveScrapes() {
         setScrapes(data.active || [])
       } catch (error) {
         console.error("[v0] Failed to fetch scrapes:", error)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     fetchScrapes()
-    // Poll every 2 seconds for updates (kept at 2s for active scrapes)
     const interval = setInterval(fetchScrapes, 2000)
     return () => clearInterval(interval)
   }, [])
-
-  if (scrapes.length === 0) {
-    return null
-  }
 
   const formatTimeAgo = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000)
@@ -49,6 +48,33 @@ export const ActiveScrapes = memo(function ActiveScrapes() {
     if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
     const hours = Math.floor(minutes / 60)
     return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-5 w-5" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <Skeleton className="h-6 w-48 mb-2" />
+            <Skeleton className="h-4 w-32" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-2 w-full" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (scrapes.length === 0) {
+    return null
   }
 
   return (

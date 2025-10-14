@@ -2,21 +2,36 @@
 
 import type React from "react"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Rocket, Settings, Sparkles } from "lucide-react"
+import { Rocket, Settings, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function ScrapeForm() {
   const [type, setType] = useState("organization")
   const [target, setTarget] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+
+  const existingTargets = useMemo(() => {
+    const persistedScrapesData = localStorage.getItem("completed-scrapes")
+    if (persistedScrapesData) {
+      const scrapes = JSON.parse(persistedScrapesData)
+      return new Set(scrapes.map((s: any) => `${s.type}:${s.target}`))
+    }
+    return new Set()
+  }, [])
+
+  const isDuplicate = useMemo(() => {
+    if (!target) return false
+    return existingTargets.has(`${type}:${target}`)
+  }, [target, type, existingTargets])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -102,10 +117,7 @@ export function ScrapeForm() {
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm sticky top-24 overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
       <CardHeader className="relative">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Sparkles className="w-5 h-5 text-primary" />
-          New Scrape
-        </CardTitle>
+        <CardTitle className="text-lg">New Scrape</CardTitle>
         <CardDescription className="text-xs">Discover contributors with contact information</CardDescription>
       </CardHeader>
       <CardContent className="relative">
@@ -119,8 +131,8 @@ export function ScrapeForm() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="organization">GitHub Organization</SelectItem>
-                <SelectItem value="repository">GitHub Repository</SelectItem>
+                <SelectItem value="organization">Organization</SelectItem>
+                <SelectItem value="repository">Repository</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -137,6 +149,15 @@ export function ScrapeForm() {
               className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
             />
           </div>
+
+          {isDuplicate && (
+            <Alert className="border-yellow-500/50 bg-yellow-500/10">
+              <AlertCircle className="h-4 w-4 text-yellow-500" />
+              <AlertDescription className="text-xs text-yellow-500">
+                You've already scraped this {type}. Scraping again will create a duplicate.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Button
             type="submit"

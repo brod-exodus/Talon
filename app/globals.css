@@ -154,4 +154,17 @@
   .glow-success {
     box-shadow: 0 0 20px hsl(var(--success) / 0.3);
   }
+
+  /* Improved mobile responsiveness */
+  @media (max-width: 1024px) {
+    .container {
+      @apply px-4;
+    }
+  }
+
+  @media (max-width: 768px) {
+    body::before {
+      background-size: 40px 40px;
+    }
+  }
 }

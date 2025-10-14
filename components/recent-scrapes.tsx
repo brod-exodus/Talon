@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import {
-  Database,
   Mail,
   Linkedin,
   Globe,
@@ -18,10 +17,14 @@ import {
   Trash2,
   Check,
   Download,
+  FileSpreadsheet,
+  Inbox,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
 import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 type Contributor = {
   username: string
@@ -72,6 +75,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function RecentScrapes() {
   const [scrapes, setScrapes] = useState<CompletedScrape[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
+  const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
   const debouncedScrapes = useDebounce(scrapes, 500)
@@ -116,6 +120,8 @@ export function RecentScrapes() {
           const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
           setScrapes(persistedScrapes)
         }
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -313,6 +319,75 @@ export function RecentScrapes() {
     [getSortedContributors, toast],
   )
 
+  const exportToExcel = useCallback(
+    (scrape: CompletedScrape) => {
+      const sortedContributors = getSortedContributors(scrape)
+      const contributorsWithContacts = sortedContributors.filter(
+        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website,
+      )
+
+      const headers = [
+        "Name",
+        "Username",
+        "GitHub Profile",
+        "Contributions",
+        "Email",
+        "Twitter",
+        "LinkedIn",
+        "Website",
+        "Contacted",
+        "Contact Date",
+        "Notes",
+      ]
+
+      const rows = contributorsWithContacts.map((contributor) => [
+        contributor.name,
+        contributor.username,
+        `https://github.com/${contributor.username}`,
+        contributor.contributions,
+        contributor.contacts.email || "",
+        contributor.contacts.twitter ? `https://twitter.com/${contributor.contacts.twitter}` : "",
+        contributor.contacts.linkedin ? `https://linkedin.com/in/${contributor.contacts.linkedin}` : "",
+        contributor.contacts.website || "",
+        contributor.contacted ? "Yes" : "No",
+        contributor.contactedDate || "",
+        contributor.notes || "",
+      ])
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) =>
+          row
+            .map((cell) => {
+              const cellStr = String(cell)
+              if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
+                return `"${cellStr.replace(/"/g, '""')}"`
+              }
+              return cellStr
+            })
+            .join(","),
+        ),
+      ].join("\n")
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const link = document.createElement("a")
+      const url = URL.createObjectURL(blob)
+      link.setAttribute("href", url)
+      link.setAttribute("download", `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`)
+      link.style.visibility = "hidden"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      toast({
+        title: "Exported!",
+        description: `Downloaded ${contributorsWithContacts.length} contributors to Excel`,
+        duration: 3000,
+      })
+    },
+    [getSortedContributors, toast],
+  )
+
   const renderContributorList = useCallback(
     (scrape: CompletedScrape) => {
       const isExpanded = expandedScrapes.has(scrape.id)
@@ -379,10 +454,10 @@ export function RecentScrapes() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                    className="bg-transparent hover:bg-primary/10 transition-all duration-300 flex-1"
                     onClick={() => toggleExpanded(scrape.id)}
                   >
                     {isExpanded ? (
@@ -397,14 +472,29 @@ export function RecentScrapes() {
                       </>
                     )}
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="bg-transparent hover:bg-green-500/10 hover:text-green-500 hover:border-green-500/50 transition-all duration-300"
-                    onClick={() => exportToCSV(scrape)}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export CSV
-                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                        <ChevronDown className="w-4 h-4 ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => exportToCSV(scrape)} className="cursor-pointer">
+                        <Download className="w-4 h-4 mr-2" />
+                        CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportToExcel(scrape)} className="cursor-pointer">
+                        <FileSpreadsheet className="w-4 h-4 mr-2" />
+                        Excel
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 <AnimatePresence>
@@ -597,17 +687,43 @@ export function RecentScrapes() {
       toggleExpanded,
       deleteScrape,
       exportToCSV,
+      exportToExcel,
       updateContributorOutreach,
       copyToClipboard,
     ],
   )
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-5 w-5" />
+          <Skeleton className="h-8 w-64" />
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="border-border bg-card">
+              <CardHeader>
+                <Skeleton className="h-4 w-32 mb-2" />
+                <Skeleton className="h-6 w-48" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Database className="w-5 h-5 text-primary" />
-        <h2 className="text-2xl font-semibold tracking-tight">Your Talent Intelligence</h2>
-      </div>
+      <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
 
       <Tabs defaultValue="organizations" className="w-full">
         <TabsList className="bg-muted">
@@ -620,8 +736,16 @@ export function RecentScrapes() {
             <Card className="border-border bg-card">
               <CardContent className="pt-6">
                 <div className="text-center py-12">
-                  <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No organization scrapes yet. Use the sidebar to add some!</p>
+                  <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No organization scrapes yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Start by scraping a GitHub organization to discover contributors
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Try: <span className="font-mono text-primary">vercel</span>,{" "}
+                    <span className="font-mono text-primary">facebook</span>, or{" "}
+                    <span className="font-mono text-primary">microsoft</span>
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -635,8 +759,15 @@ export function RecentScrapes() {
             <Card className="border-border bg-card">
               <CardContent className="pt-6">
                 <div className="text-center py-12">
-                  <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No repository scrapes yet. Use the sidebar to add some!</p>
+                  <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No repository scrapes yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Start by scraping a GitHub repository to discover contributors
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Try: <span className="font-mono text-primary">vercel/next.js</span> or{" "}
+                    <span className="font-mono text-primary">facebook/react</span>
+                  </p>
                 </div>
               </CardContent>
             </Card>
