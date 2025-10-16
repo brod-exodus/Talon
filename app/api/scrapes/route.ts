@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server"
-import { scrapeStorage } from "@/lib/storage"
+import { getAllScrapes } from "@/lib/storage-local"
 
 export async function GET() {
   try {
-    const scrapes = Array.from(scrapeStorage.values())
+    const { active, completed } = await getAllScrapes()
 
-    const active = scrapes
-      .filter((s) => s.status === "active")
-      .map((s) => ({
+    return NextResponse.json({
+      active: active.map((s) => ({
         id: s.id,
         target: s.target,
         type: s.type,
@@ -16,24 +15,18 @@ export async function GET() {
         total: s.total,
         currentUser: s.currentUser,
         startedAt: s.startedAt,
-      }))
-
-    const completed = scrapes
-      .filter((s) => s.status === "completed")
-      .map((s) => ({
+      })),
+      completed: completed.map((s) => ({
         id: s.id,
         target: s.target,
         type: s.type,
+        role: s.role,
         completedAt: s.completedAt || s.startedAt,
         contributors: s.contributors,
-      }))
-
-    return NextResponse.json({
-      active,
-      completed,
+      })),
     })
   } catch (error) {
     console.error("[v0] Failed to fetch scrapes:", error)
-    return NextResponse.json({ active: [], completed: [] })
+    return NextResponse.json({ error: "Failed to fetch scrapes", active: [], completed: [] }, { status: 500 })
   }
 }

@@ -22,15 +22,85 @@ export interface ScrapeProgress {
   contributors: Contributor[]
 }
 
+export interface RateLimitInfo {
+  limit: number
+  remaining: number
+  reset: number // Unix timestamp
+  resetDate: Date
+}
+
 class GitHubClient {
   private token: string
   private baseUrl = "https://api.github.com"
+  private rateLimitCache: RateLimitInfo | null = null
+  private lastRateLimitCheck = 0
 
   constructor(token?: string) {
     this.token = token || process.env.GITHUB_TOKEN || ""
   }
 
+  private async checkRateLimit(): Promise<void> {
+    const now = Date.now()
+
+    // Check rate limit every 10 requests or if cache is stale (>1 min)
+    if (this.rateLimitCache && now - this.lastRateLimitCheck < 60000) {
+      // If we have less than 100 requests remaining, check again
+      if (this.rateLimitCache.remaining < 100) {
+        await this.updateRateLimit()
+      }
+    } else {
+      await this.updateRateLimit()
+    }
+
+    // If rate limit exceeded, wait until reset
+    if (this.rateLimitCache && this.rateLimitCache.remaining < 10) {
+      const waitTime = this.rateLimitCache.reset * 1000 - now
+      if (waitTime > 0) {
+        console.log(
+          `[v0] Rate limit nearly exceeded (${this.rateLimitCache.remaining} remaining). Waiting ${Math.ceil(waitTime / 1000)}s until reset...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, waitTime + 1000)) // Add 1s buffer
+        await this.updateRateLimit() // Refresh after waiting
+      }
+    }
+  }
+
+  private async updateRateLimit(): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/rate_limit`, {
+        headers: {
+          Authorization: `token ${this.token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const core = data.resources.core
+        this.rateLimitCache = {
+          limit: core.limit,
+          remaining: core.remaining,
+          reset: core.reset,
+          resetDate: new Date(core.reset * 1000),
+        }
+        this.lastRateLimitCheck = Date.now()
+        console.log(
+          `[v0] Rate limit: ${this.rateLimitCache.remaining}/${this.rateLimitCache.limit} remaining (resets at ${this.rateLimitCache.resetDate.toLocaleTimeString()})`,
+        )
+      }
+    } catch (error) {
+      console.error("[v0] Failed to check rate limit:", error)
+    }
+  }
+
+  async getRateLimitInfo(): Promise<RateLimitInfo | null> {
+    await this.updateRateLimit()
+    return this.rateLimitCache
+  }
+
   private async fetch(url: string) {
+    await this.checkRateLimit()
+
     console.log("[v0] Fetching:", url)
 
     const response = await fetch(url, {
@@ -38,7 +108,19 @@ class GitHubClient {
         Authorization: `token ${this.token}`,
         Accept: "application/vnd.github.v3+json",
       },
+      redirect: "follow",
     })
+
+    if (response.status === 429) {
+      const resetTime = response.headers.get("x-ratelimit-reset")
+      if (resetTime) {
+        const waitTime = Number.parseInt(resetTime) * 1000 - Date.now()
+        console.log(`[v0] Rate limit exceeded. Waiting ${Math.ceil(waitTime / 1000)}s...`)
+        await new Promise((resolve) => setTimeout(resolve, waitTime + 1000))
+        // Retry the request after waiting
+        return this.fetch(url)
+      }
+    }
 
     if (!response.ok) {
       const errorBody = await response.text()

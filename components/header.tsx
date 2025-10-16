@@ -19,7 +19,6 @@ export function Header() {
                 />
               </div>
             </div>
-            {/* </CHANGE> */}
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
                 Talent Intelligence
@@ -27,6 +26,18 @@ export function Header() {
               <p className="text-xs text-muted-foreground">GitHub Contributor Discovery</p>
             </div>
           </Link>
+
+          <nav className="flex items-center gap-6">
+            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Dashboard
+            </Link>
+            <Link href="/talent-map" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Talent Map
+            </Link>
+            <Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Settings
+            </Link>
+          </nav>
         </div>
       </div>
     </header>

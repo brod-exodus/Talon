@@ -4,7 +4,7 @@ import { useEffect, useState, memo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Users, Clock } from "lucide-react"
+import { Activity, Users, Clock, Check } from "lucide-react"
 import { motion } from "framer-motion"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -119,15 +119,27 @@ export const ActiveScrapes = memo(function ActiveScrapes() {
                       <Users className="w-4 h-4" />
                       Processing contributor
                     </span>
-                    <motion.span
-                      key={`${scrape.current}-${scrape.total}`}
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="font-mono text-foreground"
-                    >
-                      {scrape.current} / {scrape.total}
-                    </motion.span>
+                    {scrape.progress >= 100 ? (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3 }}
+                        className="font-semibold text-green-500 flex items-center gap-1"
+                      >
+                        <Check className="w-4 h-4" />
+                        Completed
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key={scrape.progress}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="font-mono text-foreground"
+                      >
+                        {scrape.progress}%
+                      </motion.span>
+                    )}
                   </div>
                   <Progress value={scrape.progress} className="h-2 transition-all duration-300" />
                 </div>
