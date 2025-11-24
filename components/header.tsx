@@ -1,7 +1,8 @@
+"use client"
+
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-;("use client")
 
 export function Header() {
   const pathname = usePathname()
