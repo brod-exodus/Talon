@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,15 +17,17 @@ export function ScrapeForm() {
   const [type, setType] = useState("organization")
   const [target, setTarget] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
-  const existingTargets = useMemo(() => {
-    const persistedScrapesData = localStorage.getItem("completed-scrapes")
-    if (persistedScrapesData) {
-      const scrapes = JSON.parse(persistedScrapesData)
-      return new Set(scrapes.map((s: any) => `${s.type}:${s.target}`))
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const persistedScrapesData = localStorage.getItem("completed-scrapes")
+      if (persistedScrapesData) {
+        const scrapes = JSON.parse(persistedScrapesData)
+        setExistingTargets(new Set(scrapes.map((s: any) => `${s.type}:${s.target}`)))
+      }
     }
-    return new Set()
   }, [])
 
   const isDuplicate = useMemo(() => {
@@ -37,7 +39,7 @@ export function ScrapeForm() {
     async (e: React.FormEvent) => {
       e.preventDefault()
 
-      const token = localStorage.getItem("github_token")
+      const token = typeof window !== "undefined" ? localStorage.getItem("github_token") : null
 
       if (!token) {
         toast({

@@ -78,7 +78,14 @@ export function RecentScrapes() {
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
-  const debouncedScrapes = useDebounce(scrapes, 500)
+  const [debouncedScrapes, setDebouncedScrapes] = useState<CompletedScrape[]>([])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedScrapes(scrapes)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [scrapes])
 
   useEffect(() => {
     const fetchScrapes = async () => {
@@ -86,19 +93,19 @@ export function RecentScrapes() {
         const response = await fetch("/api/scrapes")
         const data = await response.json()
 
-        const persistedScrapesData = localStorage.getItem("completed-scrapes")
+        const persistedScrapesData = typeof window !== "undefined" ? localStorage.getItem("completed-scrapes") : null
         const persistedScrapes: CompletedScrape[] = persistedScrapesData ? JSON.parse(persistedScrapesData) : []
 
         const apiScrapeIds = new Set((data.completed || []).map((s: CompletedScrape) => s.id))
         const uniquePersistedScrapes = persistedScrapes.filter((s) => !apiScrapeIds.has(s.id))
         const allScrapes = [...(data.completed || []), ...uniquePersistedScrapes]
 
-        if (allScrapes.length > 0) {
+        if (allScrapes.length > 0 && typeof window !== "undefined") {
           localStorage.setItem("completed-scrapes", JSON.stringify(allScrapes))
         }
 
         const scrapesWithOutreach = allScrapes.map((scrape: CompletedScrape) => {
-          const outreachData = localStorage.getItem(`outreach-${scrape.id}`)
+          const outreachData = typeof window !== "undefined" ? localStorage.getItem(`outreach-${scrape.id}`) : null
           if (outreachData) {
             const outreach = JSON.parse(outreachData)
             return {
@@ -115,10 +122,12 @@ export function RecentScrapes() {
         setScrapes(scrapesWithOutreach)
       } catch (error) {
         console.error("[v0] Failed to fetch scrapes:", error)
-        const persistedScrapesData = localStorage.getItem("completed-scrapes")
-        if (persistedScrapesData) {
-          const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
-          setScrapes(persistedScrapes)
+        if (typeof window !== "undefined") {
+          const persistedScrapesData = localStorage.getItem("completed-scrapes")
+          if (persistedScrapesData) {
+            const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
+            setScrapes(persistedScrapes)
+          }
         }
       } finally {
         setIsLoading(false)
@@ -126,18 +135,20 @@ export function RecentScrapes() {
     }
 
     fetchScrapes()
-    const interval = setInterval(fetchScrapes, 10000)
+    const interval = setInterval(fetchScrapes, 30000)
     return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
-    if (debouncedScrapes.length > 0) {
+    if (debouncedScrapes.length > 0 && typeof window !== "undefined") {
       localStorage.setItem("completed-scrapes", JSON.stringify(debouncedScrapes))
     }
   }, [debouncedScrapes])
 
   const updateContributorOutreach = useCallback(
     (scrapeId: string, username: string, updates: { contacted?: boolean; contactedDate?: string; notes?: string }) => {
+      if (typeof window === "undefined") return
+
       const outreachKey = `outreach-${scrapeId}`
       const existing = localStorage.getItem(outreachKey)
       const outreachData = existing ? JSON.parse(existing) : {}
@@ -224,14 +235,16 @@ export function RecentScrapes() {
         method: "DELETE",
       })
 
-      const persistedScrapesData = localStorage.getItem("completed-scrapes")
-      if (persistedScrapesData) {
-        const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
-        const updatedScrapes = persistedScrapes.filter((s) => s.id !== scrapeId)
-        localStorage.setItem("completed-scrapes", JSON.stringify(updatedScrapes))
-      }
+      if (typeof window !== "undefined") {
+        const persistedScrapesData = localStorage.getItem("completed-scrapes")
+        if (persistedScrapesData) {
+          const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
+          const updatedScrapes = persistedScrapes.filter((s) => s.id !== scrapeId)
+          localStorage.setItem("completed-scrapes", JSON.stringify(updatedScrapes))
+        }
 
-      localStorage.removeItem(`outreach-${scrapeId}`)
+        localStorage.removeItem(`outreach-${scrapeId}`)
+      }
       setScrapes((prev) => prev.filter((scrape) => scrape.id !== scrapeId))
     } catch (error) {
       console.error("[v0] Failed to delete scrape:", error)

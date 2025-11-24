@@ -19,15 +19,17 @@ export default function SettingsPage() {
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("github_token")
-    if (savedToken) {
-      setToken(savedToken)
-      checkRateLimit(savedToken)
-    }
+    if (typeof window !== "undefined") {
+      const savedToken = localStorage.getItem("github_token")
+      if (savedToken) {
+        setToken(savedToken)
+        checkRateLimit(savedToken)
+      }
 
-    const savedSlackWebhook = localStorage.getItem("slack_webhook_url")
-    if (savedSlackWebhook) {
-      setSlackWebhook(savedSlackWebhook)
+      const savedSlackWebhook = localStorage.getItem("slack_webhook_url")
+      if (savedSlackWebhook) {
+        setSlackWebhook(savedSlackWebhook)
+      }
     }
   }, [])
 
@@ -72,7 +74,9 @@ export default function SettingsPage() {
         return
       }
 
-      localStorage.setItem("github_token", token)
+      if (typeof window !== "undefined") {
+        localStorage.setItem("github_token", token)
+      }
       setRateLimit(data)
       setSaved(true)
       setError("")
@@ -84,7 +88,9 @@ export default function SettingsPage() {
   }
 
   const handleClear = () => {
-    localStorage.removeItem("github_token")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("github_token")
+    }
     setToken("")
     setRateLimit(null)
     setSaved(false)
@@ -115,7 +121,9 @@ export default function SettingsPage() {
         return
       }
 
-      localStorage.setItem("slack_webhook_url", slackWebhook)
+      if (typeof window !== "undefined") {
+        localStorage.setItem("slack_webhook_url", slackWebhook)
+      }
       setSlackSaved(true)
       setSlackError("")
 
@@ -126,7 +134,9 @@ export default function SettingsPage() {
   }
 
   const handleSlackClear = () => {
-    localStorage.removeItem("slack_webhook_url")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("slack_webhook_url")
+    }
     setSlackWebhook("")
     setSlackSaved(false)
     setSlackError("")
