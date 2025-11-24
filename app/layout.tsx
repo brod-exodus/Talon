@@ -11,8 +11,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Groq Talent Intelligence",
-  description: "Live, evolving map of exceptional technical talent",
+  title: "GitHub Scraper v2",
+  description: "Discover and track GitHub contributors across organizations and repositories",
   generator: "v0.app",
 }
 
