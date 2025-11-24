@@ -240,7 +240,7 @@ export default function SettingsPage() {
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">3.</span>
-                    <span>Give it a name like "Groq Talent Intelligence"</span>
+                    <span>Give it a name like "GitHub Scraper"</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">4.</span>
