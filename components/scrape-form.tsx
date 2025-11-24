@@ -51,8 +51,6 @@ export function ScrapeForm() {
       setIsLoading(true)
 
       try {
-        console.log("[v0] Starting scrape:", { type, target })
-
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -65,21 +63,12 @@ export function ScrapeForm() {
         }
 
         const data = await response.json()
-        console.log("[v0] Scrape created:", data.scrapeId)
 
-        const processResponse = await fetch(`/api/scrape/${data.scrapeId}`, {
+        fetch(`/api/scrape/${data.scrapeId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type, target, token }),
         })
-
-        if (!processResponse.ok) {
-          const error = await processResponse.json()
-          console.error("[v0] Failed to process scrape:", error)
-          throw new Error(error.error || "Failed to process scrape")
-        }
-
-        console.log("[v0] Scrape processing started successfully")
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
         toast({

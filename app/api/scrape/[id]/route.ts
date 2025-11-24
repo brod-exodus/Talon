@@ -1,21 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createGitHubClient } from "@/lib/github"
-import { getScrape, updateScrape, addContributor, deleteScrape } from "@/lib/storage-local"
-
-function isBotAccount(username: string): boolean {
-  return (
-    username.endsWith("[bot]") ||
-    username === "Copilot" ||
-    username === "dependabot" ||
-    username === "renovate" ||
-    username === "greenkeeper"
-  )
-}
+import { scrapeStorage } from "@/lib/storage"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id: scrapeId } = params
-    const scrape = await getScrape(scrapeId)
+    const scrape = scrapeStorage.get(scrapeId)
 
     if (!scrape) {
       return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
@@ -30,37 +20,39 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    console.log("[v0] POST /api/scrape/[id] - Request received for ID:", params.id)
     const { type, target, token } = await request.json()
     const { id: scrapeId } = params
 
-    console.log("[v0] Starting scrape process:", { scrapeId, type, target, hasToken: !!token })
+    console.log("[v0] Starting scrape:", { scrapeId, type, target })
 
     if (type === "organization") {
-      console.log("[v0] Starting organization scrape")
-      scrapeOrganization(scrapeId, target, token).catch(async (error) => {
+      scrapeOrganization(scrapeId, target, token).catch((error) => {
         console.error("[v0] Organization scrape failed:", error)
-        await updateScrape(scrapeId, {
-          status: "failed",
-        })
+        const scrape = scrapeStorage.get(scrapeId)
+        if (scrape) {
+          scrape.status = "failed"
+          scrape.error = error instanceof Error ? error.message : "Unknown error"
+        }
       })
     } else if (type === "repository") {
-      console.log("[v0] Starting repository scrape")
-      scrapeRepository(scrapeId, target, token).catch(async (error) => {
+      scrapeRepository(scrapeId, target, token).catch((error) => {
         console.error("[v0] Repository scrape failed:", error)
-        await updateScrape(scrapeId, {
-          status: "failed",
-        })
+        const scrape = scrapeStorage.get(scrapeId)
+        if (scrape) {
+          scrape.status = "failed"
+          scrape.error = error instanceof Error ? error.message : "Unknown error"
+        }
       })
     }
 
-    console.log("[v0] Scrape process initiated, returning success")
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Process scrape error:", error)
-    await updateScrape(params.id, {
-      status: "failed",
-    })
+    const scrape = scrapeStorage.get(params.id)
+    if (scrape) {
+      scrape.status = "failed"
+      scrape.error = error instanceof Error ? error.message : "Failed to process scrape"
+    }
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to process scrape" },
@@ -72,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id: scrapeId } = params
-    await deleteScrape(scrapeId)
+    scrapeStorage.delete(scrapeId)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Delete scrape error:", error)
@@ -81,30 +73,29 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 }
 
 async function scrapeOrganization(scrapeId: string, org: string, token?: string) {
-  console.log("[v0] scrapeOrganization started:", { scrapeId, org })
   const githubClient = createGitHubClient(token)
-  const scrape = await getScrape(scrapeId)
-  if (!scrape) {
-    console.log("[v0] Scrape not found in database:", scrapeId)
-    return
-  }
+  const scrape = scrapeStorage.get(scrapeId)
+  if (!scrape) return
 
   try {
-    const rateLimit = await githubClient.getRateLimitInfo()
-    if (rateLimit) {
-      console.log(`[v0] Starting scrape with ${rateLimit.remaining}/${rateLimit.limit} API requests remaining`)
-    }
+    const allRepos = await githubClient.getOrgRepos(org)
 
-    console.log("[v0] Fetching repos for org:", org)
-    const repos = await githubClient.getOrgRepos(org)
-    console.log("[v0] Found repos:", repos?.length || 0)
-
-    if (!repos || repos.length === 0) {
-      await updateScrape(scrapeId, { status: "failed" })
+    if (!allRepos || allRepos.length === 0) {
+      scrape.status = "failed"
+      scrape.error = `No repositories found for organization "${org}". Please check the organization name.`
       return
     }
 
-    await updateScrape(scrapeId, { total: repos.length })
+    const repos = allRepos.filter((repo) => !repo.fork && !repo.archived)
+    console.log("[v0] Filtered repos:", repos.length, "out of", allRepos.length, "(excluded forks and archived)")
+
+    if (repos.length === 0) {
+      scrape.status = "failed"
+      scrape.error = `No non-forked repositories found for organization "${org}".`
+      return
+    }
+
+    scrape.total = repos.length
 
     const contributorMap = new Map<
       string,
@@ -127,35 +118,19 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
 
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]
-      await updateScrape(scrapeId, {
-        current: i + 1,
-        progress: Math.round(((i + 1) / repos.length) * 100),
-      })
+      scrape.current = i + 1
+      scrape.progress = Math.round(((i + 1) / repos.length) * 100)
 
       try {
-        const contributors = await githubClient.getRepoContributors(repo)
+        const contributors = await githubClient.getRepoContributors(repo.full_name)
 
         for (const contributor of contributors) {
           const existing = contributorMap.get(contributor.login)
           if (existing) {
             existing.contributions += contributor.contributions
           } else {
-            if (isBotAccount(contributor.login)) {
-              console.log(`[v0] Skipping bot account: ${contributor.login}`)
-              contributorMap.set(contributor.login, {
-                username: contributor.login,
-                name: contributor.login,
-                avatar: contributor.avatar_url,
-                contributions: contributor.contributions,
-                bio: "Bot account",
-                location: undefined,
-                company: undefined,
-                contacts: {},
-              })
-              continue
-            }
-
             try {
+              scrape.currentUser = contributor.login
               const details = await githubClient.getUserDetails(contributor.login)
               contributorMap.set(contributor.login, {
                 username: contributor.login,
@@ -173,90 +148,64 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
               })
             } catch (error) {
               console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
-              contributorMap.set(contributor.login, {
-                username: contributor.login,
-                name: contributor.login,
-                avatar: contributor.avatar_url,
-                contributions: contributor.contributions,
-                bio: undefined,
-                location: undefined,
-                company: undefined,
-                contacts: {},
-              })
             }
           }
         }
       } catch (error) {
-        console.error(`[v0] Failed to get contributors for ${repo}:`, error)
+        console.error(`[v0] Failed to get contributors for ${repo.full_name}:`, error)
       }
     }
 
-    for (const contributor of contributorMap.values()) {
-      await addContributor(scrapeId, contributor)
-    }
+    const filteredContributors = Array.from(contributorMap.values()).filter((c) => c.contributions >= 3)
+    console.log(
+      "[v0] Filtered contributors:",
+      filteredContributors.length,
+      "out of",
+      contributorMap.size,
+      "(minimum 3 contributions)",
+    )
 
-    await updateScrape(scrapeId, {
-      status: "completed",
-      completedAt: new Date(),
-    })
+    scrape.contributors = filteredContributors
+    scrape.status = "completed"
+    scrape.completedAt = new Date()
+    scrape.currentUser = undefined
   } catch (error) {
-    await updateScrape(scrapeId, { status: "failed" })
+    scrape.status = "failed"
+    if (error instanceof Error && error.message.includes("404")) {
+      scrape.error = `Organization "${org}" not found. Please check the spelling and try again.`
+    } else {
+      scrape.error = error instanceof Error ? error.message : "Failed to scrape organization"
+    }
     throw error
   }
 }
 
 async function scrapeRepository(scrapeId: string, repo: string, token?: string) {
-  console.log("[v0] scrapeRepository started:", { scrapeId, repo })
   const githubClient = createGitHubClient(token)
-  const scrape = await getScrape(scrapeId)
-  if (!scrape) {
-    console.log("[v0] Scrape not found in database:", scrapeId)
-    return
-  }
+  const scrape = scrapeStorage.get(scrapeId)
+  if (!scrape) return
 
   try {
-    const rateLimit = await githubClient.getRateLimitInfo()
-    if (rateLimit) {
-      console.log(`[v0] Starting scrape with ${rateLimit.remaining}/${rateLimit.limit} API requests remaining`)
-    }
-
-    console.log("[v0] Fetching contributors for repo:", repo)
     const contributors = await githubClient.getRepoContributors(repo)
-    console.log("[v0] Found contributors:", contributors?.length || 0)
 
     if (!contributors || contributors.length === 0) {
-      await updateScrape(scrapeId, { status: "failed" })
+      scrape.status = "failed"
+      scrape.error = `No contributors found for repository "${repo}". Please check the repository name.`
       return
     }
 
-    await updateScrape(scrapeId, { total: contributors.length })
+    scrape.total = contributors.length
 
     for (let i = 0; i < contributors.length; i++) {
       const contributor = contributors[i]
-      await updateScrape(scrapeId, {
-        current: i + 1,
-        progress: Math.round(((i + 1) / contributors.length) * 100),
-      })
-
-      if (isBotAccount(contributor.login)) {
-        console.log(`[v0] Skipping bot account: ${contributor.login}`)
-        await addContributor(scrapeId, {
-          username: contributor.login,
-          name: contributor.login,
-          avatar: contributor.avatar_url,
-          contributions: contributor.contributions,
-          bio: "Bot account",
-          location: undefined,
-          company: undefined,
-          contacts: {},
-        })
-        continue
-      }
+      scrape.current = i + 1
+      scrape.progress = Math.round(((i + 1) / contributors.length) * 100)
+      scrape.currentUser = contributor.login
 
       try {
         const details = await githubClient.getUserDetails(contributor.login)
 
-        await addContributor(scrapeId, {
+        scrape.contributors.push({
           username: contributor.login,
           name: details.name || contributor.login,
           avatar: details.avatar_url,
@@ -272,25 +221,19 @@ async function scrapeRepository(scrapeId: string, repo: string, token?: string) 
         })
       } catch (error) {
         console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
-        await addContributor(scrapeId, {
-          username: contributor.login,
-          name: contributor.login,
-          avatar: contributor.avatar_url,
-          contributions: contributor.contributions,
-          bio: undefined,
-          location: undefined,
-          company: undefined,
-          contacts: {},
-        })
       }
     }
 
-    await updateScrape(scrapeId, {
-      status: "completed",
-      completedAt: new Date(),
-    })
+    scrape.status = "completed"
+    scrape.completedAt = new Date()
+    scrape.currentUser = undefined
   } catch (error) {
-    await updateScrape(scrapeId, { status: "failed" })
+    scrape.status = "failed"
+    if (error instanceof Error && error.message.includes("404")) {
+      scrape.error = `Repository "${repo}" not found. Please check the spelling and try again.`
+    } else {
+      scrape.error = error instanceof Error ? error.message : "Failed to scrape repository"
+    }
     throw error
   }
 }
