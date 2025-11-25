@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   title: "GitHub Scraper v2",
   description: "Discover and track GitHub contributors across organizations and repositories",
   generator: "v0.app",
+  icons: {
+    icon: "/logos/option-d-abstract.jpg",
+  },
 }
 
 export default function RootLayout({
