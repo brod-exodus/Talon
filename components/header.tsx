@@ -9,27 +9,10 @@ export function Header() {
 
   return (
     <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-50">
-      <div className="container mx-auto px-6 py-4 max-w-7xl">
+      <div className="container mx-auto px-6 py-3 max-w-7xl">
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
-              <div className="relative">
-                <Image
-                  src="/logos/option-d-abstract.jpg"
-                  alt="Talon Logo"
-                  width={40}
-                  height={40}
-                  className="rounded-xl"
-                />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                Talon
-              </h1>
-              <p className="text-xs text-muted-foreground">GitHub Contributor Discovery</p>
-            </div>
+          <Link href="/" className="flex items-center group -my-2">
+            <Image src="/logos/talon-header-full.png" alt="Talon" width={432} height={120} className="w-auto py-0 h-28 mx-0 my-[-20px]" />
           </Link>
 
           <nav className="flex items-center gap-1">
