@@ -17,7 +17,7 @@ export function Header() {
               <div className="relative">
                 <Image
                   src="/logos/option-d-abstract.jpg"
-                  alt="Talent Intelligence Logo"
+                  alt="Talon Logo"
                   width={40}
                   height={40}
                   className="rounded-xl"
@@ -26,7 +26,7 @@ export function Header() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                Talent Intelligence
+                Talon
               </h1>
               <p className="text-xs text-muted-foreground">GitHub Contributor Discovery</p>
             </div>

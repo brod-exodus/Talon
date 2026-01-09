@@ -1,0 +1,42 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Eagle talon with 4 toes gripping forward -->
+  <!-- Toe 1 (far left) -->
+  <path d="M 60 120 Q 50 100 48 85 Q 47 75 50 68 L 52 70 Q 50 76 51 84 Q 53 98 62 115 Z" 
+        fill="url(#gradient)" stroke="#1e40af" stroke-width="1.5"/>
+  <path d="M 48 68 Q 45 60 43 52 L 44 50 Q 46 58 49 66 Z" 
+        fill="url(#gradient)" stroke="#1e40af" stroke-width="1"/>
+  
+  <!-- Toe 2 (center left) -->
+  <path d="M 75 125 Q 70 105 68 88 Q 67 75 70 65 L 72 67 Q 70 76 71 87 Q 73 103 78 120 Z" 
+        fill="url(#gradient)" stroke="#1e40af" stroke-width="1.5"/>
+  <path d="M 70 65 Q 68 52 67 42 L 68 40 Q 70 50 72 63 Z" 
+        fill="url(#gradient)" stroke="#1e40af" stroke-width="1"/>
+  
+  <!-- Toe 3 (center right) -->
+  <path d="M 125 125 Q 130 105 132 88 Q 133 75 130 65 L 128 67 Q 130 76 129 87 Q 127 103 122 120 Z" 
+        fill="url(#gradient)" stroke="#6d28d9" stroke-width="1.5"/>
+  <path d="M 130 65 Q 132 52 133 42 L 132 40 Q 130 50 128 63 Z" 
+        fill="url(#gradient)" stroke="#6d28d9" stroke-width="1"/>
+  
+  <!-- Toe 4 (far right) -->
+  <path d="M 140 120 Q 150 100 152 85 Q 153 75 150 68 L 148 70 Q 150 76 149 84 Q 147 98 138 115 Z" 
+        fill="url(#gradient)" stroke="#6d28d9" stroke-width="1.5"/>
+  <path d="M 150 68 Q 153 60 155 52 L 154 50 Q 152 58 149 66 Z" 
+        fill="url(#gradient)" stroke="#6d28d9" stroke-width="1"/>
+  
+  <!-- Palm/base of talon -->
+  <ellipse cx="100" cy="130" rx="35" ry="15" fill="url(#gradient)" opacity="0.8"/>
+  
+  <!-- Sharp claw tips -->
+  <circle cx="43" cy="50" r="2" fill="#1e40af"/>
+  <circle cx="67" cy="40" r="2" fill="#3b82f6"/>
+  <circle cx="133" cy="40" r="2" fill="#8b5cf6"/>
+  <circle cx="155" cy="50" r="2" fill="#6d28d9"/>
+</svg>
