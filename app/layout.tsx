@@ -15,7 +15,8 @@ export const metadata: Metadata = {
   description: "Discover and track GitHub contributors across organizations and repositories",
   generator: "v0.app",
   icons: {
-    icon: "/logos/talon-logo.svg",
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
   },
 }
 
