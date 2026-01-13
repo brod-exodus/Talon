@@ -44,6 +44,7 @@ class GitHubClient {
         Authorization: `token ${this.token}`,
         Accept: "application/vnd.github.v3+json",
       },
+      redirect: "follow", // Added redirect: 'follow' to handle 301 redirects when repos are moved/renamed
     })
 
     if (!response.ok) {
