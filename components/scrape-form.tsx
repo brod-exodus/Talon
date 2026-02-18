@@ -56,7 +56,7 @@ export function ScrapeForm() {
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target, token }),
+          body: JSON.stringify({ type, target: target.trim(), token }),
         })
 
         if (!response.ok) {
@@ -69,7 +69,7 @@ export function ScrapeForm() {
         fetch(`/api/scrape/${data.scrapeId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target, token }),
+          body: JSON.stringify({ type, target: target.trim(), token }),
         })
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""

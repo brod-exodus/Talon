@@ -4,7 +4,10 @@ import { scrapeStorage } from "@/lib/storage"
 
 export async function POST(request: NextRequest) {
   try {
-    const { type, target, token } = await request.json()
+    const body = await request.json()
+    const type = body.type
+    const target = body.target?.trim()
+    const token = body.token
 
     if (!type || !target) {
       return NextResponse.json({ error: "Missing type or target" }, { status: 400 })
