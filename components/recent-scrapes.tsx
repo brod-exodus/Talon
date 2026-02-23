@@ -1,60 +1,10 @@
 "use client"
 
+import { TooltipContent } from "@/components/ui/tooltip"
+import { TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip"
 import { useEffect, useState, useMemo, useCallback } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import {
-  Mail,
-  Linkedin,
-  Globe,
-  ExternalLink,
-  Calendar,
-  ChevronDown,
-  ChevronUp,
-  Trash2,
-  Check,
-  Download,
-  FileSpreadsheet,
-  Inbox,
-} from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { motion, AnimatePresence } from "framer-motion"
-import { useToast } from "@/hooks/use-toast"
-import { Skeleton } from "@/components/ui/skeleton"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
-type Contributor = {
-  username: string
-  name: string
-  avatar: string
-  contributions: number
-  contacts: {
-    email?: string
-    twitter?: string
-    linkedin?: string
-    website?: string
-  }
-  contacted?: boolean
-  contactedDate?: string
-  notes?: string
-}
-
-type CompletedScrape = {
-  id: string
-  target: string
-  type: string
-  completedAt: Date
-  contributors: Contributor[]
-}
-
-const XIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-  </svg>
-)
+import { EmailCopyButton } from "@/components/email-copy-button" // Import EmailCopyButton
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -561,16 +511,7 @@ export function RecentScrapes() {
 
                           <div className="space-y-2 pl-14">
                             {contributor.contacts.email && (
-                              <motion.div
-                                whileHover={{ x: 4 }}
-                                className="flex items-center gap-2 text-sm cursor-pointer group"
-                                onClick={() => copyToClipboard(contributor.contacts.email!, "Email")}
-                              >
-                                <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
-                                <span className="text-primary hover:underline font-mono break-all group-hover:text-primary/80 transition-colors">
-                                  {contributor.contacts.email}
-                                </span>
-                              </motion.div>
+                              <EmailCopyButton email={contributor.contacts.email} />
                             )}
                             {contributor.contacts.twitter && (
                               <motion.div whileHover={{ x: 4 }} className="flex items-center gap-2 text-sm group">
@@ -735,60 +676,118 @@ export function RecentScrapes() {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
+    <TooltipProvider>
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
 
-      <Tabs defaultValue="organizations" className="w-full">
-        <TabsList className="bg-muted">
-          <TabsTrigger value="organizations">Organizations</TabsTrigger>
-          <TabsTrigger value="repositories">Repositories</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="organizations" className="w-full">
+          <TabsList className="bg-muted">
+            <TabsTrigger value="organizations">Organizations</TabsTrigger>
+            <TabsTrigger value="repositories">Repositories</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="organizations" className="space-y-4 mt-6">
-          {orgScrapes.length === 0 ? (
-            <Card className="border-border bg-card">
-              <CardContent className="pt-6">
-                <div className="text-center py-12">
-                  <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No organization scrapes yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Start by scraping a GitHub organization to discover contributors
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Try: <span className="font-mono text-primary">vercel</span>,{" "}
-                    <span className="font-mono text-primary">facebook</span>, or{" "}
-                    <span className="font-mono text-primary">microsoft</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">{orgScrapes.map((scrape) => renderContributorList(scrape))}</div>
-          )}
-        </TabsContent>
+          <TabsContent value="organizations" className="space-y-4 mt-6">
+            {orgScrapes.length === 0 ? (
+              <Card className="border-border bg-card">
+                <CardContent className="pt-6">
+                  <div className="text-center py-12">
+                    <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No organization scrapes yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Start by scraping a GitHub organization to discover contributors
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Try: <span className="font-mono text-primary">vercel</span>,{" "}
+                      <span className="font-mono text-primary">facebook</span>, or{" "}
+                      <span className="font-mono text-primary">microsoft</span>
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">{orgScrapes.map((scrape) => renderContributorList(scrape))}</div>
+            )}
+          </TabsContent>
 
-        <TabsContent value="repositories" className="space-y-4 mt-6">
-          {repoScrapes.length === 0 ? (
-            <Card className="border-border bg-card">
-              <CardContent className="pt-6">
-                <div className="text-center py-12">
-                  <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No repository scrapes yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Start by scraping a GitHub repository to discover contributors
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Try: <span className="font-mono text-primary">vercel/next.js</span> or{" "}
-                    <span className="font-mono text-primary">facebook/react</span>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">{repoScrapes.map((scrape) => renderContributorList(scrape))}</div>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
+          <TabsContent value="repositories" className="space-y-4 mt-6">
+            {repoScrapes.length === 0 ? (
+              <Card className="border-border bg-card">
+                <CardContent className="pt-6">
+                  <div className="text-center py-12">
+                    <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No repository scrapes yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Start by scraping a GitHub repository to discover contributors
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Try: <span className="font-mono text-primary">vercel/next.js</span> or{" "}
+                      <span className="font-mono text-primary">facebook/react</span>
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">{repoScrapes.map((scrape) => renderContributorList(scrape))}</div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </TooltipProvider>
   )
 }
+
+type Contributor = {
+  username: string
+  name: string
+  avatar: string
+  contributions: number
+  contacts: {
+    email?: string
+    twitter?: string
+    linkedin?: string
+    website?: string
+  }
+  contacted?: boolean
+  contactedDate?: string
+  notes?: string
+}
+
+type CompletedScrape = {
+  id: string
+  target: string
+  type: string
+  completedAt: Date
+  contributors: Contributor[]
+}
+
+const XIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+)
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import {
+  Mail,
+  Linkedin,
+  Globe,
+  ExternalLink,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  Check,
+  Download,
+  FileSpreadsheet,
+  Inbox,
+  Copy,
+} from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { motion, AnimatePresence } from "framer-motion"
+import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
