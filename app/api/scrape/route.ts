@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createGitHubClient } from "@/lib/github"
-import { scrapeStorage } from "@/lib/storage"
+import { createScrape } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,18 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scrapeId = `scrape-${Date.now()}-${Math.random().toString(36).substring(7)}`
-
-    scrapeStorage.set(scrapeId, {
-      id: scrapeId,
-      type,
-      target,
-      status: "active",
-      progress: 0,
-      current: 0,
-      total: 0,
-      startedAt: new Date(),
-      contributors: [],
-    })
+    await createScrape(scrapeId, type, target)
 
     return NextResponse.json({
       scrapeId,

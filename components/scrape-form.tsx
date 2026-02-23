@@ -21,12 +21,17 @@ export function ScrapeForm() {
   const { toast } = useToast()
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const persistedScrapesData = localStorage.getItem("completed-scrapes")
-      if (persistedScrapesData) {
-        const scrapes = JSON.parse(persistedScrapesData)
-        setExistingTargets(new Set(scrapes.map((s: any) => `${s.type}:${s.target}`)))
-      }
+    let cancelled = false
+    fetch("/api/scrapes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        const completed = data.completed || []
+        setExistingTargets(new Set(completed.map((s: { type: string; target: string }) => `${s.type}:${s.target}`)))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
     }
   }, [])
 

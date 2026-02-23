@@ -32,8 +32,8 @@ export function useScrapeStatus(scrapeId: string | null) {
         const data = await response.json()
         setStatus(data)
 
-        // Stop polling if completed or errored
-        if (data.status === "completed" || data.status === "error") {
+        // Stop polling if completed or failed
+        if (data.status === "completed" || data.status === "failed" || data.status === "error") {
           clearInterval(interval)
         }
       } catch (err) {

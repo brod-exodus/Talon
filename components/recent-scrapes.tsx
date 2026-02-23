@@ -6,79 +6,20 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { EmailCopyButton } from "@/components/email-copy-button" // Import EmailCopyButton
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
-}
-
 export function RecentScrapes() {
   const [scrapes, setScrapes] = useState<CompletedScrape[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
-  const [debouncedScrapes, setDebouncedScrapes] = useState<CompletedScrape[]>([])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedScrapes(scrapes)
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [scrapes])
-
   useEffect(() => {
     const fetchScrapes = async () => {
       try {
         const response = await fetch("/api/scrapes")
         const data = await response.json()
-
-        const persistedScrapesData = typeof window !== "undefined" ? localStorage.getItem("completed-scrapes") : null
-        const persistedScrapes: CompletedScrape[] = persistedScrapesData ? JSON.parse(persistedScrapesData) : []
-
-        const apiScrapeIds = new Set((data.completed || []).map((s: CompletedScrape) => s.id))
-        const uniquePersistedScrapes = persistedScrapes.filter((s) => !apiScrapeIds.has(s.id))
-        const allScrapes = [...(data.completed || []), ...uniquePersistedScrapes]
-
-        if (allScrapes.length > 0 && typeof window !== "undefined") {
-          localStorage.setItem("completed-scrapes", JSON.stringify(allScrapes))
-        }
-
-        const scrapesWithOutreach = allScrapes.map((scrape: CompletedScrape) => {
-          const outreachData = typeof window !== "undefined" ? localStorage.getItem(`outreach-${scrape.id}`) : null
-          if (outreachData) {
-            const outreach = JSON.parse(outreachData)
-            return {
-              ...scrape,
-              contributors: scrape.contributors.map((contributor) => ({
-                ...contributor,
-                ...outreach[contributor.username],
-              })),
-            }
-          }
-          return scrape
-        })
-
-        setScrapes(scrapesWithOutreach)
+        setScrapes(data.completed || [])
       } catch (error) {
         console.error("[v0] Failed to fetch scrapes:", error)
-        if (typeof window !== "undefined") {
-          const persistedScrapesData = localStorage.getItem("completed-scrapes")
-          if (persistedScrapesData) {
-            const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
-            setScrapes(persistedScrapes)
-          }
-        }
       } finally {
         setIsLoading(false)
       }
@@ -89,45 +30,50 @@ export function RecentScrapes() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    if (debouncedScrapes.length > 0 && typeof window !== "undefined") {
-      localStorage.setItem("completed-scrapes", JSON.stringify(debouncedScrapes))
-    }
-  }, [debouncedScrapes])
-
   const updateContributorOutreach = useCallback(
-    (scrapeId: string, username: string, updates: { contacted?: boolean; contactedDate?: string; notes?: string }) => {
-      if (typeof window === "undefined") return
-
-      const outreachKey = `outreach-${scrapeId}`
-      const existing = localStorage.getItem(outreachKey)
-      const outreachData = existing ? JSON.parse(existing) : {}
-
-      outreachData[username] = {
-        ...outreachData[username],
-        ...updates,
+    async (
+      _scrapeId: string,
+      username: string,
+      updates: { contacted?: boolean; contactedDate?: string; notes?: string; status?: string }
+    ) => {
+      try {
+        const res = await fetch("/api/contributors/outreach", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            contacted: updates.contacted,
+            contactedDate: updates.contactedDate,
+            notes: updates.notes,
+            status: updates.status,
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to update")
+      } catch (err) {
+        console.error("[v0] Update outreach error:", err)
+        toast({
+          title: "Error",
+          description: "Failed to save outreach update",
+          variant: "destructive",
+        })
+        return
       }
-
-      localStorage.setItem(outreachKey, JSON.stringify(outreachData))
 
       setScrapes((prev) =>
         prev.map((scrape) => {
-          if (scrape.id === scrapeId) {
-            return {
-              ...scrape,
-              contributors: scrape.contributors.map((contributor) => {
-                if (contributor.username === username) {
-                  return { ...contributor, ...updates }
-                }
-                return contributor
-              }),
-            }
+          return {
+            ...scrape,
+            contributors: scrape.contributors.map((contributor) => {
+              if (contributor.username === username) {
+                return { ...contributor, ...updates }
+              }
+              return contributor
+            }),
           }
-          return scrape
         }),
       )
     },
-    [],
+    [toast],
   )
 
   const formatDate = (date: Date) => {
@@ -176,26 +122,11 @@ export function RecentScrapes() {
       "Are you sure you want to permanently delete this scrape? This action cannot be undone.",
     )
 
-    if (!confirmed) {
-      return
-    }
+    if (!confirmed) return
 
     try {
-      await fetch(`/api/scrape/${scrapeId}`, {
-        method: "DELETE",
-      })
-
-      if (typeof window !== "undefined") {
-        const persistedScrapesData = localStorage.getItem("completed-scrapes")
-        if (persistedScrapesData) {
-          const persistedScrapes: CompletedScrape[] = JSON.parse(persistedScrapesData)
-          const updatedScrapes = persistedScrapes.filter((s) => s.id !== scrapeId)
-          localStorage.setItem("completed-scrapes", JSON.stringify(updatedScrapes))
-        }
-
-        localStorage.removeItem(`outreach-${scrapeId}`)
-      }
-      setScrapes((prev) => prev.filter((scrape) => scrape.id !== scrapeId))
+      await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
+      setScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
     } catch (error) {
       console.error("[v0] Failed to delete scrape:", error)
     }
@@ -232,6 +163,7 @@ export function RecentScrapes() {
         "Contacted",
         "Contact Date",
         "Notes",
+        "Status",
       ]
 
       const rows = contributorsWithContacts.map((contributor) => [
@@ -246,6 +178,7 @@ export function RecentScrapes() {
         contributor.contacted ? "Yes" : "No",
         contributor.contactedDate || "",
         contributor.notes || "",
+        contributor.status || "",
       ])
 
       const csvContent = [
@@ -301,6 +234,7 @@ export function RecentScrapes() {
         "Contacted",
         "Contact Date",
         "Notes",
+        "Status",
       ]
 
       const rows = contributorsWithContacts.map((contributor) => [
@@ -315,6 +249,7 @@ export function RecentScrapes() {
         contributor.contacted ? "Yes" : "No",
         contributor.contactedDate || "",
         contributor.notes || "",
+        contributor.status || "",
       ])
 
       const csvContent = [
@@ -620,6 +555,26 @@ export function RecentScrapes() {
                                       className="mt-1 h-8 text-sm bg-background transition-all duration-300 focus:ring-2 focus:ring-primary"
                                     />
                                   </div>
+                                  <div>
+                                    <Label
+                                      htmlFor={`status-${contributor.username}`}
+                                      className="text-xs text-muted-foreground"
+                                    >
+                                      Status
+                                    </Label>
+                                    <Input
+                                      id={`status-${contributor.username}`}
+                                      type="text"
+                                      placeholder="e.g., Replied, Interviewing..."
+                                      value={contributor.status || ""}
+                                      onChange={(e) => {
+                                        updateContributorOutreach(scrape.id, contributor.username, {
+                                          status: e.target.value,
+                                        })
+                                      }}
+                                      className="mt-1 h-8 text-sm bg-background transition-all duration-300 focus:ring-2 focus:ring-primary"
+                                    />
+                                  </div>
                                 </motion.div>
                               )}
                             </AnimatePresence>
@@ -750,6 +705,7 @@ type Contributor = {
   contacted?: boolean
   contactedDate?: string
   notes?: string
+  status?: string | null
 }
 
 type CompletedScrape = {
