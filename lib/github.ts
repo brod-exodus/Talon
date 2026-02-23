@@ -1,5 +1,47 @@
 // GitHub API client with authentication for 5000 req/hour rate limit
 
+export type BioContacts = {
+  email?: string
+  twitter?: string
+  linkedin?: string
+  website?: string
+}
+
+/**
+ * Extract contact information from a GitHub bio string using regex.
+ * Finds: emails, Twitter/X handles (@user or twitter.com/user), LinkedIn (linkedin.com/in/user),
+ * and other http/https URLs (excluding Twitter and LinkedIn).
+ */
+export function extractContactsFromBio(bio: string | null | undefined): BioContacts {
+  const result: BioContacts = {}
+  if (!bio || typeof bio !== "string" || !bio.trim()) return result
+
+  const s = bio.trim()
+
+  // Email: common pattern
+  const emailMatch = s.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)
+  if (emailMatch) result.email = emailMatch[0]
+
+  // Twitter/X: @handle or twitter.com/handle or x.com/handle (handle = username without @)
+  const twitterHandleMatch =
+    s.match(/(?:^|[\s(])@([a-zA-Z0-9_]{1,15})(?=[\s)]|$)/)?.[1] ??
+    s.match(/(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)/i)?.[1]
+  if (twitterHandleMatch) result.twitter = twitterHandleMatch
+
+  // LinkedIn: linkedin.com/in/username
+  const linkedinMatch = s.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i)?.[1]
+  if (linkedinMatch) result.linkedin = linkedinMatch
+
+  // Website: first http(s) URL that is not Twitter or LinkedIn
+  const urlCandidates = s.match(/https?:\/\/[^\s)\]>"']+/gi) ?? []
+  const websiteUrl = urlCandidates.find(
+    (u) => !/twitter\.com|x\.com|linkedin\.com/i.test(u.replace(/[)\]>"']+$/, ""))
+  )
+  if (websiteUrl) result.website = websiteUrl.replace(/[)\]>"']+$/, "")
+
+  return result
+}
+
 export interface Contributor {
   id: number
   login: string
