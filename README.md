@@ -1,6 +1,6 @@
 # GitHub Scraper
 
-A modern GitHub contributor intelligence tool that scrapes repositories and organizations to extract contributors with contact information only.
+A modern GitHub contributor tool that scrapes repositories and organizations to extract contributors with contact information only.
 
 ## Features
 
