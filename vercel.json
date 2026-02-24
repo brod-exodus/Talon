@@ -1,0 +1,3 @@
+{
+    "crons": [{ "path": "/api/watched-repos/check", "schedule": "0 * * * *" }]
+  }
