@@ -296,15 +296,13 @@ export function RecentScrapes() {
 
       return (
         <motion.div
+          key={scrape.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           whileHover={{ y: -2 }}
         >
-          <Card
-            key={scrape.id}
-            className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
-          >
+          <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex-1">

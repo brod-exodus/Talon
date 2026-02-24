@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { after } from "next/server"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { getScrape, failScrape, deleteScrape, updateScrapeProgress, completeScrape } from "@/lib/db"
 
@@ -32,28 +33,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: scrapeId } = await params
   try {
-    const { id: scrapeId } = await params
     const { type, target, token } = await request.json()
 
     console.log("[v0] Starting scrape:", { scrapeId, type, target })
 
     if (type === "organization") {
-      scrapeOrganization(scrapeId, target, token).catch((error) => {
-        console.error("[v0] Organization scrape failed – full error:", error)
-        failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error").catch(console.error)
+      after(async () => {
+        await scrapeOrganization(scrapeId, target, token).catch((error) => {
+          console.error("[v0] Organization scrape failed – full error:", error)
+          return failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error")
+        })
       })
     } else if (type === "repository") {
-      scrapeRepository(scrapeId, target, token).catch((error) => {
-        console.error("[v0] Repository scrape failed – full error:", error)
-        failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error").catch(console.error)
+      after(async () => {
+        await scrapeRepository(scrapeId, target, token).catch((error) => {
+          console.error("[v0] Repository scrape failed – full error:", error)
+          return failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error")
+        })
       })
+    } else {
+      console.warn("[v0] Unknown scrape type:", type)
+      await failScrape(scrapeId, `Unknown scrape type: ${type}`)
+      return NextResponse.json({ error: `Unknown scrape type: ${type}` }, { status: 400 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Process scrape error – full error:", error)
-    const { id: scrapeId } = await params
     await failScrape(scrapeId, error instanceof Error ? error.message : "Failed to process scrape").catch(
       console.error
     )
