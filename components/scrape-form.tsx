@@ -40,6 +40,13 @@ export function ScrapeForm() {
     return existingTargets.has(`${type}:${target}`)
   }, [target, type, existingTargets])
 
+  const typeMismatch = useMemo<"looks-like-repo" | "looks-like-org" | null>(() => {
+    if (!target.trim()) return null
+    if (type === "organization" && target.includes("/")) return "looks-like-repo"
+    if (type === "repository" && !target.includes("/")) return "looks-like-org"
+    return null
+  }, [target, type])
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
@@ -156,6 +163,42 @@ export function ScrapeForm() {
               className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
             />
           </div>
+
+          {typeMismatch === "looks-like-repo" && (
+            <Alert className="border-blue-500/40 bg-blue-500/10">
+              <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
+              <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
+                <span>This looks like a repository (owner/repo). You must select <strong>Repository</strong> as the source type.</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                  onClick={() => setType("repository")}
+                >
+                  Switch to Repository
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {typeMismatch === "looks-like-org" && (
+            <Alert className="border-blue-500/40 bg-blue-500/10">
+              <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
+              <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
+                <span>This looks like an organization name. You must select <strong>Organization</strong> as the source type.</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                  onClick={() => setType("organization")}
+                >
+                  Switch to Organization
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {isDuplicate && (
             <Alert className="border-yellow-500/50 bg-yellow-500/10">
