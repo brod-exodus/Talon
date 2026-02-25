@@ -27,6 +27,16 @@ export function Header() {
               Home
             </Link>
             <Link
+              href="/watched"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                pathname === "/watched"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              Watched Repos
+            </Link>
+            <Link
               href="/settings"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 pathname === "/settings"
