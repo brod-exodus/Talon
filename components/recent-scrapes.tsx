@@ -1,35 +1,202 @@
 "use client"
 
-import { TooltipContent } from "@/components/ui/tooltip"
-import { TooltipTrigger } from "@/components/ui/tooltip"
-import { Tooltip, TooltipProvider } from "@/components/ui/tooltip"
-import { useEffect, useState, useMemo, useCallback } from "react"
-import { EmailCopyButton } from "@/components/email-copy-button" // Import EmailCopyButton
+import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { EmailCopyButton } from "@/components/email-copy-button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import {
+  Linkedin,
+  Globe,
+  ExternalLink,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  Check,
+  Download,
+  FileSpreadsheet,
+  Inbox,
+} from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { motion, AnimatePresence } from "framer-motion"
+import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Contributor = {
+  username: string
+  name: string
+  avatar: string
+  contributions: number
+  contacts: {
+    email?: string
+    twitter?: string
+    linkedin?: string
+    website?: string
+  }
+  contacted?: boolean
+  contactedDate?: string
+  notes?: string
+  status?: string | null
+}
+
+/** Lightweight summary returned by GET /api/scrapes — no contributor details */
+type CompletedScrapeSummary = {
+  id: string
+  target: string
+  type: string
+  completedAt: string
+  contributorCount: number
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDate(date: string | Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(date))
+}
+
+function formatTimeAgo(date: string | Date) {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (seconds < 60) return `${seconds} seconds ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days > 1 ? "s" : ""} ago`
+}
+
+function buildCsvContent(contributors: Contributor[], target: string): string {
+  const headers = [
+    "Name", "Username", "GitHub Profile", "Contributions",
+    "Email", "Twitter", "LinkedIn", "Website",
+    "Contacted", "Contact Date", "Notes", "Status",
+  ]
+  const rows = contributors.map((c) => [
+    c.name,
+    c.username,
+    `https://github.com/${c.username}`,
+    c.contributions,
+    c.contacts.email || "",
+    c.contacts.twitter ? `https://twitter.com/${c.contacts.twitter}` : "",
+    c.contacts.linkedin ? `https://linkedin.com/in/${c.contacts.linkedin}` : "",
+    c.contacts.website || "",
+    c.contacted ? "Yes" : "No",
+    c.contactedDate || "",
+    c.notes || "",
+    c.status || "",
+  ])
+  return [
+    headers.join(","),
+    ...rows.map((row) =>
+      row.map((cell) => {
+        const s = String(cell)
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s
+      }).join(",")
+    ),
+  ].join("\n")
+}
+
+function triggerDownload(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.style.visibility = "hidden"
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function RecentScrapes() {
-  const [scrapes, setScrapes] = useState<CompletedScrape[]>([])
+  const [scrapes, setScrapes] = useState<CompletedScrapeSummary[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
+  const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
+  const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
+  // Stable ref so fetchContributors doesn't need contributorCache as a dep
+  const cacheRef = useRef(contributorCache)
+  useEffect(() => { cacheRef.current = contributorCache }, [contributorCache])
+
+  // ── Fetch the lightweight list ────────────────────────────────────────────
   useEffect(() => {
     const fetchScrapes = async () => {
       try {
-        const response = await fetch("/api/scrapes")
-        const data = await response.json()
+        const res = await fetch("/api/scrapes")
+        const data = await res.json()
         setScrapes(data.completed || [])
-      } catch (error) {
-        console.error("[v0] Failed to fetch scrapes:", error)
+      } catch (err) {
+        console.error("[v0] Failed to fetch scrapes:", err)
       } finally {
         setIsLoading(false)
       }
     }
-
     fetchScrapes()
     const interval = setInterval(fetchScrapes, 30000)
     return () => clearInterval(interval)
   }, [])
 
+  // ── Lazy-load contributors for a single scrape ────────────────────────────
+  const fetchContributors = useCallback(async (scrapeId: string) => {
+    if (cacheRef.current.has(scrapeId)) return
+
+    setLoadingExpansions((prev) => new Set(prev).add(scrapeId))
+    try {
+      const res = await fetch(`/api/scrape/${scrapeId}`)
+      if (!res.ok) throw new Error("Failed to load contributors")
+      const data = await res.json()
+      setContributorCache((prev) => new Map(prev).set(scrapeId, data.contributors ?? []))
+    } catch (err) {
+      console.error("[v0] Failed to fetch contributors:", err)
+      toast({ title: "Error", description: "Failed to load contributors", variant: "destructive" })
+    } finally {
+      setLoadingExpansions((prev) => {
+        const next = new Set(prev)
+        next.delete(scrapeId)
+        return next
+      })
+    }
+  }, [toast])
+
+  // ── Toggle expand, triggering fetch on first open ─────────────────────────
+  const toggleExpanded = useCallback(
+    (scrapeId: string) => {
+      setExpandedScrapes((prev) => {
+        const next = new Set(prev)
+        if (next.has(scrapeId)) {
+          next.delete(scrapeId)
+        } else {
+          next.add(scrapeId)
+          fetchContributors(scrapeId)
+        }
+        return next
+      })
+    },
+    [fetchContributors]
+  )
+
+  // ── Outreach update writes to Supabase then updates cache ─────────────────
   const updateContributorOutreach = useCallback(
     async (
       _scrapeId: string,
@@ -51,248 +218,72 @@ export function RecentScrapes() {
         if (!res.ok) throw new Error("Failed to update")
       } catch (err) {
         console.error("[v0] Update outreach error:", err)
-        toast({
-          title: "Error",
-          description: "Failed to save outreach update",
-          variant: "destructive",
-        })
+        toast({ title: "Error", description: "Failed to save outreach update", variant: "destructive" })
         return
       }
-
-      setScrapes((prev) =>
-        prev.map((scrape) => {
-          return {
-            ...scrape,
-            contributors: scrape.contributors.map((contributor) => {
-              if (contributor.username === username) {
-                return { ...contributor, ...updates }
-              }
-              return contributor
-            }),
-          }
-        }),
-      )
+      // Update every cache entry where this username appears
+      setContributorCache((prev) => {
+        const next = new Map(prev)
+        for (const [sid, contribs] of next) {
+          next.set(sid, contribs.map((c) => c.username === username ? { ...c, ...updates } : c))
+        }
+        return next
+      })
     },
-    [toast],
+    [toast]
   )
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-  const formatTimeAgo = (date: Date) => {
-    const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000)
-    if (seconds < 60) return `${seconds} seconds ago`
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`
-    const days = Math.floor(hours / 24)
-    return `${days} day${days > 1 ? "s" : ""} ago`
-  }
-
-  const toggleExpanded = useCallback((scrapeId: string) => {
-    setExpandedScrapes((prev) => {
-      const next = new Set(prev)
-      if (next.has(scrapeId)) {
-        next.delete(scrapeId)
-      } else {
-        next.add(scrapeId)
-      }
-      return next
-    })
-  }, [])
-
-  const getSortedContributors = useCallback((scrape: CompletedScrape) => {
-    return [...scrape.contributors].sort((a, b) => b.contributions - a.contributions)
-  }, [])
-
-  const orgScrapes = useMemo(() => scrapes.filter((s) => s.type === "organization"), [scrapes])
-  const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
-
+  // ── Delete ────────────────────────────────────────────────────────────────
   const deleteScrape = useCallback(async (scrapeId: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to permanently delete this scrape? This action cannot be undone.",
-    )
-
-    if (!confirmed) return
-
+    if (!window.confirm("Are you sure you want to permanently delete this scrape? This action cannot be undone.")) return
     try {
       await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
       setScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
-    } catch (error) {
-      console.error("[v0] Failed to delete scrape:", error)
+      setContributorCache((prev) => { const next = new Map(prev); next.delete(scrapeId); return next })
+    } catch (err) {
+      console.error("[v0] Failed to delete scrape:", err)
     }
   }, [])
 
-  const copyToClipboard = useCallback(
-    (text: string, label: string) => {
-      navigator.clipboard.writeText(text)
-      toast({
-        title: "Copied!",
-        description: `${label} copied to clipboard`,
-        duration: 2000,
-      })
-    },
-    [toast],
-  )
-
+  // ── Export ────────────────────────────────────────────────────────────────
   const exportToCSV = useCallback(
-    (scrape: CompletedScrape) => {
-      const sortedContributors = getSortedContributors(scrape)
-      const contributorsWithContacts = sortedContributors.filter(
-        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website,
+    (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
+      const withContacts = contributors.filter(
+        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website
       )
-
-      const headers = [
-        "Name",
-        "Username",
-        "GitHub Profile",
-        "Contributions",
-        "Email",
-        "Twitter",
-        "LinkedIn",
-        "Website",
-        "Contacted",
-        "Contact Date",
-        "Notes",
-        "Status",
-      ]
-
-      const rows = contributorsWithContacts.map((contributor) => [
-        contributor.name,
-        contributor.username,
-        `https://github.com/${contributor.username}`,
-        contributor.contributions,
-        contributor.contacts.email || "",
-        contributor.contacts.twitter ? `https://twitter.com/${contributor.contacts.twitter}` : "",
-        contributor.contacts.linkedin ? `https://linkedin.com/in/${contributor.contacts.linkedin}` : "",
-        contributor.contacts.website || "",
-        contributor.contacted ? "Yes" : "No",
-        contributor.contactedDate || "",
-        contributor.notes || "",
-        contributor.status || "",
-      ])
-
-      const csvContent = [
-        headers.join(","),
-        ...rows.map((row) =>
-          row
-            .map((cell) => {
-              const cellStr = String(cell)
-              if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
-                return `"${cellStr.replace(/"/g, '""')}"`
-              }
-              return cellStr
-            })
-            .join(","),
-        ),
-      ].join("\n")
-
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
-      const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `${scrape.target.replace(/\//g, "-")}-contributors.csv`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      toast({
-        title: "Exported!",
-        description: `Downloaded ${contributorsWithContacts.length} contributors to CSV`,
-        duration: 3000,
-      })
+      const csv = buildCsvContent(withContacts, scrape.target)
+      triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.csv`, "text/csv")
+      toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to CSV`, duration: 3000 })
     },
-    [getSortedContributors, toast],
+    [toast]
   )
 
   const exportToExcel = useCallback(
-    (scrape: CompletedScrape) => {
-      const sortedContributors = getSortedContributors(scrape)
-      const contributorsWithContacts = sortedContributors.filter(
-        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website,
+    (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
+      const withContacts = contributors.filter(
+        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website
       )
-
-      const headers = [
-        "Name",
-        "Username",
-        "GitHub Profile",
-        "Contributions",
-        "Email",
-        "Twitter",
-        "LinkedIn",
-        "Website",
-        "Contacted",
-        "Contact Date",
-        "Notes",
-        "Status",
-      ]
-
-      const rows = contributorsWithContacts.map((contributor) => [
-        contributor.name,
-        contributor.username,
-        `https://github.com/${contributor.username}`,
-        contributor.contributions,
-        contributor.contacts.email || "",
-        contributor.contacts.twitter ? `https://twitter.com/${contributor.contacts.twitter}` : "",
-        contributor.contacts.linkedin ? `https://linkedin.com/in/${contributor.contacts.linkedin}` : "",
-        contributor.contacts.website || "",
-        contributor.contacted ? "Yes" : "No",
-        contributor.contactedDate || "",
-        contributor.notes || "",
-        contributor.status || "",
-      ])
-
-      const csvContent = [
-        headers.join(","),
-        ...rows.map((row) =>
-          row
-            .map((cell) => {
-              const cellStr = String(cell)
-              if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
-                return `"${cellStr.replace(/"/g, '""')}"`
-              }
-              return cellStr
-            })
-            .join(","),
-        ),
-      ].join("\n")
-
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const link = document.createElement("a")
-      const url = URL.createObjectURL(blob)
-      link.setAttribute("href", url)
-      link.setAttribute("download", `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`)
-      link.style.visibility = "hidden"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      toast({
-        title: "Exported!",
-        description: `Downloaded ${contributorsWithContacts.length} contributors to Excel`,
-        duration: 3000,
-      })
+      const csv = buildCsvContent(withContacts, scrape.target)
+      triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`, "text/csv")
+      toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to Excel`, duration: 3000 })
     },
-    [getSortedContributors, toast],
+    [toast]
   )
 
-  const renderContributorList = useCallback(
-    (scrape: CompletedScrape) => {
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const orgScrapes = useMemo(() => scrapes.filter((s) => s.type === "organization"), [scrapes])
+  const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
+
+  // ── Render a single scrape card ───────────────────────────────────────────
+  const renderScrapeCard = useCallback(
+    (scrape: CompletedScrapeSummary) => {
       const isExpanded = expandedScrapes.has(scrape.id)
-      const sortedContributors = getSortedContributors(scrape)
-      const contributorsWithContacts = sortedContributors.filter(
-        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website,
-      )
+      const isLoadingContributors = loadingExpansions.has(scrape.id)
+      const contributors = contributorCache.get(scrape.id) ?? null
+      const withContacts = contributors
+        ? contributors.filter((c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website)
+        : null
+      const sorted = withContacts ? [...withContacts].sort((a, b) => b.contributions - a.contributions) : []
 
       return (
         <motion.div
@@ -323,8 +314,10 @@ export function RecentScrapes() {
                 </Button>
               </div>
             </CardHeader>
+
             <CardContent>
               <div className="space-y-4">
+                {/* Counts */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Total Contributors</span>
@@ -334,7 +327,7 @@ export function RecentScrapes() {
                       transition={{ duration: 0.5, type: "spring" }}
                       className="font-mono text-foreground"
                     >
-                      {scrape.contributors.length}
+                      {scrape.contributorCount}
                     </motion.span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -345,11 +338,12 @@ export function RecentScrapes() {
                       transition={{ duration: 0.5, type: "spring", delay: 0.1 }}
                       className="font-mono text-green-500"
                     >
-                      {contributorsWithContacts.length}
+                      {withContacts !== null ? withContacts.length : "—"}
                     </motion.span>
                   </div>
                 </div>
 
+                {/* Actions */}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -357,15 +351,9 @@ export function RecentScrapes() {
                     onClick={() => toggleExpanded(scrape.id)}
                   >
                     {isExpanded ? (
-                      <>
-                        <ChevronUp className="w-4 h-4 mr-2" />
-                        Hide
-                      </>
+                      <><ChevronUp className="w-4 h-4 mr-2" />Hide</>
                     ) : (
-                      <>
-                        <ChevronDown className="w-4 h-4 mr-2" />
-                        View All ({contributorsWithContacts.length})
-                      </>
+                      <><ChevronDown className="w-4 h-4 mr-2" />View All ({scrape.contributorCount})</>
                     )}
                   </Button>
 
@@ -373,6 +361,7 @@ export function RecentScrapes() {
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="outline"
+                        disabled={!contributors}
                         className="bg-transparent hover:bg-primary/10 transition-all duration-300"
                       >
                         <Download className="w-4 h-4 mr-2" />
@@ -381,18 +370,23 @@ export function RecentScrapes() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem onClick={() => exportToCSV(scrape)} className="cursor-pointer">
-                        <Download className="w-4 h-4 mr-2" />
-                        CSV
+                      <DropdownMenuItem
+                        onClick={() => contributors && exportToCSV(scrape, contributors)}
+                        className="cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 mr-2" />CSV
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => exportToExcel(scrape)} className="cursor-pointer">
-                        <FileSpreadsheet className="w-4 h-4 mr-2" />
-                        Excel
+                      <DropdownMenuItem
+                        onClick={() => contributors && exportToExcel(scrape, contributors)}
+                        className="cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 mr-2" />Excel
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
 
+                {/* Expanded contributor list */}
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.div
@@ -402,7 +396,27 @@ export function RecentScrapes() {
                       transition={{ duration: 0.3 }}
                       className="space-y-3 mt-4 max-h-[600px] overflow-y-auto pr-2"
                     >
-                      {contributorsWithContacts.map((contributor, index) => (
+                      {/* Loading skeleton while fetching contributor details */}
+                      {isLoadingContributors && (
+                        <div className="space-y-3">
+                          {[1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-4 p-4 rounded-lg border border-border bg-secondary/50"
+                            >
+                              <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+                              <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-3 w-48" />
+                                <Skeleton className="h-3 w-40" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Contributor rows */}
+                      {!isLoadingContributors && sorted.map((contributor, index) => (
                         <motion.div
                           key={contributor.username}
                           initial={{ opacity: 0, x: -20 }}
@@ -412,25 +426,18 @@ export function RecentScrapes() {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                              <div className="relative">
-                                <img
-                                  src={contributor.avatar || "/placeholder.svg?height=40&width=40"}
-                                  alt={contributor.name}
-                                  className="w-10 h-10 rounded-full ring-2 ring-border hover:ring-primary transition-all duration-300"
-                                />
-                              </div>
+                              <img
+                                src={contributor.avatar || "/placeholder.svg?height=40&width=40"}
+                                alt={contributor.name}
+                                className="w-10 h-10 rounded-full ring-2 ring-border hover:ring-primary transition-all duration-300"
+                              />
                               <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-foreground">{contributor.name}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm text-muted-foreground font-mono">
-                                    @{contributor.username} · {contributor.contributions} contributions
-                                  </p>
-                                </div>
+                                <p className="font-semibold text-foreground">{contributor.name}</p>
+                                <p className="text-sm text-muted-foreground font-mono">
+                                  @{contributor.username} · {contributor.contributions} contributions
+                                </p>
                               </div>
                             </div>
-
                             <Button
                               size="sm"
                               variant="outline"
@@ -487,24 +494,24 @@ export function RecentScrapes() {
                             )}
                           </div>
 
+                          {/* Outreach tracking */}
                           <div className="pl-14 pt-3 border-t border-border space-y-3">
                             <div className="flex items-center gap-3">
                               <Switch
                                 id={`contacted-${contributor.username}`}
                                 checked={contributor.contacted || false}
-                                onCheckedChange={(checked) => {
+                                onCheckedChange={(checked) =>
                                   updateContributorOutreach(scrape.id, contributor.username, {
                                     contacted: checked,
                                     contactedDate: checked ? new Date().toISOString().split("T")[0] : undefined,
                                   })
-                                }}
+                                }
                               />
-                              <span className="text-sm text-muted-foreground transition-opacity duration-300 flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground flex items-center gap-2">
                                 {contributor.contacted && <Check className="w-4 h-4 text-green-500" />}
                                 {contributor.contacted ? "Contacted" : "Toggle if contacted"}
                               </span>
                             </div>
-
                             <AnimatePresence>
                               {contributor.contacted && (
                                 <motion.div
@@ -515,29 +522,23 @@ export function RecentScrapes() {
                                   className="space-y-2"
                                 >
                                   <div>
-                                    <Label
-                                      htmlFor={`date-${contributor.username}`}
-                                      className="text-xs text-muted-foreground"
-                                    >
+                                    <Label htmlFor={`date-${contributor.username}`} className="text-xs text-muted-foreground">
                                       Contact Date
                                     </Label>
                                     <Input
                                       id={`date-${contributor.username}`}
                                       type="date"
                                       value={contributor.contactedDate || ""}
-                                      onChange={(e) => {
+                                      onChange={(e) =>
                                         updateContributorOutreach(scrape.id, contributor.username, {
                                           contactedDate: e.target.value,
                                         })
-                                      }}
-                                      className="mt-1 h-8 text-sm bg-background transition-all duration-300 focus:ring-2 focus:ring-primary"
+                                      }
+                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
                                     />
                                   </div>
                                   <div>
-                                    <Label
-                                      htmlFor={`notes-${contributor.username}`}
-                                      className="text-xs text-muted-foreground"
-                                    >
+                                    <Label htmlFor={`notes-${contributor.username}`} className="text-xs text-muted-foreground">
                                       Notes (optional)
                                     </Label>
                                     <Input
@@ -545,19 +546,16 @@ export function RecentScrapes() {
                                       type="text"
                                       placeholder="e.g., Sent email, LinkedIn message..."
                                       value={contributor.notes || ""}
-                                      onChange={(e) => {
+                                      onChange={(e) =>
                                         updateContributorOutreach(scrape.id, contributor.username, {
                                           notes: e.target.value,
                                         })
-                                      }}
-                                      className="mt-1 h-8 text-sm bg-background transition-all duration-300 focus:ring-2 focus:ring-primary"
+                                      }
+                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
                                     />
                                   </div>
                                   <div>
-                                    <Label
-                                      htmlFor={`status-${contributor.username}`}
-                                      className="text-xs text-muted-foreground"
-                                    >
+                                    <Label htmlFor={`status-${contributor.username}`} className="text-xs text-muted-foreground">
                                       Status
                                     </Label>
                                     <Input
@@ -565,12 +563,12 @@ export function RecentScrapes() {
                                       type="text"
                                       placeholder="e.g., Replied, Interviewing..."
                                       value={contributor.status || ""}
-                                      onChange={(e) => {
+                                      onChange={(e) =>
                                         updateContributorOutreach(scrape.id, contributor.username, {
                                           status: e.target.value,
                                         })
-                                      }}
-                                      className="mt-1 h-8 text-sm bg-background transition-all duration-300 focus:ring-2 focus:ring-primary"
+                                      }
+                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
                                     />
                                   </div>
                                 </motion.div>
@@ -579,6 +577,13 @@ export function RecentScrapes() {
                           </div>
                         </motion.div>
                       ))}
+
+                      {/* Empty state: loaded but no contacts */}
+                      {!isLoadingContributors && contributors !== null && sorted.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          No contributors with contact information found.
+                        </p>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -590,16 +595,17 @@ export function RecentScrapes() {
     },
     [
       expandedScrapes,
-      getSortedContributors,
+      loadingExpansions,
+      contributorCache,
       toggleExpanded,
       deleteScrape,
       exportToCSV,
       exportToExcel,
       updateContributorOutreach,
-      copyToClipboard,
-    ],
+    ]
   )
 
+  // ── Loading skeleton (initial list load) ──────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -628,11 +634,32 @@ export function RecentScrapes() {
     )
   }
 
+  // ── Empty-state placeholder ───────────────────────────────────────────────
+  const EmptyState = ({ type }: { type: "organization" | "repository" }) => (
+    <Card className="border-border bg-card">
+      <CardContent className="pt-6">
+        <div className="text-center py-12">
+          <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No {type} scrapes yet</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Start by scraping a GitHub {type} to discover contributors
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {type === "organization"
+              ? <>Try: <span className="font-mono text-primary">vercel</span>, <span className="font-mono text-primary">facebook</span>, or <span className="font-mono text-primary">microsoft</span></>
+              : <>Try: <span className="font-mono text-primary">vercel/next.js</span> or <span className="font-mono text-primary">facebook/react</span></>
+            }
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  // ── Main render ───────────────────────────────────────────────────────────
   return (
     <TooltipProvider>
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
-
         <Tabs defaultValue="organizations" className="w-full">
           <TabsList className="bg-muted">
             <TabsTrigger value="organizations">Organizations</TabsTrigger>
@@ -640,48 +667,17 @@ export function RecentScrapes() {
           </TabsList>
 
           <TabsContent value="organizations" className="space-y-4 mt-6">
-            {orgScrapes.length === 0 ? (
-              <Card className="border-border bg-card">
-                <CardContent className="pt-6">
-                  <div className="text-center py-12">
-                    <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No organization scrapes yet</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Start by scraping a GitHub organization to discover contributors
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Try: <span className="font-mono text-primary">vercel</span>,{" "}
-                      <span className="font-mono text-primary">facebook</span>, or{" "}
-                      <span className="font-mono text-primary">microsoft</span>
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 gap-4">{orgScrapes.map((scrape) => renderContributorList(scrape))}</div>
-            )}
+            {orgScrapes.length === 0
+              ? <EmptyState type="organization" />
+              : <div className="grid grid-cols-1 gap-4">{orgScrapes.map(renderScrapeCard)}</div>
+            }
           </TabsContent>
 
           <TabsContent value="repositories" className="space-y-4 mt-6">
-            {repoScrapes.length === 0 ? (
-              <Card className="border-border bg-card">
-                <CardContent className="pt-6">
-                  <div className="text-center py-12">
-                    <Inbox className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No repository scrapes yet</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Start by scraping a GitHub repository to discover contributors
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Try: <span className="font-mono text-primary">vercel/next.js</span> or{" "}
-                      <span className="font-mono text-primary">facebook/react</span>
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 gap-4">{repoScrapes.map((scrape) => renderContributorList(scrape))}</div>
-            )}
+            {repoScrapes.length === 0
+              ? <EmptyState type="repository" />
+              : <div className="grid grid-cols-1 gap-4">{repoScrapes.map(renderScrapeCard)}</div>
+            }
           </TabsContent>
         </Tabs>
       </div>
@@ -689,59 +685,10 @@ export function RecentScrapes() {
   )
 }
 
-type Contributor = {
-  username: string
-  name: string
-  avatar: string
-  contributions: number
-  contacts: {
-    email?: string
-    twitter?: string
-    linkedin?: string
-    website?: string
-  }
-  contacted?: boolean
-  contactedDate?: string
-  notes?: string
-  status?: string | null
-}
-
-type CompletedScrape = {
-  id: string
-  target: string
-  type: string
-  completedAt: Date
-  contributors: Contributor[]
-}
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 const XIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 )
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import {
-  Mail,
-  Linkedin,
-  Globe,
-  ExternalLink,
-  Calendar,
-  ChevronDown,
-  ChevronUp,
-  Trash2,
-  Check,
-  Download,
-  FileSpreadsheet,
-  Inbox,
-  Copy,
-} from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { motion, AnimatePresence } from "framer-motion"
-import { useToast } from "@/hooks/use-toast"
-import { Skeleton } from "@/components/ui/skeleton"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"

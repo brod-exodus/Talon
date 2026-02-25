@@ -315,6 +315,18 @@ export async function getScrape(id: string): Promise<AppScrape | null> {
   }
 }
 
+export type ScrapeSummary = {
+  id: string
+  target: string
+  type: string
+  completedAt: string
+  contributorCount: number
+}
+
+/**
+ * Lightweight list query: 2 DB round trips regardless of scrape count.
+ * Does NOT load contributor details — use getScrape(id) for lazy-loaded detail.
+ */
 export async function getScrapes(): Promise<{
   active: Array<{
     id: string
@@ -326,74 +338,50 @@ export async function getScrapes(): Promise<{
     currentUser?: string
     startedAt: string
   }>
-  completed: Array<{
-    id: string
-    target: string
-    type: string
-    completedAt: string
-    contributors: ReturnType<typeof toAppContributor>[]
-  }>
+  completed: ScrapeSummary[]
 }> {
+  // Query 1: fetch all scrapes (select only needed columns)
   const { data: rows, error } = await supabase
     .from("scrapes")
-    .select("*")
+    .select("id, type, target, status, progress, current, total, current_user_login, started_at, completed_at")
     .order("started_at", { ascending: false })
   if (error) throw error
 
-  const active: Array<{
-    id: string
-    target: string
-    type: string
-    progress: number
-    current: number
-    total: number
-    currentUser?: string
-    startedAt: string
-  }> = []
-  const completed: Array<{
-    id: string
-    target: string
-    type: string
-    completedAt: string
-    contributors: ReturnType<typeof toAppContributor>[]
-  }> = []
+  const completedRows = (rows ?? []).filter((r) => r.status === "completed")
+  const completedIds = completedRows.map((r) => r.id)
 
-  for (const row of rows ?? []) {
-    if (row.status === "active") {
-      active.push({
-        id: row.id,
-        target: row.target,
-        type: row.type,
-        progress: row.progress,
-        current: row.current,
-        total: row.total,
-        currentUser: row.current_user_login ?? undefined,
-        startedAt: row.started_at,
-      })
-    } else if (row.status === "completed") {
-      const { data: links } = await supabase
-        .from("scrape_contributors")
-        .select("contributor_id, contributions")
-        .eq("scrape_id", row.id)
-      const contributorIds = (links ?? []).map((l) => l.contributor_id)
-      const { data: contribs } = await supabase
-        .from("contributors")
-        .select("*")
-        .in("id", contributorIds)
-      const linkMap = new Map((links ?? []).map((l) => [l.contributor_id, l.contributions]))
-      const contributorsWithContributions: ContributorWithContributions[] = (contribs ?? []).map((c) => ({
-        ...c,
-        contributions: linkMap.get(c.id) ?? 0,
-      }))
-      completed.push({
-        id: row.id,
-        target: row.target,
-        type: row.type,
-        completedAt: row.completed_at ?? row.started_at,
-        contributors: contributorsWithContributions.map(toAppContributor),
-      })
+  // Query 2: batch-fetch contributor counts for all completed scrapes at once
+  const countMap = new Map<string, number>()
+  if (completedIds.length > 0) {
+    const { data: linkRows } = await supabase
+      .from("scrape_contributors")
+      .select("scrape_id")
+      .in("scrape_id", completedIds)
+    for (const row of linkRows ?? []) {
+      countMap.set(row.scrape_id, (countMap.get(row.scrape_id) ?? 0) + 1)
     }
   }
+
+  const active = (rows ?? [])
+    .filter((r) => r.status === "active")
+    .map((r) => ({
+      id: r.id,
+      target: r.target,
+      type: r.type,
+      progress: r.progress,
+      current: r.current,
+      total: r.total,
+      currentUser: r.current_user_login ?? undefined,
+      startedAt: r.started_at,
+    }))
+
+  const completed: ScrapeSummary[] = completedRows.map((r) => ({
+    id: r.id,
+    target: r.target,
+    type: r.type,
+    completedAt: r.completed_at ?? r.started_at,
+    contributorCount: countMap.get(r.id) ?? 0,
+  }))
 
   return { active, completed }
 }
