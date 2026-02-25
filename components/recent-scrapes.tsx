@@ -157,7 +157,28 @@ export function RecentScrapes() {
     return () => clearInterval(interval)
   }, [])
 
-  // ── Lazy-load contributors for a single scrape ────────────────────────────
+  // ── Silent background prefetch (no skeleton, no error toast) ────────────
+  const prefetchContributors = useCallback(async (scrapeId: string) => {
+    if (cacheRef.current.has(scrapeId)) return
+    try {
+      const res = await fetch(`/api/scrape/${scrapeId}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setContributorCache((prev) => new Map(prev).set(scrapeId, data.contributors ?? []))
+    } catch {
+      // Silently ignore — the count will populate if/when the user expands
+    }
+  }, [])
+
+  // ── Pre-fetch all scrapes as soon as the list loads ───────────────────────
+  useEffect(() => {
+    if (scrapes.length === 0) return
+    for (const scrape of scrapes) {
+      prefetchContributors(scrape.id)
+    }
+  }, [scrapes, prefetchContributors])
+
+  // ── Lazy-load contributors for a single scrape (shown on explicit expand) ─
   const fetchContributors = useCallback(async (scrapeId: string) => {
     if (cacheRef.current.has(scrapeId)) return
 
