@@ -4,28 +4,28 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* High-Velocity Electric Orange & Deep Charcoal Theme */
-  --background: 217 33% 9%;
+  /* Modern dark theme inspired by Vercel, AI SDK, and Braintrust */
+  --background: 0 0% 6%;
   --foreground: 0 0% 98%;
-  --card: 217 35% 12%;
+  --card: 0 0% 9%;
   --card-foreground: 0 0% 98%;
-  --popover: 217 35% 12%;
+  --popover: 0 0% 9%;
   --popover-foreground: 0 0% 98%;
-  --primary: 20 100% 52%;
+  --primary: 250 100% 65%;
   --primary-foreground: 0 0% 98%;
-  --secondary: 217 35% 18%;
+  --secondary: 0 0% 14%;
   --secondary-foreground: 0 0% 98%;
-  --muted: 217 20% 25%;
-  --muted-foreground: 0 0% 60%;
-  --accent: 20 100% 52%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 250 100% 65%;
   --accent-foreground: 0 0% 98%;
   --destructive: 0 63% 31%;
   --destructive-foreground: 0 0% 98%;
-  --border: 217 25% 20%;
-  --input: 217 35% 15%;
-  --ring: 20 100% 52%;
-  --chart-1: 20 100% 52%;
-  --chart-2: 217 80% 55%;
+  --border: 0 0% 18%;
+  --input: 0 0% 14%;
+  --ring: 250 100% 65%;
+  --chart-1: 250 100% 65%;
+  --chart-2: 160 60% 50%;
   --chart-3: 30 80% 55%;
   --chart-4: 280 65% 60%;
   --chart-5: 200 70% 50%;
@@ -44,27 +44,27 @@
 }
 
 .dark {
-  --background: 217 33% 9%;
+  --background: 0 0% 6%;
   --foreground: 0 0% 98%;
-  --card: 217 35% 12%;
+  --card: 0 0% 9%;
   --card-foreground: 0 0% 98%;
-  --popover: 217 35% 12%;
+  --popover: 0 0% 9%;
   --popover-foreground: 0 0% 98%;
-  --primary: 20 100% 52%;
+  --primary: 250 100% 65%;
   --primary-foreground: 0 0% 98%;
-  --secondary: 217 35% 18%;
+  --secondary: 0 0% 14%;
   --secondary-foreground: 0 0% 98%;
-  --muted: 217 20% 25%;
-  --muted-foreground: 0 0% 60%;
-  --accent: 20 100% 52%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 250 100% 65%;
   --accent-foreground: 0 0% 98%;
   --destructive: 0 63% 31%;
   --destructive-foreground: 0 0% 98%;
-  --border: 217 25% 20%;
-  --input: 217 35% 15%;
-  --ring: 20 100% 52%;
-  --chart-1: 20 100% 52%;
-  --chart-2: 217 80% 55%;
+  --border: 0 0% 18%;
+  --input: 0 0% 14%;
+  --ring: 250 100% 65%;
+  --chart-1: 250 100% 65%;
+  --chart-2: 160 60% 50%;
   --chart-3: 30 80% 55%;
   --chart-4: 280 65% 60%;
   --chart-5: 200 70% 50%;
@@ -72,12 +72,12 @@
   --success-foreground: 0 0% 98%;
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 39.09);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0.243 39.09);
+  --sidebar-ring: oklch(0.439 0.243 264.376);
 }
 
 @theme inline {
