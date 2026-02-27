@@ -255,6 +255,30 @@ export type AppScrape = {
   contributors: ReturnType<typeof toAppContributor>[]
 }
 
+/** Fetches only the scrapes row — no contributor data. Used by the paginated GET handler. */
+export async function getScrapeMetadata(id: string): Promise<Omit<AppScrape, "contributors"> | null> {
+  const { data: scrape, error } = await supabase
+    .from("scrapes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!scrape) return null
+  return {
+    id: scrape.id,
+    type: scrape.type,
+    target: scrape.target,
+    status: scrape.status,
+    progress: scrape.progress,
+    current: scrape.current,
+    total: scrape.total,
+    currentUser: scrape.current_user_login ?? undefined,
+    startedAt: scrape.started_at,
+    completedAt: scrape.completed_at ?? undefined,
+    error: scrape.error ?? undefined,
+  }
+}
+
 export async function getScrape(id: string): Promise<AppScrape | null> {
   const { data: scrape, error: scrapeError } = await supabase
     .from("scrapes")
@@ -384,6 +408,101 @@ export async function getScrapes(): Promise<{
   }))
 
   return { active, completed }
+}
+
+const PAGE_SIZE = 100
+
+/**
+ * Fetch one page of contributors for a scrape.
+ *
+ * Deliberately avoids PostgREST count/range headers entirely — those features
+ * trigger Bad Request on large result sets in some Supabase versions.
+ * Instead: fetch all link IDs in one plain query, slice in JS, then fetch the
+ * contributor rows for just that slice.
+ */
+export async function getScrapeContributorsPage(
+  scrapeId: string,
+  page: number,
+  pageSize = PAGE_SIZE
+): Promise<{
+  contributors: ReturnType<typeof toAppContributor>[]
+  contributorTotal: number
+  page: number
+  hasMore: boolean
+}> {
+  console.log(`[db] getScrapeContributorsPage START – scrapeId=${scrapeId} page=${page} pageSize=${pageSize}`)
+
+  // Query 1: fetch all (contributor_id, contributions) pairs for this scrape — no count, no range.
+  console.log(`[db] Q1 START – scrape_contributors.select where scrape_id=${scrapeId}`)
+  let allLinks: { contributor_id: string; contributions: number }[]
+  try {
+    const { data, error: linksError } = await supabase
+      .from("scrape_contributors")
+      .select("contributor_id, contributions")
+      .eq("scrape_id", scrapeId)
+    if (linksError) {
+      console.error("[db] Q1 FAILED – scrape_contributors query\n" + JSON.stringify(linksError, null, 2))
+      throw linksError
+    }
+    allLinks = data ?? []
+    console.log(`[db] Q1 OK – got ${allLinks.length} link rows`)
+  } catch (err) {
+    console.error("[db] Q1 THREW (unexpected) –\n" + JSON.stringify(err, null, 2))
+    throw err
+  }
+
+  const contributorTotal = allLinks.length
+
+  if (contributorTotal === 0) {
+    console.log("[db] getScrapeContributorsPage END – no contributors")
+    return { contributors: [], contributorTotal, page, hasMore: false }
+  }
+
+  // Slice in JavaScript — no PostgREST range header needed.
+  const from = (page - 1) * pageSize
+  const pageLinks = allLinks.slice(from, from + pageSize)
+  console.log(`[db] page slice from=${from} pageLinks.length=${pageLinks.length}`)
+
+  if (pageLinks.length === 0) {
+    console.log("[db] getScrapeContributorsPage END – page beyond last row")
+    return { contributors: [], contributorTotal, page, hasMore: false }
+  }
+
+  // Query 2: full contributor rows for this page's IDs only.
+  const pageIds = pageLinks.map((l) => l.contributor_id)
+  console.log(`[db] Q2 START – contributors.select where id in [${pageIds.length} ids]`)
+  let contribRows: ContributorRow[]
+  try {
+    const { data, error: contribError } = await supabase
+      .from("contributors")
+      .select("*")
+      .in("id", pageIds)
+    if (contribError) {
+      console.error("[db] Q2 FAILED – contributors query\n" + JSON.stringify(contribError, null, 2))
+      throw contribError
+    }
+    contribRows = data ?? []
+    console.log(`[db] Q2 OK – got ${contribRows.length} contributor rows`)
+  } catch (err) {
+    console.error("[db] Q2 THREW (unexpected) –\n" + JSON.stringify(err, null, 2))
+    throw err
+  }
+
+  const linkMap = new Map(pageLinks.map((l) => [l.contributor_id, l.contributions]))
+  const withContributions: ContributorWithContributions[] = contribRows.map((c) => ({
+    ...c,
+    contributions: linkMap.get(c.id) ?? 0,
+  }))
+
+  const hasMore = from + pageLinks.length < contributorTotal
+  console.log(`[db] getScrapeContributorsPage END – returning ${withContributions.length} contributors hasMore=${hasMore}`)
+
+  return {
+    contributors: withContributions.map(toAppContributor),
+    contributorTotal,
+    page,
+    hasMore,
+  }
 }
 
 export async function updateContributorOutreach(

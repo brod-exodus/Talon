@@ -34,11 +34,12 @@ type Contributor = {
   name: string
   avatar: string
   contributions: number
-  contacts: {
-    email?: string
-    twitter?: string
-    linkedin?: string
-    website?: string
+  // contacts is optional so missing/null at runtime is handled gracefully
+  contacts?: {
+    email?: string | null
+    twitter?: string | null
+    linkedin?: string | null
+    website?: string | null
   }
   contacted?: boolean
   contactedDate?: string
@@ -90,10 +91,10 @@ function buildCsvContent(contributors: Contributor[], target: string): string {
     c.username,
     `https://github.com/${c.username}`,
     c.contributions,
-    c.contacts.email || "",
-    c.contacts.twitter ? `https://twitter.com/${c.contacts.twitter}` : "",
-    c.contacts.linkedin ? `https://linkedin.com/in/${c.contacts.linkedin}` : "",
-    c.contacts.website || "",
+    c.contacts?.email?.trim() || "",
+    c.contacts?.twitter?.trim() ? `https://twitter.com/${c.contacts.twitter}` : "",
+    c.contacts?.linkedin?.trim() ? `https://linkedin.com/in/${c.contacts.linkedin}` : "",
+    c.contacts?.website?.trim() || "",
     c.contacted ? "Yes" : "No",
     c.contactedDate || "",
     c.notes || "",
@@ -123,6 +124,156 @@ function triggerDownload(content: string, filename: string, mime: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ─── OutreachFields ───────────────────────────────────────────────────────────
+// Owns local state for notes + date so typing is instant.
+// Flushes to the parent (and API) only on blur, not on every keystroke.
+
+interface OutreachFieldsProps {
+  scrapeId: string
+  contributor: Contributor
+  onUpdate: (
+    scrapeId: string,
+    username: string,
+    updates: { contacted?: boolean; contactedDate?: string; notes?: string; status?: string }
+  ) => void
+}
+
+// Normalize any date string (full ISO or YYYY-MM-DD) down to YYYY-MM-DD.
+// The hidden <input type="date"> requires this exact format as its value.
+function toDateValue(raw: string | null | undefined): string {
+  if (!raw) return ""
+  // Take just the date portion before any 'T'
+  return raw.split("T")[0]
+}
+
+// Format a YYYY-MM-DD value → MM/DD/YYYY for display.
+function formatDisplayDate(dateValue: string): string | null {
+  if (!dateValue) return null
+  const [y, m, d] = dateValue.split("-")
+  if (!y || !m || !d) return null
+  return `${m}/${d}/${y}`
+}
+
+function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps) {
+  const [localDate, setLocalDate] = useState(() => toDateValue(contributor.contactedDate))
+  const [localNotes, setLocalNotes] = useState(contributor.notes || "")
+  const dateInputRef = useRef<HTMLInputElement>(null)
+
+  // Sync if the cache value changes from outside (e.g. another card updated same user)
+  useEffect(() => { setLocalDate(toDateValue(contributor.contactedDate)) }, [contributor.contactedDate])
+  useEffect(() => { setLocalNotes(contributor.notes || "") }, [contributor.notes])
+
+  function clearDate() {
+    setLocalDate("")
+    onUpdate(scrapeId, contributor.username, { contactedDate: "" })
+  }
+
+  return (
+    <div className="pl-14 pt-3 border-t border-border space-y-3">
+      <div className="flex items-center gap-3">
+        <Switch
+          id={`contacted-${contributor.username}`}
+          checked={contributor.contacted || false}
+          onCheckedChange={(checked) =>
+            // Do NOT auto-populate the date — let the user set it manually.
+            onUpdate(scrapeId, contributor.username, { contacted: checked })
+          }
+        />
+        <span className="text-sm text-muted-foreground flex items-center gap-2">
+          {contributor.contacted && <Check className="w-4 h-4 text-green-500" />}
+          {contributor.contacted ? "Contacted" : "Toggle if contacted"}
+        </span>
+      </div>
+      <AnimatePresence>
+        {contributor.contacted && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-2"
+          >
+            <div>
+              <Label className="text-xs text-muted-foreground">
+                Contact Date
+              </Label>
+              <div className="relative mt-1 flex items-center gap-1">
+                {/* Visible button opens the native calendar picker */}
+                <button
+                  type="button"
+                  onClick={() => dateInputRef.current?.showPicker()}
+                  className="h-8 flex-1 rounded-md border border-input bg-background px-3 text-left text-sm text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                >
+                  {localDate ? (
+                    <span>{formatDisplayDate(localDate)}</span>
+                  ) : (
+                    <span className="text-muted-foreground">Select a date…</span>
+                  )}
+                </button>
+                {/* Clear button — only visible when a date is set */}
+                {localDate && (
+                  <button
+                    type="button"
+                    onClick={clearDate}
+                    className="h-8 w-8 flex items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                    aria-label="Clear date"
+                  >
+                    ×
+                  </button>
+                )}
+                {/* Hidden native date input — driven by the button above */}
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  value={localDate}
+                  onChange={(e) => {
+                    setLocalDate(e.target.value)
+                    onUpdate(scrapeId, contributor.username, { contactedDate: e.target.value })
+                  }}
+                  className="absolute inset-0 opacity-0 pointer-events-none"
+                  tabIndex={-1}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor={`notes-${contributor.username}`} className="text-xs text-muted-foreground">
+                Notes (optional)
+              </Label>
+              <Input
+                id={`notes-${contributor.username}`}
+                type="text"
+                placeholder="e.g., Sent email, LinkedIn message..."
+                value={localNotes}
+                onChange={(e) => setLocalNotes(e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value !== (contributor.notes || "")) {
+                    onUpdate(scrapeId, contributor.username, { notes: e.target.value })
+                  }
+                }}
+                className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/**
+ * Single source of truth for "does this contributor have any contact info?"
+ * Uses optional chaining throughout: contacts may be missing or fields may be
+ * null/undefined/empty-string depending on what the API returns.
+ */
+function hasContactInfo(c: Contributor): boolean {
+  return !!(
+    c.contacts?.email?.trim() ||
+    c.contacts?.twitter?.trim() ||
+    c.contacts?.linkedin?.trim() ||
+    c.contacts?.website?.trim()
+  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -161,10 +312,17 @@ export function RecentScrapes() {
   const prefetchContributors = useCallback(async (scrapeId: string) => {
     if (cacheRef.current.has(scrapeId)) return
     try {
-      const res = await fetch(`/api/scrape/${scrapeId}`)
-      if (!res.ok) return
-      const data = await res.json()
-      setContributorCache((prev) => new Map(prev).set(scrapeId, data.contributors ?? []))
+      const all: Contributor[] = []
+      let page = 1
+      while (true) {
+        const res = await fetch(`/api/scrape/${scrapeId}?page=${page}`)
+        if (!res.ok) break
+        const data = await res.json()
+        all.push(...(data.contributors ?? []))
+        if (!data.hasMore) break
+        page++
+      }
+      setContributorCache((prev) => new Map(prev).set(scrapeId, all))
     } catch {
       // Silently ignore — the count will populate if/when the user expands
     }
@@ -184,10 +342,17 @@ export function RecentScrapes() {
 
     setLoadingExpansions((prev) => new Set(prev).add(scrapeId))
     try {
-      const res = await fetch(`/api/scrape/${scrapeId}`)
-      if (!res.ok) throw new Error("Failed to load contributors")
-      const data = await res.json()
-      setContributorCache((prev) => new Map(prev).set(scrapeId, data.contributors ?? []))
+      const all: Contributor[] = []
+      let page = 1
+      while (true) {
+        const res = await fetch(`/api/scrape/${scrapeId}?page=${page}`)
+        if (!res.ok) throw new Error("Failed to load contributors")
+        const data = await res.json()
+        all.push(...(data.contributors ?? []))
+        if (!data.hasMore) break
+        page++
+      }
+      setContributorCache((prev) => new Map(prev).set(scrapeId, all))
     } catch (err) {
       console.error("[v0] Failed to fetch contributors:", err)
       toast({ title: "Error", description: "Failed to load contributors", variant: "destructive" })
@@ -269,9 +434,7 @@ export function RecentScrapes() {
   // ── Export ────────────────────────────────────────────────────────────────
   const exportToCSV = useCallback(
     (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
-      const withContacts = contributors.filter(
-        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website
-      )
+      const withContacts = contributors.filter(hasContactInfo)
       const csv = buildCsvContent(withContacts, scrape.target)
       triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.csv`, "text/csv")
       toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to CSV`, duration: 3000 })
@@ -281,9 +444,7 @@ export function RecentScrapes() {
 
   const exportToExcel = useCallback(
     (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
-      const withContacts = contributors.filter(
-        (c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website
-      )
+      const withContacts = contributors.filter(hasContactInfo)
       const csv = buildCsvContent(withContacts, scrape.target)
       triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`, "text/csv")
       toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to Excel`, duration: 3000 })
@@ -301,9 +462,7 @@ export function RecentScrapes() {
       const isExpanded = expandedScrapes.has(scrape.id)
       const isLoadingContributors = loadingExpansions.has(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
-      const withContacts = contributors
-        ? contributors.filter((c) => c.contacts.email || c.contacts.twitter || c.contacts.linkedin || c.contacts.website)
-        : null
+      const withContacts = contributors ? contributors.filter(hasContactInfo) : null
       const sorted = withContacts ? [...withContacts].sort((a, b) => b.contributions - a.contributions) : []
 
       return (
@@ -423,7 +582,7 @@ export function RecentScrapes() {
                           {[1, 2, 3].map((i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-4 p-4 rounded-lg border border-border bg-secondary/50"
+                              className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card"
                             >
                               <Skeleton className="w-10 h-10 rounded-full shrink-0" />
                               <div className="flex-1 space-y-2">
@@ -443,7 +602,7 @@ export function RecentScrapes() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3, delay: index * 0.05 }}
-                          className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/50 hover:bg-secondary hover:border-primary/30 transition-all duration-300 hover:shadow-md"
+                          className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
@@ -471,10 +630,10 @@ export function RecentScrapes() {
                           </div>
 
                           <div className="space-y-2 pl-14">
-                            {contributor.contacts.email && (
-                              <EmailCopyButton email={contributor.contacts.email} />
+                            {contributor.contacts?.email?.trim() && (
+                              <EmailCopyButton email={contributor.contacts.email!} />
                             )}
-                            {contributor.contacts.twitter && (
+                            {contributor.contacts?.twitter?.trim() && (
                               <motion.div whileHover={{ x: 4 }} className="flex items-center gap-2 text-sm group">
                                 <XIcon className="w-4 h-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
                                 <a
@@ -487,7 +646,7 @@ export function RecentScrapes() {
                                 </a>
                               </motion.div>
                             )}
-                            {contributor.contacts.linkedin && (
+                            {contributor.contacts?.linkedin?.trim() && (
                               <motion.div whileHover={{ x: 4 }} className="flex items-center gap-2 text-sm group">
                                 <Linkedin className="w-4 h-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
                                 <a
@@ -500,11 +659,11 @@ export function RecentScrapes() {
                                 </a>
                               </motion.div>
                             )}
-                            {contributor.contacts.website && (
+                            {contributor.contacts?.website?.trim() && (
                               <motion.div whileHover={{ x: 4 }} className="flex items-center gap-2 text-sm group">
                                 <Globe className="w-4 h-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
                                 <a
-                                  href={contributor.contacts.website}
+                                  href={contributor.contacts.website!}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-primary hover:underline font-mono break-all group-hover:text-primary/80 transition-colors"
@@ -516,86 +675,11 @@ export function RecentScrapes() {
                           </div>
 
                           {/* Outreach tracking */}
-                          <div className="pl-14 pt-3 border-t border-border space-y-3">
-                            <div className="flex items-center gap-3">
-                              <Switch
-                                id={`contacted-${contributor.username}`}
-                                checked={contributor.contacted || false}
-                                onCheckedChange={(checked) =>
-                                  updateContributorOutreach(scrape.id, contributor.username, {
-                                    contacted: checked,
-                                    contactedDate: checked ? new Date().toISOString().split("T")[0] : undefined,
-                                  })
-                                }
-                              />
-                              <span className="text-sm text-muted-foreground flex items-center gap-2">
-                                {contributor.contacted && <Check className="w-4 h-4 text-green-500" />}
-                                {contributor.contacted ? "Contacted" : "Toggle if contacted"}
-                              </span>
-                            </div>
-                            <AnimatePresence>
-                              {contributor.contacted && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="space-y-2"
-                                >
-                                  <div>
-                                    <Label htmlFor={`date-${contributor.username}`} className="text-xs text-muted-foreground">
-                                      Contact Date
-                                    </Label>
-                                    <Input
-                                      id={`date-${contributor.username}`}
-                                      type="date"
-                                      value={contributor.contactedDate || ""}
-                                      onChange={(e) =>
-                                        updateContributorOutreach(scrape.id, contributor.username, {
-                                          contactedDate: e.target.value,
-                                        })
-                                      }
-                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor={`notes-${contributor.username}`} className="text-xs text-muted-foreground">
-                                      Notes (optional)
-                                    </Label>
-                                    <Input
-                                      id={`notes-${contributor.username}`}
-                                      type="text"
-                                      placeholder="e.g., Sent email, LinkedIn message..."
-                                      value={contributor.notes || ""}
-                                      onChange={(e) =>
-                                        updateContributorOutreach(scrape.id, contributor.username, {
-                                          notes: e.target.value,
-                                        })
-                                      }
-                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor={`status-${contributor.username}`} className="text-xs text-muted-foreground">
-                                      Status
-                                    </Label>
-                                    <Input
-                                      id={`status-${contributor.username}`}
-                                      type="text"
-                                      placeholder="e.g., Replied, Interviewing..."
-                                      value={contributor.status || ""}
-                                      onChange={(e) =>
-                                        updateContributorOutreach(scrape.id, contributor.username, {
-                                          status: e.target.value,
-                                        })
-                                      }
-                                      className="mt-1 h-8 text-sm bg-background focus:ring-2 focus:ring-primary transition-all"
-                                    />
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
+                          <OutreachFields
+                            scrapeId={scrape.id}
+                            contributor={contributor}
+                            onUpdate={updateContributorOutreach}
+                          />
                         </motion.div>
                       ))}
 

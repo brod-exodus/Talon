@@ -2,7 +2,6 @@
 
 import { useEffect, useState, memo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Users, Clock } from "lucide-react"
 import { motion } from "framer-motion"
@@ -117,19 +116,27 @@ export const ActiveScrapes = memo(function ActiveScrapes() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      Processing contributor
+                      Processing contributors
                     </span>
                     <motion.span
-                      key={`${scrape.current}-${scrape.total}`}
+                      key={Math.round(scrape.progress)}
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2 }}
                       className="font-mono text-foreground"
                     >
-                      {scrape.current} / {scrape.total}
+                      {Math.round(scrape.progress)}%
                     </motion.span>
                   </div>
-                  <Progress value={scrape.progress} className="h-2 transition-all duration-300" />
+                  <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, scrape.progress))}%`,
+                        transition: "width 0.5s ease-in-out",
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {scrape.currentUser && (

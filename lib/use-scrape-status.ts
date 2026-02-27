@@ -6,12 +6,11 @@ export interface ScrapeStatus {
   id: string
   type: string
   target: string
-  status: "processing" | "completed" | "error"
+  status: "processing" | "completed" | "failed" | "error"
   progress: number
   current: number
   total: number
   currentUser?: string
-  contributors: any[]
   startedAt: string
   completedAt?: string
   error?: string
@@ -26,7 +25,7 @@ export function useScrapeStatus(scrapeId: string | null) {
 
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/scrape/${scrapeId}`)
+        const response = await fetch(`/api/scrape/${scrapeId}?page=1`)
         if (!response.ok) throw new Error("Failed to fetch status")
 
         const data = await response.json()

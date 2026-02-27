@@ -6,12 +6,79 @@ import { useState, useCallback, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Rocket, Settings, AlertCircle } from "lucide-react"
+import { Settings, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
+import { motion } from "framer-motion"
+
+// ─── Galaxy Glass Card ────────────────────────────────────────────────────────
+
+interface GalaxyCardProps {
+  children: React.ReactNode
+  className?: string
+}
+
+function GalaxyGlassCard({ children, className }: GalaxyCardProps) {
+  return (
+    <motion.div
+      className={cn(
+        "relative overflow-hidden rounded-3xl border border-white/10 p-6 backdrop-blur-xl shadow-xl",
+        "bg-slate-950/40",
+        className
+      )}
+      style={{
+        background: `
+          radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+          radial-gradient(circle at 100% 100%, rgba(99, 102, 241, 0.10) 0%, transparent 50%)
+        `,
+        backgroundBlendMode: "overlay",
+      }}
+      initial="rest"
+      whileHover="hover"
+      animate="rest"
+    >
+      {/* Base card fill — sits behind everything */}
+      <div className="absolute inset-0 rounded-3xl bg-slate-950/40 -z-20" />
+
+      {/* Stardust texture — isolated so it never bleeds onto text */}
+      <div
+        className="absolute inset-0 opacity-20 pointer-events-none rounded-3xl"
+        style={{
+          backgroundImage: "url('https://www.transparenttextures.com/patterns/stardust.png')",
+        }}
+      />
+
+      {/* Animated blue glow — intensifies on card hover via Framer Motion variants */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none rounded-3xl"
+        variants={{
+          rest: { opacity: 0.15 },
+          hover: { opacity: 0.40 },
+        }}
+        transition={{ duration: 0.35, ease: "easeInOut" }}
+        style={{
+          background: "radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.5) 0%, transparent 55%)",
+        }}
+      />
+
+      {/* Purple glow — static accent, bottom-right */}
+      <div
+        className="absolute inset-0 pointer-events-none rounded-3xl opacity-25"
+        style={{
+          background: "radial-gradient(circle at 100% 100%, rgba(99, 102, 241, 0.45) 0%, transparent 55%)",
+        }}
+      />
+
+      {/* Content — always above all overlays */}
+      <div className="relative z-10">
+        {children}
+      </div>
+    </motion.div>
+  )
+}
 
 export function ScrapeForm() {
   const [type, setType] = useState("organization")
@@ -128,110 +195,122 @@ export function ScrapeForm() {
   }
 
   return (
-    <Card className="border-border/50 bg-card/50 backdrop-blur-sm sticky top-24 overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
-      <CardHeader className="relative">
-        <CardTitle className="text-lg">New Scrape</CardTitle>
-        <CardDescription className="text-xs">Discover contributors with contact information</CardDescription>
-      </CardHeader>
-      <CardContent className="relative">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="type" className="text-sm font-medium">
-              Source Type
-            </Label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger id="type" className="bg-input/50 border-border/50">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="repository">Repository</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+    <GalaxyGlassCard className="sticky top-24">
+      {/* Header */}
+      <div className="mb-5">
+        <h3 className="text-lg font-bold text-white">New Scrape</h3>
+        <p className="text-xs text-slate-400 mt-0.5">Discover contributors with contact information</p>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="target" className="text-sm font-medium">
-              {getLabel()}
-            </Label>
-            <Input
-              id="target"
-              placeholder={getPlaceholder()}
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors"
-            />
-          </div>
-
-          {typeMismatch === "looks-like-repo" && (
-            <Alert className="border-blue-500/40 bg-blue-500/10">
-              <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
-              <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
-                <span>This looks like a repository (owner/repo). You must select <strong>Repository</strong> as the source type.</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
-                  onClick={() => setType("repository")}
-                >
-                  Switch to Repository
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {typeMismatch === "looks-like-org" && (
-            <Alert className="border-blue-500/40 bg-blue-500/10">
-              <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
-              <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
-                <span>This looks like an organization name. You must select <strong>Organization</strong> as the source type.</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
-                  onClick={() => setType("organization")}
-                >
-                  Switch to Organization
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {isDuplicate && (
-            <Alert className="border-yellow-500/50 bg-yellow-500/10">
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
-              <AlertDescription className="text-xs text-yellow-500">
-                You've already scraped this {type}. Scraping again will create a duplicate.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium relative overflow-hidden group"
-            disabled={!target || isLoading}
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            <Rocket className="w-4 h-4 mr-2" />
-            {isLoading ? "Starting..." : "Start Scrape"}
-          </Button>
-
-          <Link href="/settings" className="block">
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full text-xs text-muted-foreground hover:text-foreground"
-              size="sm"
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="type" className="text-sm font-medium text-slate-400">
+            Source Type
+          </Label>
+          <Select value={type} onValueChange={setType}>
+            <SelectTrigger
+              id="type"
+              className="bg-slate-950/60 border-white/5 text-white focus:border-blue-500/50 transition-colors"
             >
-              <Settings className="w-3 h-3 mr-2" />
-              Configure GitHub Token
-            </Button>
-          </Link>
-        </form>
-      </CardContent>
-    </Card>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="organization">Organization</SelectItem>
+              <SelectItem value="repository">Repository</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="target" className="text-sm font-medium text-slate-400">
+            {getLabel()}
+          </Label>
+          <Input
+            id="target"
+            placeholder={getPlaceholder()}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
+          />
+        </div>
+
+        {typeMismatch === "looks-like-repo" && (
+          <Alert className="border-blue-500/40 bg-blue-500/10">
+            <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
+            <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
+              <span>This looks like a repository (owner/repo). You must select <strong>Repository</strong> as the source type.</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                onClick={() => setType("repository")}
+              >
+                Switch to Repository
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {typeMismatch === "looks-like-org" && (
+          <Alert className="border-blue-500/40 bg-blue-500/10">
+            <AlertCircle className="h-4 w-4 text-blue-400 shrink-0" />
+            <AlertDescription className="text-xs text-blue-300 flex flex-col gap-2">
+              <span>This looks like an organization name. You must select <strong>Organization</strong> as the source type.</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                onClick={() => setType("organization")}
+              >
+                Switch to Organization
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {isDuplicate && (
+          <Alert className="border-yellow-500/50 bg-yellow-500/10">
+            <AlertCircle className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-xs text-yellow-500">
+              You've already scraped this {type}. Scraping again will create a duplicate.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Button
+          type="submit"
+          className="w-full font-semibold relative overflow-hidden group transition-all duration-200"
+          style={{
+            backgroundColor: "#3B82F6",
+            color: "#ffffff",
+            boxShadow: "0 0 15px rgba(59, 130, 246, 0.4)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = "0 0 25px rgba(59, 130, 246, 0.65)"
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.boxShadow = "0 0 15px rgba(59, 130, 246, 0.4)"
+          }}
+          disabled={!target || isLoading}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+          {isLoading ? "Starting..." : "Start Scrape"}
+        </Button>
+
+        <Link href="/settings" className="block">
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-xs text-slate-400 hover:text-white"
+            size="sm"
+          >
+            <Settings className="w-3 h-3 mr-2" />
+            Configure GitHub Token
+          </Button>
+        </Link>
+      </form>
+    </GalaxyGlassCard>
   )
 }

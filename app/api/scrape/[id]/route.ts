@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { after } from "next/server"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
-import { getScrape, failScrape, deleteScrape, updateScrapeProgress, completeScrape } from "@/lib/db"
+import { getScrapeMetadata, getScrapeContributorsPage, failScrape, deleteScrape, updateScrapeProgress, completeScrape } from "@/lib/db"
 
 /** Merge API contacts with bio-extracted contacts; prefer structured (API) when both exist. */
 function mergeContacts(
@@ -17,18 +17,52 @@ function mergeContacts(
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  console.log("[route] GET", request.url)
   try {
     const { id: scrapeId } = await params
-    const scrape = await getScrape(scrapeId)
+    const pageParam = request.nextUrl.searchParams.get("page")
 
-    if (!scrape) {
-      return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
+    // Paginated path: used by the UI when loading contributor details.
+    // Uses getScrapeMetadata (scrapes table only) to avoid the unbounded
+    // .in() query that getScrape() runs against the contributors table.
+    if (pageParam !== null) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1)
+      const scrape = await getScrapeMetadata(scrapeId)
+      if (!scrape) {
+        return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
+      }
+      const pageData = await getScrapeContributorsPage(scrapeId, page)
+      return NextResponse.json({
+        id: scrape.id,
+        type: scrape.type,
+        target: scrape.target,
+        status: scrape.status,
+        progress: scrape.progress,
+        current: scrape.current,
+        total: scrape.total,
+        currentUser: scrape.currentUser,
+        startedAt: scrape.startedAt,
+        completedAt: scrape.completedAt,
+        error: scrape.error,
+        contributors: pageData.contributors,
+        contributorTotal: pageData.contributorTotal,
+        page: pageData.page,
+        hasMore: pageData.hasMore,
+      })
     }
 
-    return NextResponse.json(scrape)
+    // ?page is required — reject requests that omit it so getScrape() is never called.
+    console.trace("[route] GET called without ?page – scrapeId=" + scrapeId)
+    return NextResponse.json({ error: "Missing required query parameter: page" }, { status: 400 })
   } catch (error) {
-    console.error("[v0] Get scrape error:", error)
-    return NextResponse.json({ error: "Failed to get scrape status" }, { status: 500 })
+    console.error("[v0] Get scrape error – full error:", error)
+    if (error && typeof error === "object") {
+      console.error("[v0] Get scrape error detail:", JSON.stringify(error, null, 2))
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get scrape status" },
+      { status: 500 }
+    )
   }
 }
 
@@ -177,16 +211,10 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
       }
     }
 
-    const filteredContributors = Array.from(contributorMap.values()).filter((c) => c.contributions >= 3)
-    console.log(
-      "[v0] Filtered contributors:",
-      filteredContributors.length,
-      "out of",
-      contributorMap.size,
-      "(minimum 3 contributions)",
-    )
+    const allContributors = Array.from(contributorMap.values())
+    console.log("[v0] Total unique contributors:", allContributors.length)
 
-    await completeScrape(scrapeId, filteredContributors)
+    await completeScrape(scrapeId, allContributors)
   } catch (error) {
     console.error("[v0] Organization scrape failed – full error:", error)
     if (error instanceof Error && error.message.includes("404")) {

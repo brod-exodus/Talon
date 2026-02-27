@@ -122,20 +122,36 @@ class GitHubClient {
 
   async getOrgRepos(org: string): Promise<Repository[]> {
     console.log("[v0] Getting repos for org:", org)
-    const repos = await this.fetch(`${this.baseUrl}/orgs/${org}/repos?per_page=100`)
-    console.log("[v0] Found repos:", repos.length)
-    return repos.map((repo: any) => ({
-      full_name: repo.full_name,
-      fork: repo.fork,
-      archived: repo.archived,
-    }))
+    const all: Repository[] = []
+    let page = 1
+    while (true) {
+      const batch = await this.fetch(`${this.baseUrl}/orgs/${org}/repos?per_page=100&page=${page}`)
+      if (!batch || batch.length === 0) break
+      all.push(...batch.map((repo: any) => ({
+        full_name: repo.full_name,
+        fork: repo.fork,
+        archived: repo.archived,
+      })))
+      if (batch.length < 100) break
+      page++
+    }
+    console.log("[v0] Found repos:", all.length)
+    return all
   }
 
   async getRepoContributors(repo: string): Promise<Contributor[]> {
     console.log("[v0] Getting contributors for repo:", repo)
-    const contributors = await this.fetch(`${this.baseUrl}/repos/${repo}/contributors?per_page=100`)
-    console.log("[v0] Found contributors:", contributors.length)
-    return contributors
+    const all: Contributor[] = []
+    let page = 1
+    while (true) {
+      const batch = await this.fetch(`${this.baseUrl}/repos/${repo}/contributors?per_page=100&page=${page}`)
+      if (!batch || batch.length === 0) break
+      all.push(...batch)
+      if (batch.length < 100) break
+      page++
+    }
+    console.log("[v0] Found contributors:", all.length)
+    return all
   }
 
   async getUserDetails(username: string): Promise<Contributor> {

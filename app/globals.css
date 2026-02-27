@@ -4,34 +4,34 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Modern dark theme inspired by Vercel, AI SDK, and Braintrust */
-  --background: 0 0% 6%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 250 100% 65%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 14%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14%;
-  --muted-foreground: 0 0% 55%;
-  --accent: 250 100% 65%;
-  --accent-foreground: 0 0% 98%;
+  /* Cyber Trust palette */
+  --background: 222 84% 5%;       /* #020617 */
+  --foreground: 210 20% 98%;      /* #F9FAFB */
+  --card: 217 33% 17%;            /* #1E293B */
+  --card-foreground: 210 20% 98%;
+  --popover: 217 33% 17%;
+  --popover-foreground: 210 20% 98%;
+  --primary: 217 91% 60%;         /* #3B82F6 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 221 39% 11%;       /* #111827 — dark well for secondary button */
+  --secondary-foreground: 210 20% 98%;
+  --muted: 221 39% 11%;
+  --muted-foreground: 215 20% 65%; /* #94A3B8 */
+  --accent: 239 84% 67%;           /* #6366F1 */
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 63% 31%;
   --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 18%;
-  --input: 0 0% 14%;
-  --ring: 250 100% 65%;
-  --chart-1: 250 100% 65%;
-  --chart-2: 160 60% 50%;
+  --border: 215 25% 27%;           /* #334155 */
+  --input: 221 39% 11%;            /* #111827 */
+  --ring: 217 91% 60%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 172 66% 50%;
   --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
+  --chart-4: 239 84% 67%;
   --chart-5: 200 70% 50%;
   --radius: 0.75rem;
-  --success: 142 76% 36%;
-  --success-foreground: 0 0% 98%;
+  --success: 172 66% 50%;          /* #2DD4BF */
+  --success-foreground: 222 84% 5%;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -44,32 +44,32 @@
 }
 
 .dark {
-  --background: 0 0% 6%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 250 100% 65%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 14%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14%;
-  --muted-foreground: 0 0% 55%;
-  --accent: 250 100% 65%;
-  --accent-foreground: 0 0% 98%;
+  --background: 222 84% 5%;
+  --foreground: 210 20% 98%;
+  --card: 217 33% 17%;
+  --card-foreground: 210 20% 98%;
+  --popover: 217 33% 17%;
+  --popover-foreground: 210 20% 98%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 221 39% 11%;
+  --secondary-foreground: 210 20% 98%;
+  --muted: 221 39% 11%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 239 84% 67%;
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 63% 31%;
   --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 18%;
-  --input: 0 0% 14%;
-  --ring: 250 100% 65%;
-  --chart-1: 250 100% 65%;
-  --chart-2: 160 60% 50%;
+  --border: 215 25% 27%;
+  --input: 221 39% 11%;
+  --ring: 217 91% 60%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 172 66% 50%;
   --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
+  --chart-4: 239 84% 67%;
   --chart-5: 200 70% 50%;
-  --success: 142 76% 36%;
-  --success-foreground: 0 0% 98%;
+  --success: 172 66% 50%;
+  --success-foreground: 222 84% 5%;
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -121,6 +121,33 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+/* ─── Cyber Trust Brand Variables ───────────────────────────────────────────
+   Registered in @theme so Tailwind generates utilities:
+   bg-bg-deep, bg-bg-card, bg-bg-input, text-text-bright, text-text-subtle, etc.
+   These extend (and where named the same, override) the inline token set above.
+────────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* BACKGROUNDS */
+  --color-bg-deep:  #020617; /* outermost background  */
+  --color-bg-card:  #1E293B; /* surface for cards/lists */
+  --color-bg-input: #111827; /* dark wells for inputs  */
+
+  /* ACTIONS */
+  --color-primary:            #3B82F6;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary:          #6366F1; /* accent indigo */
+
+  /* SUCCESS */
+  --color-success: #2DD4BF;
+
+  /* BORDERS */
+  --color-border: #334155;
+
+  /* TEXT */
+  --color-text-bright: #F9FAFB;
+  --color-text-subtle: #94A3B8;
 }
 
 @layer base {
