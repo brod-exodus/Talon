@@ -30,7 +30,7 @@
   --chart-4: 239 84% 67%;
   --chart-5: 200 70% 50%;
   --radius: 0.75rem;
-  --success: 172 66% 50%;          /* #2DD4BF */
+  --success: 158 64% 52%;          /* #34D399 */
   --success-foreground: 222 84% 5%;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -68,7 +68,7 @@
   --chart-3: 30 80% 55%;
   --chart-4: 239 84% 67%;
   --chart-5: 200 70% 50%;
-  --success: 172 66% 50%;
+  --success: 158 64% 52%;
   --success-foreground: 222 84% 5%;
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
@@ -140,7 +140,7 @@
   --color-secondary:          #6366F1; /* accent indigo */
 
   /* SUCCESS */
-  --color-success: #2DD4BF;
+  --color-success: #34D399;
 
   /* BORDERS */
   --color-border: #334155;
@@ -148,6 +148,17 @@
   /* TEXT */
   --color-text-bright: #F9FAFB;
   --color-text-subtle: #94A3B8;
+}
+
+/* ─── Galaxy Card — grain noise overlay ────────────────────────────────────── */
+/* Stars are now rendered on a <canvas> in StarfieldCanvas (scrape-form.tsx).   */
+/* This class is the only CSS remnant — an SVG feTurbulence film-grain texture. */
+.galaxy-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  background-repeat: repeat;
+  opacity: 0.055;
+  mix-blend-mode: overlay;
 }
 
 @layer base {

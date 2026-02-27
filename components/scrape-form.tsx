@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +12,134 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import { motion } from "framer-motion"
+
+
+// ─── Starfield Canvas ─────────────────────────────────────────────────────────
+
+// Color distribution: 70% white, 20% pale blue #BAE6FD, 10% pale purple #E9D5FF
+const STAR_COLORS = [
+  { r: 255, g: 255, b: 255 }, // white ×7
+  { r: 255, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+  { r: 255, g: 255, b: 255 },
+  { r: 186, g: 230, b: 253 }, // #BAE6FD pale blue ×2
+  { r: 186, g: 230, b: 253 },
+  { r: 233, g: 213, b: 255 }, // #E9D5FF pale purple ×1
+]
+
+function StarfieldCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // Size canvas to its parent card
+    const setSize = () => {
+      const p = canvas.parentElement
+      if (!p) return
+      canvas.width = p.offsetWidth
+      canvas.height = p.offsetHeight
+    }
+    setSize()
+
+    // Star state
+    type Star = {
+      x: number; y: number; size: number
+      r: number; g: number; b: number
+      baseOpacity: number; phase: number
+      twinkleSpeed: number; vy: number; vx: number
+    }
+
+    const mkStar = (w: number, h: number, index: number): Star => {
+      const c = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+
+      // Three distinct size tiers based on index bucket:
+      //   60% small  (0.4 px, max opacity 0.50)
+      //   30% medium (0.8 px, max opacity 0.65)
+      //   10% large  (1.2 px, max opacity 0.80)
+      const tier = index < 240 ? "s" : index < 360 ? "m" : "l"
+      const size        = tier === "s" ? 0.4 : tier === "m" ? 0.8 : 1.2
+      const maxOpacity  = tier === "s" ? 0.50 : tier === "m" ? 0.65 : 0.80
+      const minOpacity  = maxOpacity * 0.35          // floor at ~35% of max so they never vanish
+
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        size,
+        ...c,
+        baseOpacity: minOpacity + Math.random() * (maxOpacity - minOpacity),
+        phase: Math.random() * Math.PI * 2,
+        twinkleSpeed: 0.003 + Math.random() * 0.010,
+        vy: Math.random() * 0.05,                   // 0 – 0.05 px/frame — nearly still
+        vx: (Math.random() - 0.5) * 0.02,
+      }
+    }
+
+    let stars: Star[] = Array.from({ length: 400 }, (_, i) =>
+      mkStar(canvas.width, canvas.height, i)
+    )
+
+    let rafId: number
+
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      for (const s of stars) {
+        // Drift
+        s.y += s.vy
+        s.x += s.vx
+        // Wrap
+        if (s.y > canvas.height + 2) { s.y = -2; s.x = Math.random() * canvas.width }
+        if (s.x < -2)                  s.x = canvas.width + 2
+        if (s.x > canvas.width + 2)    s.x = -2
+
+        // Twinkle — sine-wave opacity, fully independent per star
+        s.phase += s.twinkleSpeed
+        const opacity = s.baseOpacity * (0.3 + 0.7 * (Math.sin(s.phase) * 0.5 + 0.5))
+
+        // Core dot
+        ctx.beginPath()
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(${s.r},${s.g},${s.b},${opacity.toFixed(3)})`
+        ctx.fill()
+
+        // No glow — stars are all sub-1px pinpoints; glow would make them look large
+      }
+
+      rafId = requestAnimationFrame(tick)
+    }
+
+    rafId = requestAnimationFrame(tick)
+
+    // Re-size and rebuild stars if the card resizes
+    const ro = new ResizeObserver(() => {
+      setSize()
+      stars = Array.from({ length: 400 }, (_, i) =>
+        mkStar(canvas.width, canvas.height, i)
+      )
+    })
+    if (canvas.parentElement) ro.observe(canvas.parentElement)
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      ro.disconnect()
+    }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ borderRadius: "inherit" }}
+    />
+  )
+}
 
 // ─── Galaxy Glass Card ────────────────────────────────────────────────────────
 
@@ -23,60 +150,21 @@ interface GalaxyCardProps {
 
 function GalaxyGlassCard({ children, className }: GalaxyCardProps) {
   return (
-    <motion.div
+    <div
       className={cn(
-        "relative overflow-hidden rounded-3xl border border-white/10 p-6 backdrop-blur-xl shadow-xl",
-        "bg-slate-950/40",
+        "relative overflow-hidden rounded-3xl border border-white/10 p-6 shadow-2xl",
         className
       )}
-      style={{
-        background: `
-          radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-          radial-gradient(circle at 100% 100%, rgba(99, 102, 241, 0.10) 0%, transparent 50%)
-        `,
-        backgroundBlendMode: "overlay",
-      }}
-      initial="rest"
-      whileHover="hover"
-      animate="rest"
+      style={{ background: "#0F172A" }}
     >
-      {/* Base card fill — sits behind everything */}
-      <div className="absolute inset-0 rounded-3xl bg-slate-950/40 -z-20" />
+      {/* Canvas starfield — 250 tiny pinpoint stars, nearly imperceptible drift */}
+      <StarfieldCanvas />
 
-      {/* Stardust texture — isolated so it never bleeds onto text */}
-      <div
-        className="absolute inset-0 opacity-20 pointer-events-none rounded-3xl"
-        style={{
-          backgroundImage: "url('https://www.transparenttextures.com/patterns/stardust.png')",
-        }}
-      />
-
-      {/* Animated blue glow — intensifies on card hover via Framer Motion variants */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none rounded-3xl"
-        variants={{
-          rest: { opacity: 0.15 },
-          hover: { opacity: 0.40 },
-        }}
-        transition={{ duration: 0.35, ease: "easeInOut" }}
-        style={{
-          background: "radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.5) 0%, transparent 55%)",
-        }}
-      />
-
-      {/* Purple glow — static accent, bottom-right */}
-      <div
-        className="absolute inset-0 pointer-events-none rounded-3xl opacity-25"
-        style={{
-          background: "radial-gradient(circle at 100% 100%, rgba(99, 102, 241, 0.45) 0%, transparent 55%)",
-        }}
-      />
-
-      {/* Content — always above all overlays */}
+      {/* Content — above the canvas */}
       <div className="relative z-10">
         {children}
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -303,7 +391,7 @@ export function ScrapeForm() {
           <Button
             type="button"
             variant="ghost"
-            className="w-full text-xs text-slate-400 hover:text-white"
+            className="w-full text-xs text-slate-400 hover:text-white bg-transparent hover:bg-white/5"
             size="sm"
           >
             <Settings className="w-3 h-3 mr-2" />
