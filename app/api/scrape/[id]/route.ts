@@ -1,18 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { after } from "next/server"
-import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
+import { createGitHubClient, extractContactsFromBio, extractSocialContacts } from "@/lib/github"
 import { getScrapeMetadata, getScrapeContributorsPage, failScrape, deleteScrape, updateScrapeProgress, completeScrape } from "@/lib/db"
 
-/** Merge API contacts with bio-extracted contacts; prefer structured (API) when both exist. */
+/**
+ * Merge contacts from three sources, highest priority first:
+ *   1. fromSocial  — /social_accounts API (explicitly set by the user in GitHub settings)
+ *   2. structured  — top-level profile fields (email, twitter_username, blog)
+ *   3. fromBio     — regex-parsed from free-text bio / blog field
+ */
 function mergeContacts(
   structured: { email?: string; twitter?: string; linkedin?: string; website?: string },
-  fromBio: ReturnType<typeof extractContactsFromBio>
+  fromBio: ReturnType<typeof extractContactsFromBio>,
+  fromSocial: { twitter?: string; linkedin?: string } = {}
 ) {
   return {
-    email: structured.email ?? fromBio.email,
-    twitter: structured.twitter ?? fromBio.twitter,
-    linkedin: structured.linkedin ?? fromBio.linkedin,
-    website: structured.website ?? fromBio.website,
+    email:    structured.email    ?? fromBio.email,
+    twitter:  fromSocial.twitter  ?? structured.twitter  ?? fromBio.twitter,
+    linkedin: fromSocial.linkedin ?? structured.linkedin ?? fromBio.linkedin,
+    website:  structured.website  ?? fromBio.website,
   }
 }
 
@@ -182,12 +188,17 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
                 progress: Math.round(((i + 1) / repos.length) * 100),
                 current_user_login: contributor.login,
               })
-              const details = await githubClient.getUserDetails(contributor.login)
-              const bioContacts = extractContactsFromBio(details.bio)
+              const [details, socialAccounts] = await Promise.all([
+                githubClient.getUserDetails(contributor.login),
+                githubClient.getUserSocialAccounts(contributor.login),
+              ])
+              const bioContacts  = extractContactsFromBio(details.bio)
+              const blogContacts = extractContactsFromBio(details.blog)
+              const fromSocial   = extractSocialContacts(socialAccounts)
               const structured = {
-                email: details.email || undefined,
-                twitter: details.twitter_username || undefined,
-                linkedin: undefined as string | undefined,
+                email:    details.email || undefined,
+                twitter:  details.twitter_username || undefined,
+                linkedin: blogContacts.linkedin ?? undefined,
                 website:
                   details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
               }
@@ -199,7 +210,7 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
                 bio: details.bio || undefined,
                 location: details.location || undefined,
                 company: details.company || undefined,
-                contacts: mergeContacts(structured, bioContacts),
+                contacts: mergeContacts(structured, bioContacts, fromSocial),
               })
             } catch (error) {
               console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
@@ -264,12 +275,17 @@ async function scrapeRepository(scrapeId: string, repo: string, token?: string) 
       })
 
       try {
-        const details = await githubClient.getUserDetails(contributor.login)
-        const bioContacts = extractContactsFromBio(details.bio)
+        const [details, socialAccounts] = await Promise.all([
+          githubClient.getUserDetails(contributor.login),
+          githubClient.getUserSocialAccounts(contributor.login),
+        ])
+        const bioContacts  = extractContactsFromBio(details.bio)
+        const blogContacts = extractContactsFromBio(details.blog)
+        const fromSocial   = extractSocialContacts(socialAccounts)
         const structured = {
-          email: details.email || undefined,
-          twitter: details.twitter_username || undefined,
-          linkedin: undefined as string | undefined,
+          email:    details.email || undefined,
+          twitter:  details.twitter_username || undefined,
+          linkedin: blogContacts.linkedin ?? undefined,
           website:
             details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
         }
@@ -281,7 +297,7 @@ async function scrapeRepository(scrapeId: string, repo: string, token?: string) 
           bio: details.bio || undefined,
           location: details.location || undefined,
           company: details.company || undefined,
-          contacts: mergeContacts(structured, bioContacts),
+          contacts: mergeContacts(structured, bioContacts, fromSocial),
         })
       } catch (error) {
         console.error(`[v0] Failed to get details for ${contributor.login}:`, error)

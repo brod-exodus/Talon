@@ -89,19 +89,20 @@ export async function POST() {
           // New contributor — fetch details, upsert into contributors table
           try {
             const details = await githubClient.getUserDetails(contributor.login)
-            const bioContacts = extractContactsFromBio(details.bio)
+            const bioContacts  = extractContactsFromBio(details.bio)
+            const blogContacts = extractContactsFromBio(details.blog)
             const structured = {
-              email: details.email || undefined,
-              twitter: details.twitter_username || undefined,
-              linkedin: undefined as string | undefined,
+              email:    details.email || undefined,
+              twitter:  details.twitter_username || undefined,
+              linkedin: blogContacts.linkedin ?? undefined,
               website:
                 details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
             }
             const contacts = {
-              email: structured.email ?? bioContacts.email ?? null,
-              twitter: structured.twitter ?? bioContacts.twitter ?? null,
+              email:    structured.email    ?? bioContacts.email    ?? null,
+              twitter:  structured.twitter  ?? bioContacts.twitter  ?? null,
               linkedin: structured.linkedin ?? bioContacts.linkedin ?? null,
-              website: structured.website ?? bioContacts.website ?? null,
+              website:  structured.website  ?? bioContacts.website  ?? null,
             }
 
             await upsertContributor({
