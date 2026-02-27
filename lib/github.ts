@@ -17,18 +17,16 @@ export type BioContacts = {
  *   linkedin.com/in/john-doe
  *   /in/john-doe            (bare path, sometimes in the blog field)
  */
-function normaliseLinkedIn(raw: string): string | null {
-  // Already a full URL — strip trailing punctuation and return
-  const fullUrl = raw.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/([A-Za-z0-9_%-]+)/i)
-  if (fullUrl) return `https://linkedin.com/in/${fullUrl[1]}`
+function normaliseLinkedIn(raw: string | null | undefined): string | null {
+  if (!raw) return null
 
-  // URL without scheme: linkedin.com/in/username or www.linkedin.com/in/username
-  const noScheme = raw.match(/(?:^|[\s(])(?:www\.)?linkedin\.com\/in\/([A-Za-z0-9_%-]+)/i)
-  if (noScheme) return `https://linkedin.com/in/${noScheme[1]}`
+  // Extract the username from any LinkedIn URL format
+  const match = raw.match(/linkedin\.com\/in\/([^\/\s\?]+)/)
+  if (match) return `https://www.linkedin.com/in/${match[1]}`
 
-  // Bare path: /in/username (common in GitHub blog field)
-  const barePath = raw.match(/(?:^|[\s(])\/in\/([A-Za-z0-9_%-]+)/i)
-  if (barePath) return `https://linkedin.com/in/${barePath[1]}`
+  // Handle bare /in/username or in/username format
+  const bareMatch = raw.match(/^\/?in\/([^\/\s\?]+)/)
+  if (bareMatch) return `https://www.linkedin.com/in/${bareMatch[1]}`
 
   return null
 }

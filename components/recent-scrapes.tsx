@@ -93,7 +93,7 @@ function buildCsvContent(contributors: Contributor[], target: string): string {
     c.contributions,
     c.contacts?.email?.trim() || "",
     c.contacts?.twitter?.trim() ? `https://twitter.com/${c.contacts.twitter}` : "",
-    c.contacts?.linkedin?.trim() ? `https://linkedin.com/in/${c.contacts.linkedin}` : "",
+    c.contacts?.linkedin?.trim() || "",
     c.contacts?.website?.trim() || "",
     c.contacted ? "Yes" : "No",
     c.contactedDate || "",
@@ -650,12 +650,12 @@ export function RecentScrapes() {
                               <motion.div whileHover={{ x: 4 }} className="flex items-center gap-2 text-sm group">
                                 <Linkedin className="w-4 h-4 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
                                 <a
-                                  href={`https://linkedin.com/in/${contributor.contacts.linkedin}`}
+                                  href={contributor.contacts.linkedin}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-primary hover:underline font-mono break-all group-hover:text-primary/80 transition-colors"
                                 >
-                                  linkedin.com/in/{contributor.contacts.linkedin}
+                                  {contributor.contacts.linkedin.split("/").filter(Boolean).pop()}
                                 </a>
                               </motion.div>
                             )}
