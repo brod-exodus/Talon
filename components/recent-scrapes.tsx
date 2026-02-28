@@ -1,6 +1,13 @@
 "use client"
 
 import { useEffect, useState, useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { EmailCopyButton } from "@/components/email-copy-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +27,9 @@ import {
   Download,
   FileSpreadsheet,
   Inbox,
+  Share2,
+  Copy,
+  CheckCheck,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
@@ -497,6 +507,40 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     })
   }, [])
 
+  // ── Share modal state ─────────────────────────────────────────────────────
+  const [shareModal, setShareModal] = useState<{ open: boolean; url: string; loading: boolean }>({
+    open: false,
+    url: "",
+    loading: false,
+  })
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = useCallback(async (scrapeId: string) => {
+    setShareModal({ open: true, url: "", loading: true })
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scrapeId }),
+      })
+      if (!res.ok) throw new Error("Failed to create share link")
+      const { token } = await res.json()
+      const url = `${window.location.origin}/share/${token}`
+      setShareModal({ open: true, url, loading: false })
+    } catch (err) {
+      console.error("[share]", err)
+      setShareModal({ open: false, url: "", loading: false })
+      toast({ title: "Error", description: "Failed to create share link", variant: "destructive" })
+    }
+  }, [toast])
+
+  const copyShareUrl = useCallback(async () => {
+    if (!shareModal.url) return
+    await navigator.clipboard.writeText(shareModal.url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [shareModal.url])
+
   // ── Render a single scrape card ───────────────────────────────────────────
   const renderScrapeCard = useCallback(
     (scrape: CompletedScrapeSummary) => {
@@ -620,6 +664,15 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+
+                  <Button
+                    variant="outline"
+                    className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                    onClick={() => handleShare(scrape.id)}
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share
+                  </Button>
                 </div>
 
                 {/* Expanded contributor list */}
@@ -805,6 +858,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       toggleExpanded,
       toggleFilter,
       updateSort,
+      handleShare,
       deleteScrape,
       exportToCSV,
       exportToExcel,
@@ -888,6 +942,54 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ── Share modal ────────────────────────────────────────────────── */}
+      <Dialog
+        open={shareModal.open}
+        onOpenChange={(open) => setShareModal((s) => ({ ...s, open }))}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share this scrape</DialogTitle>
+            <DialogDescription>
+              Anyone with this link can view the contributor list in read-only mode.
+            </DialogDescription>
+          </DialogHeader>
+
+          {shareModal.loading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Generating link…</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shareModal.url}
+                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  onFocus={(e) => e.target.select()}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 bg-transparent hover:bg-primary/10 transition-colors"
+                  onClick={copyShareUrl}
+                >
+                  {copied ? (
+                    <><CheckCheck className="w-4 h-4 mr-1.5 text-green-500" />Copied!</>
+                  ) : (
+                    <><Copy className="w-4 h-4 mr-1.5" />Copy</>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The link shows only contributors with contact information, sorted by contributions.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   )
 })

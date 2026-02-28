@@ -541,3 +541,30 @@ export async function deleteScrape(id: string): Promise<void> {
   const { error: scrapeError } = await supabase.from("scrapes").delete().eq("id", id)
   if (scrapeError) throw scrapeError
 }
+
+// ─── Shared scrapes ───────────────────────────────────────────────────────────
+// Requires: CREATE TABLE shared_scrapes (
+//   id TEXT PRIMARY KEY,
+//   scrape_id TEXT REFERENCES scrapes(id) ON DELETE CASCADE,
+//   created_at TIMESTAMPTZ DEFAULT NOW()
+// );
+
+/** Insert a share row and return the token. */
+export async function createSharedScrape(scrapeId: string, token: string): Promise<void> {
+  const { error } = await supabase
+    .from("shared_scrapes")
+    .insert({ id: token, scrape_id: scrapeId })
+  if (error) throw error
+}
+
+/** Resolve a share token → full scrape with contributors, or null if not found. */
+export async function getSharedScrape(token: string): Promise<AppScrape | null> {
+  const { data: share, error: shareError } = await supabase
+    .from("shared_scrapes")
+    .select("scrape_id")
+    .eq("id", token)
+    .maybeSingle()
+  if (shareError) throw shareError
+  if (!share) return null
+  return getScrape(share.scrape_id)
+}
