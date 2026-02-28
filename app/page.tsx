@@ -1,9 +1,18 @@
+"use client"
+
+import { useRef, useCallback } from "react"
 import { Header } from "@/components/header"
 import { ScrapeForm } from "@/components/scrape-form"
 import { ActiveScrapes } from "@/components/active-scrapes"
-import { RecentScrapes } from "@/components/recent-scrapes"
+import { RecentScrapes, type RecentScrapesHandle } from "@/components/recent-scrapes"
 
 export default function Home() {
+  const recentScrapesRef = useRef<RecentScrapesHandle>(null)
+
+  const handleScrapeCompleted = useCallback(() => {
+    recentScrapesRef.current?.refresh()
+  }, [])
+
   return (
     <div className="min-h-screen bg-background relative">
       <Header />
@@ -17,8 +26,8 @@ export default function Home() {
 
           {/* Main content area */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            <ActiveScrapes />
-            <RecentScrapes />
+            <ActiveScrapes onScrapeCompleted={handleScrapeCompleted} />
+            <RecentScrapes ref={recentScrapesRef} />
           </div>
         </div>
       </main>

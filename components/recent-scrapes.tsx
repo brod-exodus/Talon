@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { useEffect, useState, useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { EmailCopyButton } from "@/components/email-copy-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,12 +82,14 @@ function formatTimeAgo(date: string | Date) {
 }
 
 function buildCsvContent(contributors: Contributor[], target: string): string {
+  const sorted = [...contributors].sort((a, b) => b.contributions - a.contributions)
   const headers = [
-    "Name", "Username", "GitHub Profile", "Contributions",
+    "#", "Name", "Username", "GitHub Profile", "Contributions",
     "Email", "Twitter", "LinkedIn", "Website",
     "Contacted", "Contact Date", "Notes", "Status",
   ]
-  const rows = contributors.map((c) => [
+  const rows = sorted.map((c, i) => [
+    i + 1,
     c.name,
     c.username,
     `https://github.com/${c.username}`,
@@ -278,7 +281,12 @@ function hasContactInfo(c: Contributor): boolean {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function RecentScrapes() {
+/** Methods exposed to parent components via ref */
+export type RecentScrapesHandle = {
+  refresh: () => void
+}
+
+export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScrapes(_, ref) {
   const [scrapes, setScrapes] = useState<CompletedScrapeSummary[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
@@ -291,22 +299,27 @@ export function RecentScrapes() {
   useEffect(() => { cacheRef.current = contributorCache }, [contributorCache])
 
   // ── Fetch the lightweight list ────────────────────────────────────────────
-  useEffect(() => {
-    const fetchScrapes = async () => {
-      try {
-        const res = await fetch("/api/scrapes")
-        const data = await res.json()
-        setScrapes(data.completed || [])
-      } catch (err) {
-        console.error("[v0] Failed to fetch scrapes:", err)
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchScrapes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/scrapes")
+      const data = await res.json()
+      setScrapes(data.completed || [])
+    } catch (err) {
+      console.error("[v0] Failed to fetch scrapes:", err)
+    } finally {
+      setIsLoading(false)
     }
+  }, [])
+
+  // Expose refresh() so parent components (e.g. page.tsx) can trigger an
+  // immediate reload when a scrape completes instead of waiting 30 s.
+  useImperativeHandle(ref, () => ({ refresh: fetchScrapes }), [fetchScrapes])
+
+  useEffect(() => {
     fetchScrapes()
     const interval = setInterval(fetchScrapes, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchScrapes])
 
   // ── Silent background prefetch (no skeleton, no error toast) ────────────
   const prefetchContributors = useCallback(async (scrapeId: string) => {
@@ -456,6 +469,34 @@ export function RecentScrapes() {
   const orgScrapes = useMemo(() => scrapes.filter((s) => s.type === "organization"), [scrapes])
   const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
 
+  // ── Per-card filter / sort state ──────────────────────────────────────────
+  type ContactFilter = "email" | "linkedin" | "twitter"
+  type SortOrder = "high-low" | "low-high"
+  type CardSettings = { filters: Set<ContactFilter>; sort: SortOrder }
+
+  const [cardSettings, setCardSettings] = useState<Map<string, CardSettings>>(new Map())
+
+  const toggleFilter = useCallback((scrapeId: string, filter: ContactFilter) => {
+    setCardSettings((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(scrapeId) ?? { filters: new Set<ContactFilter>(), sort: "high-low" as SortOrder }
+      const filters = new Set(cur.filters)
+      if (filters.has(filter)) filters.delete(filter)
+      else filters.add(filter)
+      next.set(scrapeId, { ...cur, filters })
+      return next
+    })
+  }, [])
+
+  const updateSort = useCallback((scrapeId: string, sort: SortOrder) => {
+    setCardSettings((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(scrapeId) ?? { filters: new Set<ContactFilter>(), sort: "high-low" as SortOrder }
+      next.set(scrapeId, { ...cur, sort })
+      return next
+    })
+  }, [])
+
   // ── Render a single scrape card ───────────────────────────────────────────
   const renderScrapeCard = useCallback(
     (scrape: CompletedScrapeSummary) => {
@@ -463,7 +504,22 @@ export function RecentScrapes() {
       const isLoadingContributors = loadingExpansions.has(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
-      const sorted = withContacts ? [...withContacts].sort((a, b) => b.contributions - a.contributions) : []
+
+      const { filters: activeFilters, sort: sortOrder } =
+        cardSettings.get(scrape.id) ?? { filters: new Set<"email" | "linkedin" | "twitter">(), sort: "high-low" as const }
+
+      const filtered = withContacts
+        ? withContacts.filter((c) => {
+            if (activeFilters.has("email") && !c.contacts?.email?.trim()) return false
+            if (activeFilters.has("linkedin") && !c.contacts?.linkedin?.trim()) return false
+            if (activeFilters.has("twitter") && !c.contacts?.twitter?.trim()) return false
+            return true
+          })
+        : []
+
+      const sorted = [...filtered].sort((a, b) =>
+        sortOrder === "high-low" ? b.contributions - a.contributions : a.contributions - b.contributions
+      )
 
       return (
         <motion.div
@@ -574,8 +630,48 @@ export function RecentScrapes() {
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="space-y-3 mt-4 max-h-[600px] overflow-y-auto pr-2"
+                      className="mt-4 space-y-3"
                     >
+                      {/* Filter / sort controls — visible once loaded */}
+                      {!isLoadingContributors && contributors !== null && (
+                        <div className="flex flex-col gap-2 pb-3 border-b border-border">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(["email", "linkedin", "twitter"] as const).map((filter) => (
+                              <button
+                                key={filter}
+                                type="button"
+                                onClick={() => toggleFilter(scrape.id, filter)}
+                                className={`h-7 px-3 rounded-md border text-xs font-medium transition-all ${
+                                  activeFilters.has(filter)
+                                    ? "bg-primary/15 border-primary/50 text-primary"
+                                    : "bg-transparent border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                }`}
+                              >
+                                {filter === "email" ? "Has Email" : filter === "linkedin" ? "Has LinkedIn" : "Has X"}
+                              </button>
+                            ))}
+                            <div className="flex-1" />
+                            <Select
+                              value={sortOrder}
+                              onValueChange={(v) => updateSort(scrape.id, v as "high-low" | "low-high")}
+                            >
+                              <SelectTrigger className="h-7 w-52 text-xs bg-transparent border-border">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="high-low">Contributions (High to Low)</SelectItem>
+                                <SelectItem value="low-high">Contributions (Low to High)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {sorted.length} of {withContacts?.length ?? 0} contributors
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Scrollable list */}
+                      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                       {/* Loading skeleton while fetching contributor details */}
                       {isLoadingContributors && (
                         <div className="space-y-3">
@@ -683,12 +779,15 @@ export function RecentScrapes() {
                         </motion.div>
                       ))}
 
-                      {/* Empty state: loaded but no contacts */}
+                      {/* Empty state: loaded but no results */}
                       {!isLoadingContributors && contributors !== null && sorted.length === 0 && (
                         <p className="text-sm text-muted-foreground text-center py-4">
-                          No contributors with contact information found.
+                          {activeFilters.size > 0
+                            ? "No contributors match the active filters."
+                            : "No contributors with contact information found."}
                         </p>
                       )}
+                      </div>{/* end scrollable list */}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -702,7 +801,10 @@ export function RecentScrapes() {
       expandedScrapes,
       loadingExpansions,
       contributorCache,
+      cardSettings,
       toggleExpanded,
+      toggleFilter,
+      updateSort,
       deleteScrape,
       exportToCSV,
       exportToExcel,
@@ -788,7 +890,7 @@ export function RecentScrapes() {
       </div>
     </TooltipProvider>
   )
-}
+})
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 

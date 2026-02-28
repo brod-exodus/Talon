@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, memo } from "react"
+import { useEffect, useState, memo, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Activity, Users, Clock } from "lucide-react"
@@ -18,16 +18,30 @@ type ActiveScrape = {
   startedAt: Date
 }
 
-export const ActiveScrapes = memo(function ActiveScrapes() {
+type ActiveScrapesProps = {
+  onScrapeCompleted?: () => void
+}
+
+export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: ActiveScrapesProps) {
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  // Track whether we had active scrapes on the previous poll so we can detect
+  // the non-empty → empty transition that signals a scrape just completed.
+  const hadScrapesRef = useRef(false)
 
   useEffect(() => {
     const fetchScrapes = async () => {
       try {
         const response = await fetch("/api/scrapes")
         const data = await response.json()
-        setScrapes(data.active || [])
+        const active: ActiveScrape[] = data.active || []
+        setScrapes(active)
+
+        // Fire callback when the list goes from having items to empty.
+        if (hadScrapesRef.current && active.length === 0) {
+          onScrapeCompleted?.()
+        }
+        hadScrapesRef.current = active.length > 0
       } catch (error) {
         console.error("[v0] Failed to fetch scrapes:", error)
       } finally {
@@ -38,7 +52,7 @@ export const ActiveScrapes = memo(function ActiveScrapes() {
     fetchScrapes()
     const interval = setInterval(fetchScrapes, 2000)
     return () => clearInterval(interval)
-  }, [])
+  }, [onScrapeCompleted])
 
   const formatTimeAgo = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000)

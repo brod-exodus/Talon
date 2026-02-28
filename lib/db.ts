@@ -17,6 +17,7 @@ export type ScrapeRow = {
   started_at: string
   completed_at: string | null
   error: string | null
+  min_contributions: number   // requires: ALTER TABLE scrapes ADD COLUMN min_contributions integer NOT NULL DEFAULT 1;
 }
 
 export type ContributorRow = {
@@ -84,7 +85,12 @@ export function toAppContributor(c: ContributorWithContributions): {
   }
 }
 
-export async function createScrape(id: string, type: string, target: string): Promise<void> {
+export async function createScrape(
+  id: string,
+  type: string,
+  target: string,
+  minContributions = 1
+): Promise<void> {
   const { error } = await supabase.from("scrapes").insert({
     id,
     type,
@@ -97,6 +103,7 @@ export async function createScrape(id: string, type: string, target: string): Pr
     started_at: new Date().toISOString(),
     completed_at: null,
     error: null,
+    min_contributions: Math.max(1, Math.floor(minContributions)),
   })
   if (error) throw error
 }

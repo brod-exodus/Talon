@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
     const type = body.type
     const target = body.target?.trim()
     const token = body.token
+    const minContributions: number = Math.max(1, Math.floor(Number(body.minContributions) || 1))
 
     if (!type || !target) {
       return NextResponse.json({ error: "Missing type or target" }, { status: 400 })
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scrapeId = `scrape-${Date.now()}-${Math.random().toString(36).substring(7)}`
-    await createScrape(scrapeId, type, target)
+    await createScrape(scrapeId, type, target, minContributions)
 
     return NextResponse.json({
       scrapeId,

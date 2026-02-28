@@ -171,6 +171,7 @@ function GalaxyGlassCard({ children, className }: GalaxyCardProps) {
 export function ScrapeForm() {
   const [type, setType] = useState("organization")
   const [target, setTarget] = useState("")
+  const [minContributions, setMinContributions] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
   const { toast } = useToast()
@@ -223,7 +224,7 @@ export function ScrapeForm() {
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target: target.trim(), token }),
+          body: JSON.stringify({ type, target: target.trim(), token, minContributions }),
         })
 
         if (!response.ok) {
@@ -236,7 +237,7 @@ export function ScrapeForm() {
         fetch(`/api/scrape/${data.scrapeId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target: target.trim(), token }),
+          body: JSON.stringify({ type, target: target.trim(), token, minContributions }),
         })
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
@@ -257,7 +258,7 @@ export function ScrapeForm() {
         setIsLoading(false)
       }
     },
-    [type, target, toast],
+    [type, target, minContributions, toast],
   )
 
   const getPlaceholder = () => {
@@ -320,6 +321,23 @@ export function ScrapeForm() {
             onChange={(e) => setTarget(e.target.value)}
             className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
           />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="minContributions" className="text-sm font-medium text-slate-400">
+            Minimum Contributions
+          </Label>
+          <Input
+            id="minContributions"
+            type="number"
+            min={1}
+            value={minContributions}
+            onChange={(e) => setMinContributions(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+            className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
+          />
+          <p className="text-xs text-slate-500">
+            Only include contributors with at least this many contributions
+          </p>
         </div>
 
         {typeMismatch === "looks-like-repo" && (

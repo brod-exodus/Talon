@@ -75,20 +75,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: scrapeId } = await params
   try {
-    const { type, target, token } = await request.json()
+    const { type, target, token, minContributions } = await request.json()
+    const minC: number = Math.max(1, Math.floor(Number(minContributions) || 1))
 
-    console.log("[v0] Starting scrape:", { scrapeId, type, target })
+    console.log("[v0] Starting scrape:", { scrapeId, type, target, minContributions: minC })
 
     if (type === "organization") {
       after(async () => {
-        await scrapeOrganization(scrapeId, target, token).catch((error) => {
+        await scrapeOrganization(scrapeId, target, token, minC).catch((error) => {
           console.error("[v0] Organization scrape failed – full error:", error)
           return failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error")
         })
       })
     } else if (type === "repository") {
       after(async () => {
-        await scrapeRepository(scrapeId, target, token).catch((error) => {
+        await scrapeRepository(scrapeId, target, token, minC).catch((error) => {
           console.error("[v0] Repository scrape failed – full error:", error)
           return failScrape(scrapeId, error instanceof Error ? error.message : "Unknown error")
         })
@@ -123,7 +124,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
-async function scrapeOrganization(scrapeId: string, org: string, token?: string) {
+async function scrapeOrganization(scrapeId: string, org: string, token?: string, minContributions = 1) {
   const githubClient = createGitHubClient(token)
 
   try {
@@ -223,7 +224,11 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
     }
 
     const allContributors = Array.from(contributorMap.values())
-    console.log("[v0] Total unique contributors:", allContributors.length)
+      .filter((c) => c.contributions >= minContributions)
+    console.log(
+      `[v0] Unique contributors after minContributions=${minContributions} filter:`,
+      allContributors.length
+    )
 
     await completeScrape(scrapeId, allContributors)
   } catch (error) {
@@ -240,7 +245,7 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string)
   }
 }
 
-async function scrapeRepository(scrapeId: string, repo: string, token?: string) {
+async function scrapeRepository(scrapeId: string, repo: string, token?: string, minContributions = 1) {
   const githubClient = createGitHubClient(token)
 
   try {
@@ -304,7 +309,13 @@ async function scrapeRepository(scrapeId: string, repo: string, token?: string) 
       }
     }
 
-    await completeScrape(scrapeId, list)
+    const filtered = list.filter((c) => c.contributions >= minContributions)
+    console.log(
+      `[v0] Contributors after minContributions=${minContributions} filter:`,
+      filtered.length
+    )
+
+    await completeScrape(scrapeId, filtered)
   } catch (error) {
     console.error("[v0] Repository scrape failed – full error:", error)
     if (error instanceof Error && error.message.includes("404")) {
