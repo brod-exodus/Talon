@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
-import { Linkedin, Globe, ExternalLink, Calendar, Github } from "lucide-react"
+import { Linkedin, Globe, Calendar, Github } from "lucide-react"
+import { CopyableEmail } from "./copyable-email"
 
 type Contact = {
   email?: string
@@ -147,15 +148,7 @@ export default async function SharePage({
                   {/* Row 2: contact links */}
                   <div className="flex flex-wrap gap-x-5 gap-y-1.5 pl-[3.75rem] text-sm">
                     {con.email?.trim() && (
-                      <a
-                        href={`mailto:${con.email}`}
-                        className="flex items-center gap-1.5 text-primary hover:underline font-mono"
-                      >
-                        <svg className="w-4 h-4 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                        </svg>
-                        {con.email}
-                      </a>
+                      <CopyableEmail email={con.email} />
                     )}
                     {con.linkedin?.trim() && (
                       <a
