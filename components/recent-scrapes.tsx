@@ -690,19 +690,27 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {!isLoadingContributors && contributors !== null && (
                         <div className="flex flex-col gap-2 pb-3 border-b border-border">
                           <div className="flex flex-wrap items-center gap-2">
-                            {(["email", "linkedin", "twitter"] as const).map((filter) => (
-                              <button
-                                key={filter}
-                                type="button"
-                                onClick={() => toggleFilter(scrape.id, filter)}
-                                className={`h-7 px-3 rounded-md border text-xs font-medium transition-all ${
-                                  activeFilters.has(filter)
-                                    ? "bg-primary/15 border-primary/50 text-primary"
-                                    : "bg-transparent border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                                }`}
+                            {(
+                              [
+                                { key: "email", label: "Email" },
+                                { key: "linkedin", label: "LinkedIn" },
+                                { key: "twitter", label: "X" },
+                              ] as const
+                            ).map(({ key, label }) => (
+                              <label
+                                key={key}
+                                className="flex items-center gap-1.5 cursor-pointer select-none group"
                               >
-                                {filter === "email" ? "Has Email" : filter === "linkedin" ? "Has LinkedIn" : "Has X"}
-                              </button>
+                                <input
+                                  type="checkbox"
+                                  checked={activeFilters.has(key)}
+                                  onChange={() => toggleFilter(scrape.id, key)}
+                                  className="h-3.5 w-3.5 rounded border border-border bg-background accent-primary cursor-pointer"
+                                />
+                                <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                                  {label}
+                                </span>
+                              </label>
                             ))}
                             <div className="flex-1" />
                             <Select
