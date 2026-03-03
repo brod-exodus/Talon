@@ -220,6 +220,7 @@ export async function completeScrape(
     contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
   }>
 ): Promise<void> {
+  let contactInfoCount = 0
   for (const c of contributors) {
     const contributorId = await upsertContributor({
       github_username: c.username,
@@ -234,6 +235,14 @@ export async function completeScrape(
       website: c.contacts?.website ?? null,
     })
     await linkScrapeContributor(id, contributorId, c.contributions)
+    if (
+      c.contacts?.email?.trim() ||
+      c.contacts?.twitter?.trim() ||
+      c.contacts?.linkedin?.trim() ||
+      c.contacts?.website?.trim()
+    ) {
+      contactInfoCount++
+    }
   }
   const { error } = await supabase
     .from("scrapes")
@@ -242,6 +251,7 @@ export async function completeScrape(
       completed_at: new Date().toISOString(),
       error: null,
       current_user_login: null,
+      contact_info_count: contactInfoCount,
     })
     .eq("id", id)
   if (error) throw error
@@ -352,6 +362,7 @@ export type ScrapeSummary = {
   type: string
   completedAt: string
   contributorCount: number
+  contactInfoCount: number  // requires: ALTER TABLE scrapes ADD COLUMN contact_info_count INTEGER DEFAULT 0;
 }
 
 /**
@@ -374,7 +385,7 @@ export async function getScrapes(): Promise<{
   // Query 1: fetch all scrapes (select only needed columns)
   const { data: rows, error } = await supabase
     .from("scrapes")
-    .select("id, type, target, status, progress, current, total, current_user_login, started_at, completed_at")
+    .select("id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, contact_info_count")
     .order("started_at", { ascending: false })
   if (error) throw error
 
@@ -412,6 +423,7 @@ export async function getScrapes(): Promise<{
     type: r.type,
     completedAt: r.completed_at ?? r.started_at,
     contributorCount: countMap.get(r.id) ?? 0,
+    contactInfoCount: r.contact_info_count ?? 0,
   }))
 
   return { active, completed }

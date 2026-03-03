@@ -65,6 +65,7 @@ type CompletedScrapeSummary = {
   type: string
   completedAt: string
   contributorCount: number
+  contactInfoCount: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -618,7 +619,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       transition={{ duration: 0.5, type: "spring", delay: 0.1 }}
                       className="font-mono text-green-500"
                     >
-                      {withContacts !== null ? withContacts.length : "—"}
+                      {withContacts !== null ? withContacts.length : scrape.contactInfoCount}
                     </motion.span>
                   </div>
                 </div>
@@ -718,7 +719,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                             </Select>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {sorted.length} of {withContacts?.length ?? 0} contributors
+                            {sorted.length} of {withContacts?.length ?? scrape.contactInfoCount} contributors
                           </p>
                         </div>
                       )}
