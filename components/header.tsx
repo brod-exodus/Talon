@@ -9,10 +9,10 @@ export function Header() {
 
   return (
     <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-50">
-      <div className="container mx-auto px-6 py-3 max-w-7xl">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center group -my-2">
-            <Image src="/logos/talon-header-full.png" alt="Talon" width={432} height={120} className="w-auto py-0 h-28 mx-0 my-[-20px]" />
+      <div className="container mx-auto px-6 max-w-7xl">
+        <div className="flex items-center justify-between h-16">
+          <Link href="/" className="flex items-center">
+            <Image src="/logos/talon-header-full.png" alt="Talon" width={432} height={120} className="h-10 w-auto" />
           </Link>
 
           <nav className="flex items-center gap-1">

@@ -16,20 +16,6 @@ import { cn } from "@/lib/utils"
 
 // ─── Starfield Canvas ─────────────────────────────────────────────────────────
 
-// Color distribution: 70% white, 20% pale blue #BAE6FD, 10% pale purple #E9D5FF
-const STAR_COLORS = [
-  { r: 255, g: 255, b: 255 }, // white ×7
-  { r: 255, g: 255, b: 255 },
-  { r: 255, g: 255, b: 255 },
-  { r: 255, g: 255, b: 255 },
-  { r: 255, g: 255, b: 255 },
-  { r: 255, g: 255, b: 255 },
-  { r: 255, g: 255, b: 255 },
-  { r: 186, g: 230, b: 253 }, // #BAE6FD pale blue ×2
-  { r: 186, g: 230, b: 253 },
-  { r: 233, g: 213, b: 255 }, // #E9D5FF pale purple ×1
-]
-
 function StarfieldCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -39,77 +25,116 @@ function StarfieldCanvas() {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Size canvas to its parent card
+    // ── Size canvas to its parent ───────────────────────────────────────────
     const setSize = () => {
       const p = canvas.parentElement
       if (!p) return
-      canvas.width = p.offsetWidth
+      canvas.width  = p.offsetWidth
       canvas.height = p.offsetHeight
     }
     setSize()
 
-    // Star state
+    // ── Star type ───────────────────────────────────────────────────────────
     type Star = {
-      x: number; y: number; size: number
-      r: number; g: number; b: number
-      baseOpacity: number; phase: number
-      twinkleSpeed: number; vy: number; vx: number
+      angle:  number   // current polar angle (radians)
+      radius: number   // distance from canvas center (px)
+      speed:  number   // radians per frame
+      size:   number   // dot radius (px)
+      index:  number   // stable index for flicker formula
     }
 
-    const mkStar = (w: number, h: number, index: number): Star => {
-      const c = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
-
-      // Three distinct size tiers based on index bucket:
-      //   60% small  (0.4 px, max opacity 0.50)
-      //   30% medium (0.8 px, max opacity 0.65)
-      //   10% large  (1.2 px, max opacity 0.80)
-      const tier = index < 240 ? "s" : index < 360 ? "m" : "l"
-      const size        = tier === "s" ? 0.4 : tier === "m" ? 0.8 : 1.2
-      const maxOpacity  = tier === "s" ? 0.50 : tier === "m" ? 0.65 : 0.80
-      const minOpacity  = maxOpacity * 0.35          // floor at ~35% of max so they never vanish
-
-      return {
-        x: Math.random() * w,
-        y: Math.random() * h,
-        size,
-        ...c,
-        baseOpacity: minOpacity + Math.random() * (maxOpacity - minOpacity),
-        phase: Math.random() * Math.PI * 2,
-        twinkleSpeed: 0.003 + Math.random() * 0.010,
-        vy: Math.random() * 0.05,                   // 0 – 0.05 px/frame — nearly still
-        vx: (Math.random() - 0.5) * 0.02,
-      }
+    // ── Shooting star type ──────────────────────────────────────────────────
+    type Shooter = {
+      x:  number
+      y:  number
+      vx: number
+      vy: number
     }
 
-    let stars: Star[] = Array.from({ length: 400 }, (_, i) =>
-      mkStar(canvas.width, canvas.height, i)
-    )
+    // ── Build 360 polar stars distributed across the full canvas diagonal ──
+    const initStars = (): Star[] =>
+      Array.from({ length: 80 }, (_, i) => ({
+        angle:  Math.random() * Math.PI * 2,
+        // radius spread well beyond the card so stars are spaced across a wide area
+        radius: Math.random() * Math.hypot(canvas.width, canvas.height) * 1.1,
+        speed:  0.00015 + Math.random() * 0.00030,
+        size:   0.5  + Math.random() * 1.2,
+        index:  i,
+      }))
 
+    let stars: Star[] = initStars()
+
+    // ── Shooting stars (at most one at a time per spec) ─────────────────────
+    let shooter: Shooter | null = null
+
+    const spawnShooter = (): Shooter => ({
+      x:  Math.random() * canvas.width,
+      y:  0,
+      vx: 2   + Math.random() * 1.5,
+      vy: 0.8 + Math.random() * 1,
+    })
+
+    // ── Render loop ─────────────────────────────────────────────────────────
     let rafId: number
 
     const tick = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const w  = canvas.width
+      const h  = canvas.height
+      const cx = w / 2
+      const cy = h / 2
+      const now = Date.now()
 
+      ctx.clearRect(0, 0, w, h)
+
+      // — rotating polar stars —
       for (const s of stars) {
-        // Drift
-        s.y += s.vy
-        s.x += s.vx
-        // Wrap
-        if (s.y > canvas.height + 2) { s.y = -2; s.x = Math.random() * canvas.width }
-        if (s.x < -2)                  s.x = canvas.width + 2
-        if (s.x > canvas.width + 2)    s.x = -2
+        s.angle += s.speed
 
-        // Twinkle — sine-wave opacity, fully independent per star
-        s.phase += s.twinkleSpeed
-        const opacity = s.baseOpacity * (0.3 + 0.7 * (Math.sin(s.phase) * 0.5 + 0.5))
+        const x  = cx + s.radius * Math.cos(s.angle)
+        const y  = cy + s.radius * Math.sin(s.angle)
+        const op = 0.2 + Math.abs(Math.sin(now * 0.0015 + s.index)) * 0.3
 
-        // Core dot
         ctx.beginPath()
-        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(${s.r},${s.g},${s.b},${opacity.toFixed(3)})`
+        ctx.arc(x, y, s.size, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,255,255,${op.toFixed(3)})`
+        ctx.fill()
+      }
+
+      // — maybe spawn a shooter —
+      if (!shooter && Math.random() < 0.0008) {
+        shooter = spawnShooter()
+      }
+
+      // — draw & advance shooter —
+      if (shooter) {
+        const tailX = shooter.x - shooter.vx * 35 / Math.hypot(shooter.vx, shooter.vy)
+        const tailY = shooter.y - shooter.vy * 35 / Math.hypot(shooter.vx, shooter.vy)
+
+        const grad = ctx.createLinearGradient(shooter.x, shooter.y, tailX, tailY)
+        grad.addColorStop(0, "rgba(255,255,255,0.8)")
+        grad.addColorStop(1, "rgba(255,255,255,0)")
+
+        ctx.beginPath()
+        ctx.moveTo(shooter.x, shooter.y)
+        ctx.lineTo(tailX, tailY)
+        ctx.strokeStyle = grad
+        ctx.lineWidth   = 1.5
+        ctx.lineCap     = "round"
+        ctx.stroke()
+
+        // Head dot
+        ctx.beginPath()
+        ctx.arc(shooter.x, shooter.y, 1, 0, Math.PI * 2)
+        ctx.fillStyle = "rgba(255,255,255,0.9)"
         ctx.fill()
 
-        // No glow — stars are all sub-1px pinpoints; glow would make them look large
+        shooter.x += shooter.vx
+        shooter.y += shooter.vy
+
+        // Remove once fully off-canvas
+        if (shooter.x > w + 40 || shooter.y > h + 40) {
+          shooter = null
+        }
       }
 
       rafId = requestAnimationFrame(tick)
@@ -117,12 +142,10 @@ function StarfieldCanvas() {
 
     rafId = requestAnimationFrame(tick)
 
-    // Re-size and rebuild stars if the card resizes
+    // ── Reinitialize stars on resize ────────────────────────────────────────
     const ro = new ResizeObserver(() => {
       setSize()
-      stars = Array.from({ length: 400 }, (_, i) =>
-        mkStar(canvas.width, canvas.height, i)
-      )
+      stars = initStars()
     })
     if (canvas.parentElement) ro.observe(canvas.parentElement)
 
