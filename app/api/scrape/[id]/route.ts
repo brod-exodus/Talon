@@ -124,6 +124,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
+const BATCH_SIZE = 10
+
 async function scrapeOrganization(scrapeId: string, org: string, token?: string, minContributions = 1) {
   const githubClient = createGitHubClient(token)
 
@@ -146,91 +148,91 @@ async function scrapeOrganization(scrapeId: string, org: string, token?: string,
       return
     }
 
-    const contributorMap = new Map<
-      string,
-      {
-        username: string
-        name: string
-        avatar: string
-        contributions: number
-        bio?: string
-        location?: string
-        company?: string
-        contacts: {
-          email?: string
-          twitter?: string
-          linkedin?: string
-          website?: string
-        }
-      }
-    >()
+    // ── Phase 1: scan all repos to accumulate contribution counts ──────────
+    // No detail fetches here — just login → total contributions across all repos.
+    const contribSumMap = new Map<string, number>()
 
     for (let i = 0; i < repos.length; i++) {
       const repo = repos[i]
       await updateScrapeProgress(scrapeId, {
         current: i + 1,
         total: repos.length,
-        progress: Math.round(((i + 1) / repos.length) * 100),
-        current_user_login: undefined,
+        progress: Math.round(((i + 1) / repos.length) * 50), // 0–50 %
+        current_user_login: null,
       })
-
       try {
         const contributors = await githubClient.getRepoContributors(repo.full_name)
-
-        for (const contributor of contributors) {
-          const existing = contributorMap.get(contributor.login)
-          if (existing) {
-            existing.contributions += contributor.contributions
-          } else {
-            try {
-              await updateScrapeProgress(scrapeId, {
-                current: i + 1,
-                total: repos.length,
-                progress: Math.round(((i + 1) / repos.length) * 100),
-                current_user_login: contributor.login,
-              })
-              const [details, socialAccounts] = await Promise.all([
-                githubClient.getUserDetails(contributor.login),
-                githubClient.getUserSocialAccounts(contributor.login),
-              ])
-              const bioContacts  = extractContactsFromBio(details.bio)
-              const blogContacts = extractContactsFromBio(details.blog)
-              const fromSocial   = extractSocialContacts(socialAccounts)
-              const structured = {
-                email:    details.email || undefined,
-                twitter:  details.twitter_username || undefined,
-                linkedin: blogContacts.linkedin ?? undefined,
-                website:
-                  details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
-              }
-              contributorMap.set(contributor.login, {
-                username: contributor.login,
-                name: details.name || contributor.login,
-                avatar: details.avatar_url,
-                contributions: contributor.contributions,
-                bio: details.bio || undefined,
-                location: details.location || undefined,
-                company: details.company || undefined,
-                contacts: mergeContacts(structured, bioContacts, fromSocial),
-              })
-            } catch (error) {
-              console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
-            }
-          }
+        for (const c of contributors) {
+          contribSumMap.set(c.login, (contribSumMap.get(c.login) ?? 0) + c.contributions)
         }
       } catch (error) {
         console.error(`[v0] Failed to get contributors for ${repo.full_name}:`, error)
       }
     }
 
-    const allContributors = Array.from(contributorMap.values())
-      .filter((c) => c.contributions >= minContributions)
+    // Apply minContributions filter before fetching any user details.
+    const logins = Array.from(contribSumMap.entries())
+      .filter(([, count]) => count >= minContributions)
+      .map(([login, contributions]) => ({ login, contributions }))
+
     console.log(
-      `[v0] Unique contributors after minContributions=${minContributions} filter:`,
-      allContributors.length
+      `[v0] Unique contributors after minContributions=${minContributions} filter: ${logins.length} (from ${contribSumMap.size} total)`
     )
 
-    await completeScrape(scrapeId, allContributors)
+    // ── Phase 2: batch-fetch user details (10 at a time) ───────────────────
+    type ContribShape = {
+      username: string; name: string; avatar: string; contributions: number
+      bio?: string; location?: string; company?: string
+      contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
+    }
+    const results: ContribShape[] = []
+
+    for (let batchStart = 0; batchStart < logins.length; batchStart += BATCH_SIZE) {
+      const batch = logins.slice(batchStart, batchStart + BATCH_SIZE)
+      const processed = Math.min(batchStart + BATCH_SIZE, logins.length)
+
+      await updateScrapeProgress(scrapeId, {
+        current: processed,
+        total: logins.length,
+        progress: 50 + Math.round((processed / logins.length) * 50), // 50–100 %
+        current_user_login: batch[0].login,
+      })
+
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ login, contributions }) => {
+          const [details, socialAccounts] = await Promise.all([
+            githubClient.getUserDetails(login),
+            githubClient.getUserSocialAccounts(login),
+          ])
+          const bioContacts  = extractContactsFromBio(details.bio)
+          const blogContacts = extractContactsFromBio(details.blog)
+          const fromSocial   = extractSocialContacts(socialAccounts)
+          const structured = {
+            email:    details.email || undefined,
+            twitter:  details.twitter_username || undefined,
+            linkedin: blogContacts.linkedin ?? undefined,
+            website:  details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+          }
+          return {
+            username:     login,
+            name:         details.name || login,
+            avatar:       details.avatar_url,
+            contributions,
+            bio:          details.bio      || undefined,
+            location:     details.location || undefined,
+            company:      details.company  || undefined,
+            contacts:     mergeContacts(structured, bioContacts, fromSocial),
+          } satisfies ContribShape
+        })
+      )
+
+      for (const r of batchResults) {
+        if (r.status === "fulfilled") results.push(r.value)
+        else console.error("[v0] Failed to get details for contributor:", r.reason)
+      }
+    }
+
+    await completeScrape(scrapeId, results)
   } catch (error) {
     console.error("[v0] Organization scrape failed – full error:", error)
     if (error instanceof Error && error.message.includes("404")) {
@@ -259,53 +261,55 @@ async function scrapeRepository(scrapeId: string, repo: string, token?: string, 
       return
     }
 
-    const list: Array<{
-      username: string
-      name: string
-      avatar: string
-      contributions: number
-      bio?: string
-      location?: string
-      company?: string
+    type ContribShape = {
+      username: string; name: string; avatar: string; contributions: number
+      bio?: string; location?: string; company?: string
       contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
-    }> = []
+    }
+    const list: ContribShape[] = []
 
-    for (let i = 0; i < contributors.length; i++) {
-      const contributor = contributors[i]
+    for (let batchStart = 0; batchStart < contributors.length; batchStart += BATCH_SIZE) {
+      const batch = contributors.slice(batchStart, batchStart + BATCH_SIZE)
+      const processed = Math.min(batchStart + BATCH_SIZE, contributors.length)
+
       await updateScrapeProgress(scrapeId, {
-        current: i + 1,
+        current: processed,
         total: contributors.length,
-        progress: Math.round(((i + 1) / contributors.length) * 100),
-        current_user_login: contributor.login,
+        progress: Math.round((processed / contributors.length) * 100),
+        current_user_login: batch[0].login,
       })
 
-      try {
-        const [details, socialAccounts] = await Promise.all([
-          githubClient.getUserDetails(contributor.login),
-          githubClient.getUserSocialAccounts(contributor.login),
-        ])
-        const bioContacts  = extractContactsFromBio(details.bio)
-        const blogContacts = extractContactsFromBio(details.blog)
-        const fromSocial   = extractSocialContacts(socialAccounts)
-        const structured = {
-          email:    details.email || undefined,
-          twitter:  details.twitter_username || undefined,
-          linkedin: blogContacts.linkedin ?? undefined,
-          website:
-            details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
-        }
-        list.push({
-          username: contributor.login,
-          name: details.name || contributor.login,
-          avatar: details.avatar_url,
-          contributions: contributor.contributions,
-          bio: details.bio || undefined,
-          location: details.location || undefined,
-          company: details.company || undefined,
-          contacts: mergeContacts(structured, bioContacts, fromSocial),
+      const batchResults = await Promise.allSettled(
+        batch.map(async (contributor) => {
+          const [details, socialAccounts] = await Promise.all([
+            githubClient.getUserDetails(contributor.login),
+            githubClient.getUserSocialAccounts(contributor.login),
+          ])
+          const bioContacts  = extractContactsFromBio(details.bio)
+          const blogContacts = extractContactsFromBio(details.blog)
+          const fromSocial   = extractSocialContacts(socialAccounts)
+          const structured = {
+            email:    details.email || undefined,
+            twitter:  details.twitter_username || undefined,
+            linkedin: blogContacts.linkedin ?? undefined,
+            website:  details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+          }
+          return {
+            username:     contributor.login,
+            name:         details.name || contributor.login,
+            avatar:       details.avatar_url,
+            contributions: contributor.contributions,
+            bio:          details.bio      || undefined,
+            location:     details.location || undefined,
+            company:      details.company  || undefined,
+            contacts:     mergeContacts(structured, bioContacts, fromSocial),
+          } satisfies ContribShape
         })
-      } catch (error) {
-        console.error(`[v0] Failed to get details for ${contributor.login}:`, error)
+      )
+
+      for (const r of batchResults) {
+        if (r.status === "fulfilled") list.push(r.value)
+        else console.error("[v0] Failed to get details for contributor:", r.reason)
       }
     }
 

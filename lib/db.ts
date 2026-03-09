@@ -569,6 +569,203 @@ export async function createSharedScrape(scrapeId: string, token: string): Promi
   if (error) throw error
 }
 
+// ─── Ecosystems ───────────────────────────────────────────────────────────────
+// Requires the migrations in the user's instructions.
+
+export type EcosystemSummary = {
+  id: string
+  name: string
+  createdAt: string
+  scrapeCount: number
+}
+
+export type EcosystemDetail = {
+  id: string
+  name: string
+  createdAt: string
+  scrapes: Array<{ id: string; target: string; type: string; completedAt: string; contributorCount: number }>
+}
+
+export type EcosystemContributor = {
+  id: string
+  username: string
+  name: string
+  avatar: string
+  scrapeCount: number
+  scrapeTargets: string[]
+  totalContributions: number
+  contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
+}
+
+export async function createEcosystem(name: string): Promise<EcosystemSummary> {
+  const { data, error } = await supabase
+    .from("ecosystems")
+    .insert({ name })
+    .select("*")
+    .single()
+  if (error) throw error
+  return { id: data.id, name: data.name, createdAt: data.created_at, scrapeCount: 0 }
+}
+
+export async function getEcosystems(): Promise<EcosystemSummary[]> {
+  const { data: ecosystems, error } = await supabase
+    .from("ecosystems")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  if (!ecosystems?.length) return []
+
+  const { data: links } = await supabase
+    .from("ecosystem_scrapes")
+    .select("ecosystem_id")
+    .in("ecosystem_id", ecosystems.map((e) => e.id))
+
+  const countMap = new Map<string, number>()
+  for (const l of links ?? []) {
+    countMap.set(l.ecosystem_id, (countMap.get(l.ecosystem_id) ?? 0) + 1)
+  }
+
+  return ecosystems.map((e) => ({
+    id: e.id,
+    name: e.name,
+    createdAt: e.created_at,
+    scrapeCount: countMap.get(e.id) ?? 0,
+  }))
+}
+
+export async function getEcosystem(id: string): Promise<EcosystemDetail | null> {
+  const { data: eco, error } = await supabase
+    .from("ecosystems")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!eco) return null
+
+  const { data: links } = await supabase
+    .from("ecosystem_scrapes")
+    .select("scrape_id")
+    .eq("ecosystem_id", id)
+
+  const scrapeIds = (links ?? []).map((l) => l.scrape_id)
+  if (!scrapeIds.length) return { id: eco.id, name: eco.name, createdAt: eco.created_at, scrapes: [] }
+
+  const { data: scrapes } = await supabase
+    .from("scrapes")
+    .select("id, target, type, completed_at")
+    .in("id", scrapeIds)
+
+  const { data: contribLinks } = await supabase
+    .from("scrape_contributors")
+    .select("scrape_id")
+    .in("scrape_id", scrapeIds)
+
+  const countMap = new Map<string, number>()
+  for (const cl of contribLinks ?? []) {
+    countMap.set(cl.scrape_id, (countMap.get(cl.scrape_id) ?? 0) + 1)
+  }
+
+  return {
+    id: eco.id,
+    name: eco.name,
+    createdAt: eco.created_at,
+    scrapes: (scrapes ?? []).map((s) => ({
+      id: s.id,
+      target: s.target,
+      type: s.type,
+      completedAt: s.completed_at ?? "",
+      contributorCount: countMap.get(s.id) ?? 0,
+    })),
+  }
+}
+
+export async function addScrapeToEcosystem(ecosystemId: string, scrapeId: string): Promise<void> {
+  const { error } = await supabase
+    .from("ecosystem_scrapes")
+    .insert({ ecosystem_id: ecosystemId, scrape_id: scrapeId })
+  if (error) throw error
+}
+
+export async function removeScrapeFromEcosystem(ecosystemId: string, scrapeId: string): Promise<void> {
+  const { error } = await supabase
+    .from("ecosystem_scrapes")
+    .delete()
+    .eq("ecosystem_id", ecosystemId)
+    .eq("scrape_id", scrapeId)
+  if (error) throw error
+}
+
+export async function deleteEcosystem(id: string): Promise<void> {
+  const { error } = await supabase.from("ecosystems").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function getEcosystemContributors(ecosystemId: string): Promise<EcosystemContributor[]> {
+  // 1. All scrape ids in this ecosystem
+  const { data: ecoLinks, error: elErr } = await supabase
+    .from("ecosystem_scrapes")
+    .select("scrape_id")
+    .eq("ecosystem_id", ecosystemId)
+  if (elErr) throw elErr
+  if (!ecoLinks?.length) return []
+
+  const scrapeIds = ecoLinks.map((l) => l.scrape_id)
+
+  // 2. Scrape id → target label
+  const { data: scrapeRows } = await supabase
+    .from("scrapes")
+    .select("id, target")
+    .in("id", scrapeIds)
+  const targetMap = new Map((scrapeRows ?? []).map((r) => [r.id, r.target as string]))
+
+  // 3. All contributor links for those scrapes
+  const { data: links, error: linksErr } = await supabase
+    .from("scrape_contributors")
+    .select("scrape_id, contributor_id, contributions")
+    .in("scrape_id", scrapeIds)
+  if (linksErr) throw linksErr
+  if (!links?.length) return []
+
+  // 4. Aggregate per contributor
+  type Agg = { scrapeIdSet: Set<string>; totalContributions: number }
+  const aggMap = new Map<string, Agg>()
+  for (const l of links) {
+    const agg = aggMap.get(l.contributor_id) ?? { scrapeIdSet: new Set<string>(), totalContributions: 0 }
+    agg.scrapeIdSet.add(l.scrape_id)
+    agg.totalContributions += l.contributions
+    aggMap.set(l.contributor_id, agg)
+  }
+
+  // 5. Fetch contributor details
+  const { data: contributors, error: cErr } = await supabase
+    .from("contributors")
+    .select("*")
+    .in("id", Array.from(aggMap.keys()))
+  if (cErr) throw cErr
+
+  // 6. Merge, sort
+  return (contributors ?? [])
+    .map((c) => {
+      const agg = aggMap.get(c.id)!
+      return {
+        id: c.id,
+        username: c.github_username,
+        name: c.name ?? c.github_username,
+        avatar: c.avatar_url ?? "",
+        scrapeCount: agg.scrapeIdSet.size,
+        scrapeTargets: Array.from(agg.scrapeIdSet).map((sid) => targetMap.get(sid) ?? sid),
+        totalContributions: agg.totalContributions,
+        contacts: {
+          email:    c.email    ?? undefined,
+          twitter:  c.twitter  ?? undefined,
+          linkedin: c.linkedin ?? undefined,
+          website:  c.website  ?? undefined,
+        },
+      }
+    })
+    .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
+}
+
 /** Resolve a share token → full scrape with contributors, or null if not found. */
 export async function getSharedScrape(token: string): Promise<AppScrape | null> {
   const { data: share, error: shareError } = await supabase

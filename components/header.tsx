@@ -12,7 +12,7 @@ export function Header() {
       <div className="container mx-auto px-6 max-w-7xl">
         <div className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center">
-            <Image src="/logos/talon-header-full.png" alt="Talon" width={432} height={120} className="h-10 w-auto" />
+            <Image src="/logos/talon-header-full.png" alt="Talon" width={216} height={64} className="h-8 w-auto" />
           </Link>
 
           <nav className="flex items-center gap-1">
@@ -35,6 +35,16 @@ export function Header() {
               }`}
             >
               Watched Repos
+            </Link>
+            <Link
+              href="/ecosystems"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                pathname.startsWith("/ecosystems")
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              Ecosystems
             </Link>
             <Link
               href="/settings"
