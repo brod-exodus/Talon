@@ -753,7 +753,11 @@ export async function getEcosystemContributors(ecosystemId: string): Promise<Eco
     contributors.push(...(batchRows ?? []))
   }
 
+  const hasContact = (c: ContributorRow) =>
+    [c.email, c.twitter, c.linkedin, c.website].some((v) => v != null && String(v).trim() !== "")
+
   return contributors
+    .filter(hasContact)
     .map((c) => {
       const agg = aggMap.get(c.id)!
       return {
