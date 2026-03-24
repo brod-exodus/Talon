@@ -701,7 +701,6 @@ export async function deleteEcosystem(id: string): Promise<void> {
 }
 
 export async function getEcosystemContributors(ecosystemId: string): Promise<EcosystemContributor[]> {
-  // 1. All scrape ids in this ecosystem
   const { data: ecoLinks, error: elErr } = await supabase
     .from("ecosystem_scrapes")
     .select("scrape_id")
@@ -711,40 +710,50 @@ export async function getEcosystemContributors(ecosystemId: string): Promise<Eco
 
   const scrapeIds = ecoLinks.map((l) => l.scrape_id)
 
-  // 2. Scrape id → target label
-  const { data: scrapeRows } = await supabase
-    .from("scrapes")
-    .select("id, target")
-    .in("id", scrapeIds)
-  const targetMap = new Map((scrapeRows ?? []).map((r) => [r.id, r.target as string]))
-
-  // 3. All contributor links for those scrapes
-  const { data: links, error: linksErr } = await supabase
-    .from("scrape_contributors")
-    .select("scrape_id, contributor_id, contributions")
-    .in("scrape_id", scrapeIds)
-  if (linksErr) throw linksErr
-  if (!links?.length) return []
-
-  // 4. Aggregate per contributor
-  type Agg = { scrapeIdSet: Set<string>; totalContributions: number }
-  const aggMap = new Map<string, Agg>()
-  for (const l of links) {
-    const agg = aggMap.get(l.contributor_id) ?? { scrapeIdSet: new Set<string>(), totalContributions: 0 }
-    agg.scrapeIdSet.add(l.scrape_id)
-    agg.totalContributions += l.contributions
-    aggMap.set(l.contributor_id, agg)
+  const targetMap = new Map<string, string>()
+  for (let i = 0; i < scrapeIds.length; i += 50) {
+    const batch = scrapeIds.slice(i, i + 50)
+    const { data: scrapeRows, error: sErr } = await supabase
+      .from("scrapes")
+      .select("id, target")
+      .in("id", batch)
+    if (sErr) throw sErr
+    for (const r of scrapeRows ?? []) targetMap.set(r.id, r.target as string)
   }
 
-  // 5. Fetch contributor details
-  const { data: contributors, error: cErr } = await supabase
-    .from("contributors")
-    .select("*")
-    .in("id", Array.from(aggMap.keys()))
-  if (cErr) throw cErr
+  type Agg = { scrapeIdSet: Set<string>; totalContributions: number }
+  const aggMap = new Map<string, Agg>()
 
-  // 6. Merge, sort
-  return (contributors ?? [])
+  const linkResults = await Promise.all(
+    scrapeIds.map((scrapeId) =>
+      supabase
+        .from("scrape_contributors")
+        .select("scrape_id, contributor_id, contributions")
+        .eq("scrape_id", scrapeId)
+    )
+  )
+  for (const { data: rows, error: linksErr } of linkResults) {
+    if (linksErr) throw linksErr
+    for (const l of rows ?? []) {
+      const agg = aggMap.get(l.contributor_id) ?? { scrapeIdSet: new Set<string>(), totalContributions: 0 }
+      agg.scrapeIdSet.add(l.scrape_id)
+      agg.totalContributions += l.contributions
+      aggMap.set(l.contributor_id, agg)
+    }
+  }
+
+  if (!aggMap.size) return []
+
+  const contributorIds = Array.from(aggMap.keys())
+  const contributors: ContributorRow[] = []
+  for (let i = 0; i < contributorIds.length; i += 50) {
+    const batch = contributorIds.slice(i, i + 50)
+    const { data: batchRows, error: cErr } = await supabase.from("contributors").select("*").in("id", batch)
+    if (cErr) throw cErr
+    contributors.push(...(batchRows ?? []))
+  }
+
+  return contributors
     .map((c) => {
       const agg = aggMap.get(c.id)!
       return {
