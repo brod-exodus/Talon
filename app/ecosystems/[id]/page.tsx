@@ -53,37 +53,130 @@ function XIcon({ className }: { className?: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function ContributorTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="border-b border-border bg-muted/40 px-3 py-2.5">
+        <div className="flex gap-4">
+          <Skeleton className="h-3 w-6" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-3 w-20 hidden md:block" />
+          <Skeleton className="h-3 w-16 ml-auto hidden sm:block" />
+          <Skeleton className="h-3 w-14" />
+        </div>
+      </div>
+      <div className="divide-y divide-border">
+        {Array.from({ length: rows }, (_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-3">
+            <Skeleton className="h-4 w-6 shrink-0" />
+            <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+            <div className="flex-1 space-y-1.5 min-w-0">
+              <Skeleton className="h-4 w-36 max-w-full" />
+              <Skeleton className="h-3 w-24 max-w-full" />
+            </div>
+            <Skeleton className="h-6 w-14 rounded-full shrink-0" />
+            <Skeleton className="h-4 w-24 hidden md:block shrink-0" />
+            <Skeleton className="h-4 w-10 ml-auto hidden sm:block shrink-0" />
+            <Skeleton className="h-4 w-16 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function EcosystemDetailPage() {
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
 
-  const [ecosystem, setEcosystem]       = useState<EcosystemDetail | null>(null)
+  const [ecosystem, setEcosystem] = useState<EcosystemDetail | null>(null)
+  const [ecosystemLoading, setEcosystemLoading] = useState(true)
   const [contributors, setContributors] = useState<EcosystemContributor[]>([])
-  const [allScrapes, setAllScrapes]     = useState<ScrapeSummary[]>([])
-  const [loading, setLoading]           = useState(true)
+  const [contributorsLoading, setContributorsLoading] = useState(true)
+  const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
   const [selectedScrape, setSelectedScrape] = useState("")
-  const [adding, setAdding]             = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
-    const [ecoRes, scrapesRes] = await Promise.all([
+    setContributorsLoading(true)
+    const [ecoRes, scrapesRes, contribRes] = await Promise.all([
       fetch(`/api/ecosystems/${id}`),
       fetch("/api/scrapes"),
+      fetch(`/api/ecosystems/${id}/contributors`),
     ])
-    if (ecoRes.status === 404) { router.push("/ecosystems"); return }
-    const { ecosystem: eco, contributors: contribs } = await ecoRes.json()
+    if (ecoRes.status === 404) {
+      setEcosystemLoading(false)
+      setContributorsLoading(false)
+      router.push("/ecosystems")
+      return
+    }
+    const { ecosystem: eco } = await ecoRes.json()
     const { completed } = await scrapesRes.json()
+    let contribs: EcosystemContributor[] = []
+    if (contribRes.ok) {
+      const body = await contribRes.json()
+      contribs = body.contributors ?? []
+    }
     setEcosystem(eco)
-    setContributors(contribs ?? [])
     setAllScrapes(completed ?? [])
-    setLoading(false)
+    setContributors(contribs)
+    setContributorsLoading(false)
+    setEcosystemLoading(false)
   }, [id, router])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    let cancelled = false
+    setEcosystemLoading(true)
+    setContributorsLoading(true)
+
+    const run = async () => {
+      const ecoP = fetch(`/api/ecosystems/${id}`)
+      const contribP = fetch(`/api/ecosystems/${id}/contributors`)
+
+      fetch("/api/scrapes")
+        .then((r) => r.json())
+        .then((j) => {
+          if (!cancelled) setAllScrapes(j.completed ?? [])
+        })
+        .catch(() => {
+          if (!cancelled) setAllScrapes([])
+        })
+
+      const ecoRes = await ecoP
+      if (cancelled) return
+      if (ecoRes.status === 404) {
+        setEcosystemLoading(false)
+        setContributorsLoading(false)
+        router.push("/ecosystems")
+        return
+      }
+      const { ecosystem: eco } = await ecoRes.json()
+      if (cancelled) return
+      setEcosystem(eco)
+      setEcosystemLoading(false)
+
+      const contribRes = await contribP
+      if (cancelled) return
+      let contribs: EcosystemContributor[] = []
+      if (contribRes.ok) {
+        const body = await contribRes.json()
+        contribs = body.contributors ?? []
+      }
+      setContributors(contribs)
+      setContributorsLoading(false)
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [id, router])
 
   // scrapes not yet in this ecosystem
   const availableScrapes = allScrapes.filter(
-    (s) => !ecosystem?.scrapes.some((es) => es.id === s.id)
+    (s) => !(ecosystem?.scrapes ?? []).some((es) => es.id === s.id)
   )
 
   async function handleAddScrape() {
@@ -114,26 +207,11 @@ export default function EcosystemDetailPage() {
     router.push("/ecosystems")
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="container mx-auto px-4 sm:px-6 py-8 max-w-6xl space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-4 w-40" />
-          <div className="space-y-3 mt-8">
-            {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14 w-full" />)}
-          </div>
-        </main>
-      </div>
-    )
-  }
-
-  if (!ecosystem) return null
+  if (!ecosystemLoading && !ecosystem) return null
 
   const uniqueContributors = contributors.length
-  const multiScrapeCount   = contributors.filter(c => c.scrapeCount > 1).length
+  const multiScrapeCount = contributors.filter((c) => c.scrapeCount > 1).length
+  const scrapeRows = ecosystem?.scrapes ?? []
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,12 +229,17 @@ export default function EcosystemDetailPage() {
 
         {/* ── Header row ───────────────────────────────────────────────── */}
         <div className="flex items-start justify-between mb-2">
-          <h1 className="text-3xl font-bold tracking-tight">{ecosystem.name}</h1>
+          {ecosystemLoading ? (
+            <Skeleton className="h-9 w-64 max-w-[80%]" />
+          ) : ecosystem ? (
+            <h1 className="text-3xl font-bold tracking-tight">{ecosystem.name}</h1>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground hover:text-destructive gap-1.5"
+            className="text-muted-foreground hover:text-destructive gap-1.5 shrink-0"
             onClick={handleDeleteEcosystem}
+            disabled={ecosystemLoading || !ecosystem}
           >
             <Trash2 className="w-4 h-4" />
             Delete
@@ -164,11 +247,27 @@ export default function EcosystemDetailPage() {
         </div>
 
         {/* ── Stats bar ────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-8">
-          <span><span className="font-mono text-foreground">{ecosystem.scrapes.length}</span> scrapes</span>
+        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-8 flex-wrap">
+          <span>
+            {ecosystemLoading ? (
+              <Skeleton className="h-4 w-24 inline-block align-middle" />
+            ) : (
+              <>
+                <span className="font-mono text-foreground">{scrapeRows.length}</span> scrapes
+              </>
+            )}
+          </span>
           <span>·</span>
-          <span><span className="font-mono text-foreground">{uniqueContributors}</span> contributors</span>
-          {multiScrapeCount > 0 && (
+          <span className="inline-flex items-center gap-1">
+            {contributorsLoading ? (
+              <Skeleton className="h-4 w-28 inline-block align-middle" />
+            ) : (
+              <>
+                <span className="font-mono text-foreground">{uniqueContributors}</span> contributors
+              </>
+            )}
+          </span>
+          {!contributorsLoading && multiScrapeCount > 0 && (
             <>
               <span>·</span>
               <span className="text-primary font-medium">
@@ -186,10 +285,18 @@ export default function EcosystemDetailPage() {
 
           {/* Scrape chips */}
           <div className="flex flex-wrap gap-2 mb-3">
-            {ecosystem.scrapes.length === 0 && (
+            {ecosystemLoading && (
+              <div className="flex flex-wrap gap-2 w-full">
+                <Skeleton className="h-8 w-48 rounded-full" />
+                <Skeleton className="h-8 w-40 rounded-full" />
+                <Skeleton className="h-8 w-56 rounded-full" />
+              </div>
+            )}
+            {!ecosystemLoading && scrapeRows.length === 0 && (
               <p className="text-sm text-muted-foreground">No scrapes added yet.</p>
             )}
-            {ecosystem.scrapes.map((s) => (
+            {!ecosystemLoading &&
+              scrapeRows.map((s) => (
               <div
                 key={s.id}
                 className="flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full border border-border bg-card text-sm"
@@ -204,11 +311,11 @@ export default function EcosystemDetailPage() {
                   <X className="w-3 h-3" />
                 </button>
               </div>
-            ))}
+              ))}
           </div>
 
           {/* Add scrape */}
-          {availableScrapes.length > 0 && (
+          {!ecosystemLoading && availableScrapes.length > 0 && (
             <div className="flex items-center gap-2">
               <Select value={selectedScrape} onValueChange={setSelectedScrape}>
                 <SelectTrigger className="h-8 w-64 text-sm bg-transparent border-border">
@@ -241,7 +348,9 @@ export default function EcosystemDetailPage() {
             Contributor Intelligence
           </h2>
 
-          {contributors.length === 0 ? (
+          {contributorsLoading ? (
+            <ContributorTableSkeleton />
+          ) : contributors.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
               Add scrapes to see contributor intelligence.
             </div>

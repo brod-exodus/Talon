@@ -16,6 +16,31 @@ type EcosystemSummary = {
   scrapeCount: number
 }
 
+/** Matches real ecosystem cards: title row, scrape + contributor stats, View button — `Skeleton` uses `bg-accent animate-pulse` for dark theme. */
+function EcosystemCardSkeleton({ index }: { index: number }) {
+  const titleClass = ["w-56", "w-44", "w-52", "w-40"][index % 4]
+  const scrapeClass = ["w-24", "w-28", "w-20", "w-32"][index % 4]
+  const contribClass = ["w-32", "w-36", "w-28", "w-40"][index % 4]
+
+  return (
+    <Card className="border-border bg-card pointer-events-none">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <Skeleton className={`h-5 max-w-[85%] rounded-md ${titleClass}`} />
+          <span className="w-4 h-4 shrink-0" aria-hidden />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2 mb-4">
+          <Skeleton className={`h-4 rounded-md ${scrapeClass}`} />
+          <Skeleton className={`h-4 rounded-md ${contribClass}`} />
+        </div>
+        <Skeleton className="h-9 w-full rounded-md" />
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function EcosystemsPage() {
   const [ecosystems, setEcosystems] = useState<EcosystemSummary[]>([])
   const [loading, setLoading]       = useState(true)
@@ -112,14 +137,15 @@ export default function EcosystemsPage() {
           </Card>
         )}
 
-        {/* ── Loading ───────────────────────────────────────────────────── */}
+        {/* ── Loading skeletons (same grid + card shell as loaded state) ─ */}
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="border-border bg-card">
-                <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
-                <CardContent><Skeleton className="h-4 w-24" /></CardContent>
-              </Card>
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            aria-busy="true"
+            aria-label="Loading ecosystems"
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <EcosystemCardSkeleton key={i} index={i} />
             ))}
           </div>
         )}
