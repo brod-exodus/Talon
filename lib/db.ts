@@ -639,31 +639,37 @@ export async function getEcosystem(id: string): Promise<EcosystemDetail | null> 
   const scrapeIds = (links ?? []).map((l) => l.scrape_id)
   if (!scrapeIds.length) return { id: eco.id, name: eco.name, createdAt: eco.created_at, scrapes: [] }
 
-  const { data: scrapes } = await supabase
-    .from("scrapes")
-    .select("id, target, type, completed_at")
-    .in("id", scrapeIds)
-
-  const { data: contribLinks } = await supabase
-    .from("scrape_contributors")
-    .select("scrape_id")
-    .in("scrape_id", scrapeIds)
-
-  const countMap = new Map<string, number>()
-  for (const cl of contribLinks ?? []) {
-    countMap.set(cl.scrape_id, (countMap.get(cl.scrape_id) ?? 0) + 1)
+  type ScrapeMeta = {
+    id: string
+    target: string
+    type: string
+    completed_at: string | null
+    total_contributors: number | null
   }
+  const scrapeRows: ScrapeMeta[] = []
+  for (let i = 0; i < scrapeIds.length; i += 50) {
+    const batch = scrapeIds.slice(i, i + 50)
+    const { data: batchRows, error: sErr } = await supabase
+      .from("scrapes")
+      .select("id, target, type, completed_at, total_contributors")
+      .in("id", batch)
+    if (sErr) throw sErr
+    scrapeRows.push(...((batchRows ?? []) as ScrapeMeta[]))
+  }
+
+  const byId = new Map(scrapeRows.map((s) => [s.id, s]))
+  const ordered = scrapeIds.map((sid) => byId.get(sid)).filter((s): s is ScrapeMeta => s != null)
 
   return {
     id: eco.id,
     name: eco.name,
     createdAt: eco.created_at,
-    scrapes: (scrapes ?? []).map((s) => ({
+    scrapes: ordered.map((s) => ({
       id: s.id,
       target: s.target,
       type: s.type,
       completedAt: s.completed_at ?? "",
-      contributorCount: countMap.get(s.id) ?? 0,
+      contributorCount: s.total_contributors ?? 0,
     })),
   }
 }

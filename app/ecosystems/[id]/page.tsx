@@ -53,35 +53,75 @@ function XIcon({ className }: { className?: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-function ContributorTableSkeleton({ rows = 8 }: { rows?: number }) {
+const CONTRIBUTOR_SKELETON_ROWS = 9
+
+/** Same table grid as loaded contributor rows: rank, avatar + name + link, repos pill, tag row, contributions, contact icons. */
+function ContributorTableSkeleton() {
+  const nameWidths = ["w-36", "w-28", "w-40", "w-32", "w-44", "w-32", "w-36", "w-34", "w-36"] as const
+  const userWidths = ["w-24", "w-20", "w-28", "w-24", "w-28", "w-24", "w-20", "w-28", "w-24"] as const
+
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <div className="border-b border-border bg-muted/40 px-3 py-2.5">
-        <div className="flex gap-4">
-          <Skeleton className="h-3 w-6" />
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-3 w-12" />
-          <Skeleton className="h-3 w-20 hidden md:block" />
-          <Skeleton className="h-3 w-16 ml-auto hidden sm:block" />
-          <Skeleton className="h-3 w-14" />
-        </div>
-      </div>
-      <div className="divide-y divide-border">
-        {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="flex items-center gap-3 px-3 py-3">
-            <Skeleton className="h-4 w-6 shrink-0" />
-            <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-            <div className="flex-1 space-y-1.5 min-w-0">
-              <Skeleton className="h-4 w-36 max-w-full" />
-              <Skeleton className="h-3 w-24 max-w-full" />
-            </div>
-            <Skeleton className="h-6 w-14 rounded-full shrink-0" />
-            <Skeleton className="h-4 w-24 hidden md:block shrink-0" />
-            <Skeleton className="h-4 w-10 ml-auto hidden sm:block shrink-0" />
-            <Skeleton className="h-4 w-16 shrink-0" />
-          </div>
-        ))}
-      </div>
+    <div
+      className="rounded-lg border border-border overflow-hidden"
+      aria-busy="true"
+      aria-label="Loading contributors"
+    >
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted/40">
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-10">#</th>
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contributor</th>
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Repos</th>
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden md:table-cell">
+              Appears In
+            </th>
+            <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden sm:table-cell">
+              Contributions
+            </th>
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contact</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: CONTRIBUTOR_SKELETON_ROWS }, (_, i) => (
+            <tr key={i} className="border-b border-border last:border-0">
+              <td className="px-3 py-3 align-middle">
+                <Skeleton className="h-4 w-5 ml-auto rounded-md" />
+              </td>
+              <td className="px-3 py-3 align-middle">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Skeleton className="h-8 w-8 shrink-0 rounded-full ring-1 ring-border" />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Skeleton className={`h-4 max-w-full rounded-md ${nameWidths[i % 9]}`} />
+                    <Skeleton className={`h-3 max-w-full rounded-md ${userWidths[i % 9]}`} />
+                  </div>
+                  <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+                </div>
+              </td>
+              <td className="px-3 py-3 align-middle">
+                <Skeleton className="h-6 w-[4.5rem] rounded-full" />
+              </td>
+              <td className="px-3 py-3 align-middle hidden md:table-cell">
+                <div className="flex flex-wrap gap-1">
+                  <Skeleton className="h-5 w-16 rounded border border-border/60" />
+                  <Skeleton className="h-5 w-20 rounded border border-border/60" />
+                  <Skeleton className="h-5 w-14 rounded border border-border/60 hidden lg:inline-block" />
+                </div>
+              </td>
+              <td className="px-3 py-3 align-middle hidden sm:table-cell text-right">
+                <Skeleton className="h-4 w-12 rounded-md ml-auto" />
+              </td>
+              <td className="px-3 py-3 align-middle">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+                  <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+                  <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+                  <Skeleton className="h-3.5 w-3.5 rounded-sm" />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -132,9 +172,6 @@ export default function EcosystemDetailPage() {
     setContributorsLoading(true)
 
     const run = async () => {
-      const ecoP = fetch(`/api/ecosystems/${id}`)
-      const contribP = fetch(`/api/ecosystems/${id}/contributors`)
-
       fetch("/api/scrapes")
         .then((r) => r.json())
         .then((j) => {
@@ -144,7 +181,8 @@ export default function EcosystemDetailPage() {
           if (!cancelled) setAllScrapes([])
         })
 
-      const ecoRes = await ecoP
+      // Metadata first (fast): name + scrape chips are not blocked by contributor aggregation.
+      const ecoRes = await fetch(`/api/ecosystems/${id}`)
       if (cancelled) return
       if (ecoRes.status === 404) {
         setEcosystemLoading(false)
@@ -157,7 +195,7 @@ export default function EcosystemDetailPage() {
       setEcosystem(eco)
       setEcosystemLoading(false)
 
-      const contribRes = await contribP
+      const contribRes = await fetch(`/api/ecosystems/${id}/contributors`)
       if (cancelled) return
       let contribs: EcosystemContributor[] = []
       if (contribRes.ok) {
