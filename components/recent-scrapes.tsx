@@ -30,6 +30,7 @@ import {
   Share2,
   Copy,
   CheckCheck,
+  Search,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
@@ -290,6 +291,20 @@ function hasContactInfo(c: Contributor): boolean {
   )
 }
 
+/** Case-insensitive match on name, username, email, LinkedIn URL, or Twitter handle */
+function contributorMatchesSearch(c: Contributor, rawQuery: string): boolean {
+  const q = rawQuery.trim().toLowerCase()
+  if (!q) return true
+  const parts = [
+    c.name,
+    c.username,
+    c.contacts?.email,
+    c.contacts?.twitter,
+    c.contacts?.linkedin,
+  ]
+  return parts.some((p) => (p ?? "").toLowerCase().includes(q))
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /** Methods exposed to parent components via ref */
@@ -483,30 +498,48 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   // ── Per-card filter / sort state ──────────────────────────────────────────
   type ContactFilter = "email" | "linkedin" | "twitter"
   type SortOrder = "high-low" | "low-high"
-  type CardSettings = { filters: Set<ContactFilter>; sort: SortOrder }
+  type CardSettings = { filters: Set<ContactFilter>; sort: SortOrder; contributorSearch: string }
+
+  const defaultCardSettings = useCallback(
+    (): CardSettings => ({
+      filters: new Set<ContactFilter>(),
+      sort: "high-low",
+      contributorSearch: "",
+    }),
+    []
+  )
 
   const [cardSettings, setCardSettings] = useState<Map<string, CardSettings>>(new Map())
 
   const toggleFilter = useCallback((scrapeId: string, filter: ContactFilter) => {
     setCardSettings((prev) => {
       const next = new Map(prev)
-      const cur = next.get(scrapeId) ?? { filters: new Set<ContactFilter>(), sort: "high-low" as SortOrder }
+      const cur = next.get(scrapeId) ?? defaultCardSettings()
       const filters = new Set(cur.filters)
       if (filters.has(filter)) filters.delete(filter)
       else filters.add(filter)
       next.set(scrapeId, { ...cur, filters })
       return next
     })
-  }, [])
+  }, [defaultCardSettings])
 
   const updateSort = useCallback((scrapeId: string, sort: SortOrder) => {
     setCardSettings((prev) => {
       const next = new Map(prev)
-      const cur = next.get(scrapeId) ?? { filters: new Set<ContactFilter>(), sort: "high-low" as SortOrder }
+      const cur = next.get(scrapeId) ?? defaultCardSettings()
       next.set(scrapeId, { ...cur, sort })
       return next
     })
-  }, [])
+  }, [defaultCardSettings])
+
+  const setContributorSearch = useCallback((scrapeId: string, contributorSearch: string) => {
+    setCardSettings((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(scrapeId) ?? defaultCardSettings()
+      next.set(scrapeId, { ...cur, contributorSearch })
+      return next
+    })
+  }, [defaultCardSettings])
 
   // ── Share modal state ─────────────────────────────────────────────────────
   const [shareModal, setShareModal] = useState<{ open: boolean; url: string; loading: boolean }>({
@@ -550,10 +583,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
 
-      const { filters: activeFilters, sort: sortOrder } =
-        cardSettings.get(scrape.id) ?? { filters: new Set<"email" | "linkedin" | "twitter">(), sort: "high-low" as const }
+      const { filters: activeFilters, sort: sortOrder, contributorSearch } =
+        cardSettings.get(scrape.id) ?? defaultCardSettings()
 
-      const filtered = withContacts
+      const filteredByToggles = withContacts
         ? withContacts.filter((c) => {
             if (activeFilters.has("email") && !c.contacts?.email?.trim()) return false
             if (activeFilters.has("linkedin") && !c.contacts?.linkedin?.trim()) return false
@@ -561,6 +594,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             return true
           })
         : []
+
+      const filtered = filteredByToggles.filter((c) => contributorMatchesSearch(c, contributorSearch))
 
       const sorted = [...filtered].sort((a, b) =>
         sortOrder === "high-low" ? b.contributions - a.contributions : a.contributions - b.contributions
@@ -689,6 +724,17 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {/* Filter / sort controls — visible once loaded */}
                       {!isLoadingContributors && contributors !== null && (
                         <div className="flex flex-col gap-2 pb-3 border-b border-border">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                            <Input
+                              type="search"
+                              value={contributorSearch}
+                              onChange={(e) => setContributorSearch(scrape.id, e.target.value)}
+                              placeholder="Search name, @user, email, LinkedIn, X…"
+                              aria-label="Filter contributors by name or contact"
+                              className="h-8 pl-8 text-xs bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+                            />
+                          </div>
                           <div className="flex flex-wrap items-center gap-2">
                             {(
                               [
@@ -728,6 +774,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {sorted.length} of {withContacts?.length ?? scrape.contactInfoCount} contributors
+                            {contributorSearch.trim() ? " match search" : ""}
                           </p>
                         </div>
                       )}
@@ -844,9 +891,11 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {/* Empty state: loaded but no results */}
                       {!isLoadingContributors && contributors !== null && sorted.length === 0 && (
                         <p className="text-sm text-muted-foreground text-center py-4">
-                          {activeFilters.size > 0
-                            ? "No contributors match the active filters."
-                            : "No contributors with contact information found."}
+                          {contributorSearch.trim() && filteredByToggles.length > 0
+                            ? "No contributors match your search."
+                            : activeFilters.size > 0
+                              ? "No contributors match the active filters."
+                              : "No contributors with contact information found."}
                         </p>
                       )}
                       </div>{/* end scrollable list */}
@@ -872,6 +921,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       exportToCSV,
       exportToExcel,
       updateContributorOutreach,
+      defaultCardSettings,
+      setContributorSearch,
     ]
   )
 
