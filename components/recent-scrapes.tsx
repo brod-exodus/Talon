@@ -31,6 +31,8 @@ import {
   Copy,
   CheckCheck,
   Search,
+  AlertTriangle,
+  RotateCw,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
@@ -67,6 +69,14 @@ type CompletedScrapeSummary = {
   completedAt: string
   contributorCount: number
   contactInfoCount: number
+  error?: string
+  job?: {
+    id: string
+    status: "queued" | "running" | "succeeded" | "failed" | "canceled"
+    attempts: number
+    maxAttempts: number
+    lastError: string | null
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,7 +103,7 @@ function formatTimeAgo(date: string | Date) {
   return `${days} day${days > 1 ? "s" : ""} ago`
 }
 
-function buildCsvContent(contributors: Contributor[], target: string): string {
+function buildCsvContent(contributors: Contributor[]): string {
   const sorted = [...contributors].sort((a, b) => b.contributions - a.contributions)
   const headers = [
     "#", "Name", "Username", "GitHub Profile", "Contributions",
@@ -314,6 +324,7 @@ export type RecentScrapesHandle = {
 
 export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScrapes(_, ref) {
   const [scrapes, setScrapes] = useState<CompletedScrapeSummary[]>([])
+  const [failedScrapes, setFailedScrapes] = useState<CompletedScrapeSummary[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
   const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
@@ -330,6 +341,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const res = await fetch("/api/scrapes")
       const data = await res.json()
       setScrapes(data.completed || [])
+      setFailedScrapes(data.failed || [])
     } catch (err) {
       console.error("[v0] Failed to fetch scrapes:", err)
     } finally {
@@ -474,7 +486,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const exportToCSV = useCallback(
     (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
       const withContacts = contributors.filter(hasContactInfo)
-      const csv = buildCsvContent(withContacts, scrape.target)
+      const csv = buildCsvContent(withContacts)
       triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.csv`, "text/csv")
       toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to CSV`, duration: 3000 })
     },
@@ -484,7 +496,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const exportToExcel = useCallback(
     (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
       const withContacts = contributors.filter(hasContactInfo)
-      const csv = buildCsvContent(withContacts, scrape.target)
+      const csv = buildCsvContent(withContacts)
       triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`, "text/csv")
       toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to Excel`, duration: 3000 })
     },
@@ -494,6 +506,21 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   // ── Derived ───────────────────────────────────────────────────────────────
   const orgScrapes = useMemo(() => scrapes.filter((s) => s.type === "organization"), [scrapes])
   const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
+
+  const retryJob = useCallback(async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
+      if (!res.ok) throw new Error("Failed to retry job")
+      toast({ title: "Job queued", description: "The scrape will run again on the next worker tick." })
+      await fetchScrapes()
+    } catch (error) {
+      toast({
+        title: "Retry failed",
+        description: error instanceof Error ? error.message : "Unable to retry scrape job",
+        variant: "destructive",
+      })
+    }
+  }, [fetchScrapes, toast])
 
   // ── Per-card filter / sort state ──────────────────────────────────────────
   type ContactFilter = "email" | "linkedin" | "twitter"
@@ -926,6 +953,53 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     ]
   )
 
+  const FailedScrapes = () => {
+    if (failedScrapes.length === 0) return null
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-destructive" />
+          <h2 className="text-2xl font-semibold tracking-tight">Failed Scrapes</h2>
+        </div>
+        <div className="space-y-3">
+          {failedScrapes.map((scrape) => (
+            <Card key={scrape.id} className="border-destructive/25 bg-card">
+              <CardContent className="pt-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-sm text-foreground">{scrape.target}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {scrape.type} · {formatTimeAgo(scrape.completedAt)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="bg-transparent"
+                    disabled={!scrape.job?.id}
+                    onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
+                  >
+                    <RotateCw className="w-3 h-3 mr-1" />
+                    Retry
+                  </Button>
+                </div>
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                  {scrape.job?.lastError || scrape.error || "The scrape failed without a recorded error."}
+                </div>
+                {scrape.job && (
+                  <p className="text-xs text-muted-foreground">
+                    Attempt {scrape.job.attempts}/{scrape.job.maxAttempts} · job {scrape.job.status}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   // ── Loading skeleton (initial list load) ──────────────────────────────────
   if (isLoading) {
     return (
@@ -980,6 +1054,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        <FailedScrapes />
         <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
         <Tabs defaultValue="organizations" className="w-full">
           <TabsList className="bg-muted">

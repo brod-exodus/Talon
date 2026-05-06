@@ -5,6 +5,9 @@
 CREATE INDEX IF NOT EXISTS idx_scrape_contributors_scrape_id
   ON scrape_contributors(scrape_id);
 
+CREATE INDEX IF NOT EXISTS idx_scrape_contributors_scrape_id_contributions
+  ON scrape_contributors(scrape_id, contributions DESC);
+
 -- Needed when looking up which scrapes a contributor appears in.
 CREATE INDEX IF NOT EXISTS idx_scrape_contributors_contributor_id
   ON scrape_contributors(contributor_id);

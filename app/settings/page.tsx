@@ -1,16 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield } from "lucide-react"
+import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 
 export default function SettingsPage() {
   const [token, setToken] = useState("")
+  const [rememberToken, setRememberToken] = useState(false)
   const [slackWebhook, setSlackWebhook] = useState("")
   const [saved, setSaved] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
@@ -19,21 +22,15 @@ export default function SettingsPage() {
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedToken = localStorage.getItem("github_token")
-      if (savedToken) {
-        setToken(savedToken)
-        checkRateLimit(savedToken)
-      }
-
-      const savedSlackWebhook = localStorage.getItem("slack_webhook_url")
-      if (savedSlackWebhook) {
-        setSlackWebhook(savedSlackWebhook)
-      }
+    const stored = getStoredGithubToken()
+    if (stored.token) {
+      setToken(stored.token)
+      setRememberToken(stored.persisted)
+      void checkRateLimit(stored.token)
     }
   }, [])
 
-  const checkRateLimit = async (tokenToCheck: string) => {
+  async function checkRateLimit(tokenToCheck: string) {
     try {
       const response = await fetch("/api/rate-limit", {
         method: "POST",
@@ -49,7 +46,7 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSave = async () => {
+  async function handleSave() {
     if (!token.trim()) {
       setError("Please enter a GitHub token")
       return
@@ -74,30 +71,27 @@ export default function SettingsPage() {
         return
       }
 
-      if (typeof window !== "undefined") {
-        localStorage.setItem("github_token", token)
-      }
+      storeGithubToken(token, rememberToken)
       setRateLimit(data)
       setSaved(true)
       setError("")
 
       setTimeout(() => setSaved(false), 3000)
-    } catch (err) {
+    } catch {
       setError("Failed to verify token. Please try again.")
     }
   }
 
-  const handleClear = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("github_token")
-    }
+  function handleClear() {
+    clearStoredGithubToken()
     setToken("")
+    setRememberToken(false)
     setRateLimit(null)
     setSaved(false)
     setError("")
   }
 
-  const handleSlackSave = async () => {
+  async function handleSlackSave() {
     if (!slackWebhook.trim()) {
       setSlackError("Please enter a Slack webhook URL")
       return
@@ -109,7 +103,6 @@ export default function SettingsPage() {
     }
 
     try {
-      // Test the webhook
       const response = await fetch("/api/slack/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -121,22 +114,16 @@ export default function SettingsPage() {
         return
       }
 
-      if (typeof window !== "undefined") {
-        localStorage.setItem("slack_webhook_url", slackWebhook)
-      }
       setSlackSaved(true)
       setSlackError("")
 
       setTimeout(() => setSlackSaved(false), 3000)
-    } catch (err) {
+    } catch {
       setSlackError("Failed to verify webhook. Please try again.")
     }
   }
 
-  const handleSlackClear = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("slack_webhook_url")
-    }
+  function handleSlackClear() {
     setSlackWebhook("")
     setSlackSaved(false)
     setSlackError("")
@@ -148,7 +135,9 @@ export default function SettingsPage() {
       <main className="container mx-auto px-6 py-12 max-w-4xl">
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-2">Settings</h2>
-          <p className="text-muted-foreground">Configure your GitHub API access and notifications</p>
+          <p className="text-muted-foreground">
+            Configure Talon&apos;s GitHub access, verify rate limits, and test notification plumbing.
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -158,9 +147,19 @@ export default function SettingsPage() {
                 <Key className="w-5 h-5" />
                 GitHub Personal Access Token
               </CardTitle>
-              <CardDescription>Required for scraping repositories. Provides 5,000 requests per hour.</CardDescription>
+              <CardDescription>
+                Talon uses your token to start scrapes and unlock GitHub&apos;s authenticated rate limits.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  By default, Talon stores your token only for the current browser tab. Turn on
+                  &quot;Remember on this browser&quot; if you want it persisted in local browser storage.
+                </AlertDescription>
+              </Alert>
+
               <div className="space-y-2">
                 <Label htmlFor="token">Token</Label>
                 <Input
@@ -172,8 +171,18 @@ export default function SettingsPage() {
                   className="font-mono"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Your token is stored locally in your browser and never sent to our servers.
+                  The token is sent to Talon&apos;s server routes when you start a scrape or verify rate limits.
                 </p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-4">
+                <div>
+                  <p className="text-sm font-medium">Remember on this browser</p>
+                  <p className="text-xs text-muted-foreground">
+                    Stores the token in local browser storage instead of the current tab session.
+                  </p>
+                </div>
+                <Switch checked={rememberToken} onCheckedChange={setRememberToken} />
               </div>
 
               {error && (
@@ -186,7 +195,7 @@ export default function SettingsPage() {
               {saved && (
                 <Alert>
                   <CheckCircle2 className="h-4 w-4" />
-                  <AlertDescription>Token saved successfully!</AlertDescription>
+                  <AlertDescription>Token saved successfully.</AlertDescription>
                 </Alert>
               )}
 
@@ -209,7 +218,7 @@ export default function SettingsPage() {
 
               <div className="flex gap-3">
                 <Button onClick={handleSave} className="flex-1">
-                  Save Token
+                  Verify & Save Token
                 </Button>
                 <Button onClick={handleClear} variant="outline">
                   Clear
@@ -236,22 +245,23 @@ export default function SettingsPage() {
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">2.</span>
-                    <span>Click "Generate new token (classic)"</span>
+                    <span>Click &quot;Generate new token (classic)&quot;</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">3.</span>
-                    <span>Give it a name like "GitHub Scraper"</span>
+                    <span>Give it a name like &quot;Talon local&quot;</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">4.</span>
                     <span>
-                      Select scopes: <code className="text-xs bg-muted px-1 py-0.5 rounded">public_repo</code> and{" "}
+                      Select scopes: <code className="text-xs bg-muted px-1 py-0.5 rounded">public_repo</code>,{" "}
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">read:org</code>, and{" "}
                       <code className="text-xs bg-muted px-1 py-0.5 rounded">read:user</code>
                     </span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">5.</span>
-                    <span>Generate and copy the token</span>
+                    <span>Generate and paste the token here</span>
                   </li>
                 </ol>
               </div>
@@ -262,13 +272,22 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="w-5 h-5" />
-                Slack Notifications
+                Slack Webhook Test
               </CardTitle>
               <CardDescription>
-                Get notified in Slack when new contributors are detected in tracked organizations.
+                Send a test notification to a Slack incoming webhook before wiring it into your deployment.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  This form only sends a one-time test request. Automated watched-repo notifications use the
+                  server-side <code className="text-xs bg-muted px-1 py-0.5 rounded">SLACK_WEBHOOK_URL</code>{" "}
+                  environment variable.
+                </AlertDescription>
+              </Alert>
+
               <div className="space-y-2">
                 <Label htmlFor="slack-webhook">Webhook URL</Label>
                 <Input
@@ -280,7 +299,7 @@ export default function SettingsPage() {
                   className="font-mono"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Your webhook URL is stored locally and used to send notifications.
+                  Talon does not save this webhook in the browser. Use your deployment environment to persist it.
                 </p>
               </div>
 
@@ -294,13 +313,13 @@ export default function SettingsPage() {
               {slackSaved && (
                 <Alert>
                   <CheckCircle2 className="h-4 w-4" />
-                  <AlertDescription>Slack webhook saved and tested successfully!</AlertDescription>
+                  <AlertDescription>Slack test message sent successfully.</AlertDescription>
                 </Alert>
               )}
 
               <div className="flex gap-3">
                 <Button onClick={handleSlackSave} className="flex-1">
-                  Save & Test Webhook
+                  Send Test Message
                 </Button>
                 <Button onClick={handleSlackClear} variant="outline">
                   Clear
@@ -327,19 +346,23 @@ export default function SettingsPage() {
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">2.</span>
-                    <span>Click "Create your Slack app" and choose "From scratch"</span>
+                    <span>Create or open a Slack app and enable Incoming Webhooks</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">3.</span>
-                    <span>Enable "Incoming Webhooks" and click "Add New Webhook to Workspace"</span>
+                    <span>Add a webhook to the workspace and choose a channel</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">4.</span>
-                    <span>Select the channel where you want notifications</span>
+                    <span>Paste the URL above to send a test message</span>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-semibold text-foreground">5.</span>
-                    <span>Copy the webhook URL and paste it above</span>
+                    <span>
+                      Store the same value in your deployment as{" "}
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">SLACK_WEBHOOK_URL</code> to enable
+                      automated alerts
+                    </span>
                   </li>
                 </ol>
               </div>

@@ -12,6 +12,7 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+import { getStoredGithubToken } from "@/lib/client-secrets"
 
 
 // ─── Starfield Canvas ─────────────────────────────────────────────────────────
@@ -230,7 +231,7 @@ export function ScrapeForm() {
     async (e: React.FormEvent) => {
       e.preventDefault()
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("github_token") : null
+      const { token } = getStoredGithubToken()
 
       if (!token) {
         toast({
@@ -257,16 +258,10 @@ export function ScrapeForm() {
 
         const data = await response.json()
 
-        fetch(`/api/scrape/${data.scrapeId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target: target.trim(), token, minContributions }),
-        })
-
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
         toast({
-          title: "Scrape started",
-          description: `Processing ${target}...${rateLimitMsg}`,
+          title: "Scrape queued",
+          description: `Queued ${target} for processing.${rateLimitMsg}`,
         })
 
         setTarget("")
@@ -403,7 +398,7 @@ export function ScrapeForm() {
           <Alert className="border-yellow-500/50 bg-yellow-500/10">
             <AlertCircle className="h-4 w-4 text-yellow-500" />
             <AlertDescription className="text-xs text-yellow-500">
-              You've already scraped this {type}. Scraping again will create a duplicate.
+              You have already scraped this {type}. Scraping again will create a duplicate.
             </AlertDescription>
           </Alert>
         )}

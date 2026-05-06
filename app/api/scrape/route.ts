@@ -1,17 +1,32 @@
+import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
+import { requireAuth } from "@/lib/auth"
 import { createGitHubClient } from "@/lib/github"
-import { createScrape } from "@/lib/db"
+import { createScrape, createScrapeJob } from "@/lib/db"
+import {
+  normalizeGithubToken,
+  normalizeScrapeTarget,
+  parseMinContributions,
+  parseScrapeType,
+  readJsonObject,
+} from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
+  const authError = requireAuth(request)
+  if (authError) return authError
+
   try {
-    const body = await request.json()
-    const type = body.type
-    const target = body.target?.trim()
-    const token = body.token
-    const minContributions: number = Math.max(1, Math.floor(Number(body.minContributions) || 1))
+    const body = await readJsonObject(request)
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    const type = parseScrapeType(body.type)
+    const target = type ? normalizeScrapeTarget(type, body.target) : null
+    const token = normalizeGithubToken(body.token)
+    const minContributions = parseMinContributions(body.minContributions)
 
     if (!type || !target) {
-      return NextResponse.json({ error: "Missing type or target" }, { status: 400 })
+      return NextResponse.json({ error: "Missing or invalid type or target" }, { status: 400 })
     }
 
     if (!token) {
@@ -29,12 +44,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const scrapeId = `scrape-${Date.now()}-${Math.random().toString(36).substring(7)}`
+    const scrapeId = `scrape-${randomUUID()}`
     await createScrape(scrapeId, type, target, minContributions)
+    await createScrapeJob(scrapeId, type, target, minContributions)
 
     return NextResponse.json({
       scrapeId,
-      message: "Scrape started",
+      message: "Scrape queued",
       rateLimit: {
         limit: rateLimit.resources.core.limit,
         remaining: rateLimit.resources.core.remaining,

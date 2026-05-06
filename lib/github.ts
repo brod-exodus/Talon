@@ -48,7 +48,7 @@ export function extractContactsFromBio(text: string | null | undefined): BioCont
 
   // Twitter/X: @handle or twitter.com/handle or x.com/handle
   const twitterHandleMatch =
-    s.match(/(?:^|[\s(])@([a-zA-Z0-9_]{1,15})(?=[\s)]|$)/)?.[1] ??
+    s.match(/(?:^|[\s(])@([a-zA-Z0-9_]{1,15})(?=[\s),.;!?]|$)/)?.[1] ??
     s.match(/(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)/i)?.[1]
   if (twitterHandleMatch) result.twitter = twitterHandleMatch
 
@@ -121,6 +121,12 @@ export interface Repository {
   archived: boolean
 }
 
+type GitHubRepositoryResponse = {
+  full_name: string
+  fork: boolean
+  archived: boolean
+}
+
 export interface ScrapeProgress {
   current: number
   total: number
@@ -128,54 +134,227 @@ export interface ScrapeProgress {
   contributors: Contributor[]
 }
 
+export type GitHubRateLimit = {
+  resources: {
+    core: {
+      limit: number
+      remaining: number
+      reset: number
+    }
+  }
+}
+
+export type GitHubClientOptions = {
+  maxRetries?: number
+  requestTimeoutMs?: number
+  maxRetryDelayMs?: number
+  fetchImpl?: typeof fetch
+}
+
+type GitHubResponsePayload<T> = {
+  data: T
+  headers: Headers
+}
+
+type RetryDecision = {
+  retryable: boolean
+  delayMs: number
+  reason: string
+}
+
+const DEFAULT_MAX_RETRIES = 3
+const DEFAULT_REQUEST_TIMEOUT_MS = 20000
+const DEFAULT_MAX_RETRY_DELAY_MS = 30000
+
+export class GitHubApiError extends Error {
+  status?: number
+  retryAfterMs?: number
+  rateLimitResetAt?: Date
+  responseBody?: string
+
+  constructor(
+    message: string,
+    options: {
+      status?: number
+      retryAfterMs?: number
+      rateLimitResetAt?: Date
+      responseBody?: string
+      cause?: unknown
+    } = {}
+  ) {
+    super(message, { cause: options.cause })
+    this.name = "GitHubApiError"
+    this.status = options.status
+    this.retryAfterMs = options.retryAfterMs
+    this.rateLimitResetAt = options.rateLimitResetAt
+    this.responseBody = options.responseBody
+  }
+}
+
+export function parseRetryAfterMs(value: string | null, now = Date.now()): number | null {
+  if (!value) return null
+
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+
+  const dateMs = Date.parse(value)
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - now)
+
+  return null
+}
+
+export function parseRateLimitResetMs(value: string | null, now = Date.now()): number | null {
+  if (!value) return null
+
+  const resetSeconds = Number(value)
+  if (!Number.isFinite(resetSeconds) || resetSeconds <= 0) return null
+
+  return Math.max(0, resetSeconds * 1000 - now)
+}
+
+export function getGitHubRetryDecision(
+  status: number,
+  headers: Pick<Headers, "get">,
+  body = "",
+  attempt = 0,
+  now = Date.now()
+): RetryDecision {
+  const retryAfterMs = parseRetryAfterMs(headers.get("retry-after"), now)
+  const rateLimitResetMs = parseRateLimitResetMs(headers.get("x-ratelimit-reset"), now)
+  const remaining = headers.get("x-ratelimit-remaining")
+  const normalizedBody = body.toLowerCase()
+  const isPrimaryRateLimit = (status === 403 || status === 429) && remaining === "0"
+  const isSecondaryRateLimit =
+    status === 403 &&
+    (normalizedBody.includes("secondary rate limit") ||
+      normalizedBody.includes("abuse detection") ||
+      normalizedBody.includes("temporarily blocked"))
+
+  if (retryAfterMs !== null) {
+    return { retryable: true, delayMs: retryAfterMs, reason: "retry-after" }
+  }
+
+  if (isPrimaryRateLimit && rateLimitResetMs !== null) {
+    return { retryable: true, delayMs: rateLimitResetMs, reason: "primary-rate-limit" }
+  }
+
+  if (isSecondaryRateLimit) {
+    return { retryable: true, delayMs: Math.min(60000, 5000 * 2 ** attempt), reason: "secondary-rate-limit" }
+  }
+
+  if (status === 408 || status === 409 || status === 425 || status >= 500) {
+    return { retryable: true, delayMs: Math.min(30000, 1000 * 2 ** attempt), reason: "transient-http" }
+  }
+
+  return { retryable: false, delayMs: 0, reason: "terminal-http" }
+}
+
 class GitHubClient {
   private token: string
   private baseUrl = "https://api.github.com"
+  private maxRetries: number
+  private requestTimeoutMs: number
+  private maxRetryDelayMs: number
+  private fetchImpl: typeof fetch
 
-  constructor(token?: string) {
+  constructor(token?: string, options: GitHubClientOptions = {}) {
     this.token = token || process.env.GITHUB_TOKEN || ""
+    this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+    this.maxRetryDelayMs = options.maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS
+    this.fetchImpl = options.fetchImpl ?? fetch
   }
 
-  private async fetch(url: string) {
-    console.log("[v0] Fetching:", url)
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `token ${this.token}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-      redirect: "follow", // Added redirect: 'follow' to handle 301 redirects when repos are moved/renamed
-    })
-
-    if (!response.ok) {
-      const errorBody = await response.text()
-      console.error("[v0] GitHub API error:", response.status, errorBody)
-      throw new Error(`GitHub API error: ${response.statusText} - ${errorBody}`)
+  private headers(): HeadersInit {
+    return {
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      Accept: "application/vnd.github.v3+json",
     }
+  }
 
-    if (response.status === 204) {
-      console.log("[v0] 204 No Content - returning empty array")
-      return []
-    }
+  private repoPath(repo: string): string {
+    return repo.split("/").map(encodeURIComponent).join("/")
+  }
 
-    const contentLength = response.headers.get("content-length")
-    if (contentLength === "0") {
-      console.log("[v0] Empty response body - returning empty array")
-      return []
-    }
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+  }
 
-    try {
-      const text = await response.text()
-      if (!text || text.trim() === "") {
-        console.log("[v0] Empty text response - returning empty array")
-        return []
+  private requestErrorMessage(status: number, statusText: string, body: string): string {
+    const cleanedBody = body.trim().replace(/\s+/g, " ")
+    const detail = cleanedBody ? ` - ${cleanedBody.slice(0, 500)}` : ""
+    return `GitHub API error: ${status} ${statusText}${detail}`
+  }
+
+  private async fetchJson<T = unknown>(url: string): Promise<GitHubResponsePayload<T>> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs)
+
+      try {
+        const response = await this.fetchImpl(url, {
+          headers: this.headers(),
+          redirect: "follow",
+          signal: controller.signal,
+        })
+
+        if (response.status === 204) return { data: [] as T, headers: response.headers }
+
+        if (!response.ok) {
+          const body = await response.text()
+          const decision = getGitHubRetryDecision(response.status, response.headers, body, attempt)
+          const canRetry = attempt < this.maxRetries && decision.retryable && decision.delayMs <= this.maxRetryDelayMs
+
+          if (canRetry) {
+            await this.sleep(Math.max(decision.delayMs, 1000 * 2 ** attempt))
+            continue
+          }
+
+          const resetMs = parseRateLimitResetMs(response.headers.get("x-ratelimit-reset"))
+          const retryAfterMs = decision.retryable ? decision.delayMs : resetMs ?? undefined
+          const resetAt = resetMs !== null ? new Date(Date.now() + resetMs) : undefined
+          throw new GitHubApiError(this.requestErrorMessage(response.status, response.statusText, body), {
+            status: response.status,
+            retryAfterMs,
+            rateLimitResetAt: resetAt,
+            responseBody: body,
+          })
+        }
+
+        const contentLength = response.headers.get("content-length")
+        if (contentLength === "0") return { data: [] as T, headers: response.headers }
+
+        const text = await response.text()
+        if (!text.trim()) return { data: [] as T, headers: response.headers }
+        return { data: JSON.parse(text) as T, headers: response.headers }
+      } catch (error) {
+        if (error instanceof GitHubApiError) throw error
+
+        const isTimeout = error instanceof Error && error.name === "AbortError"
+        lastError =
+          error instanceof Error
+            ? new GitHubApiError(
+                isTimeout
+                  ? `GitHub request timed out after ${this.requestTimeoutMs}ms`
+                  : `GitHub request failed: ${error.message}`,
+                { cause: error }
+              )
+            : new GitHubApiError("Unknown GitHub request error")
+        if (attempt >= this.maxRetries) break
+        await this.sleep(1000 * 2 ** attempt)
+      } finally {
+        clearTimeout(timeout)
       }
-      return JSON.parse(text)
-    } catch (error) {
-      console.error("[v0] JSON parse error:", error)
-      console.log("[v0] Returning empty array due to parse error")
-      return []
     }
+
+    throw lastError ?? new GitHubApiError("GitHub request failed")
+  }
+
+  private async fetch<T = unknown>(url: string): Promise<T> {
+    const { data } = await this.fetchJson<T>(url)
+    return data
   }
 
   async getOrgRepos(org: string): Promise<Repository[]> {
@@ -183,14 +362,16 @@ class GitHubClient {
     const all: Repository[] = []
     let page = 1
     while (true) {
-      const batch = await this.fetch(`${this.baseUrl}/orgs/${org}/repos?per_page=100&page=${page}`)
+      const { data: batch, headers } = await this.fetchJson<GitHubRepositoryResponse[]>(
+        `${this.baseUrl}/orgs/${encodeURIComponent(org)}/repos?per_page=100&page=${page}`
+      )
       if (!batch || batch.length === 0) break
-      all.push(...batch.map((repo: any) => ({
+      all.push(...batch.map((repo) => ({
         full_name: repo.full_name,
         fork: repo.fork,
         archived: repo.archived,
       })))
-      if (batch.length < 100) break
+      if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
       page++
     }
     console.log("[v0] Found repos:", all.length)
@@ -202,10 +383,12 @@ class GitHubClient {
     const all: Contributor[] = []
     let page = 1
     while (true) {
-      const batch = await this.fetch(`${this.baseUrl}/repos/${repo}/contributors?per_page=100&page=${page}`)
+      const { data: batch, headers } = await this.fetchJson<Contributor[]>(
+        `${this.baseUrl}/repos/${this.repoPath(repo)}/contributors?per_page=100&page=${page}`
+      )
       if (!batch || batch.length === 0) break
       all.push(...batch)
-      if (batch.length < 100) break
+      if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
       page++
     }
     console.log("[v0] Found contributors:", all.length)
@@ -214,27 +397,28 @@ class GitHubClient {
 
   async getUserDetails(username: string): Promise<Contributor> {
     console.log("[v0] Getting details for user:", username)
-    return await this.fetch(`${this.baseUrl}/users/${username}`)
+    return await this.fetch(`${this.baseUrl}/users/${encodeURIComponent(username)}`)
   }
 
   async getUserSocialAccounts(username: string): Promise<SocialAccount[]> {
     console.log("[v0] Getting social accounts for user:", username)
     try {
-      const data = await this.fetch(`${this.baseUrl}/users/${username}/social_accounts`)
+      const data = await this.fetch(`${this.baseUrl}/users/${encodeURIComponent(username)}/social_accounts`)
       return Array.isArray(data) ? data : []
     } catch (err) {
+      if (err instanceof GitHubApiError && err.status !== 404) throw err
       // 404 or empty response is normal for users with no social accounts set
       console.warn(`[v0] Could not fetch social accounts for ${username}:`, err)
       return []
     }
   }
 
-  async getRateLimit() {
-    return await this.fetch(`${this.baseUrl}/rate_limit`)
+  async getRateLimit(): Promise<GitHubRateLimit> {
+    return await this.fetch<GitHubRateLimit>(`${this.baseUrl}/rate_limit`)
   }
 }
 
-export const createGitHubClient = (token?: string) => new GitHubClient(token)
+export const createGitHubClient = (token?: string, options?: GitHubClientOptions) => new GitHubClient(token, options)
 
 // Keep backward compatibility
 export const githubClient = new GitHubClient()
