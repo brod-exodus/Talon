@@ -1,6 +1,5 @@
 {
   "crons": [
-    { "path": "/api/scrape-jobs/run", "schedule": "*/5 * * * *" },
     { "path": "/api/watched-repos/check", "schedule": "0 9 * * *" }
   ]
 }

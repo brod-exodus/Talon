@@ -81,14 +81,19 @@ The baseline schema enables RLS and intentionally creates no anon policies. Talo
 
 ## Cron Jobs
 
-`vercel.json` defines two cron routes:
+`vercel.json` defines the daily cron route supported by Vercel Hobby:
 
 | Route | Schedule | Purpose |
 | --- | --- | --- |
-| `/api/scrape-jobs/run` | Every 5 minutes | Claims and runs one queued scrape job. |
 | `/api/watched-repos/check` | Daily at 09:00 UTC | Checks watched repos for new contributors and can send Slack alerts. |
 
-Both cron endpoints accept `Authorization: Bearer $CRON_SECRET`. `/api/scrape-jobs/run` also accepts an authenticated admin session for manual worker runs.
+Cron endpoints accept `Authorization: Bearer $CRON_SECRET`.
+
+Durable scrape jobs are processed by `POST /api/scrape-jobs/run`. That endpoint is intentionally not listed in `vercel.json` because Vercel Hobby accounts only support daily cron schedules, and scrape queues need a more frequent worker cadence. Use one of these options:
+
+- Vercel Pro: add `/api/scrape-jobs/run` with a frequent schedule such as `*/5 * * * *`.
+- External scheduler: call `POST /api/scrape-jobs/run` every few minutes with `Authorization: Bearer $CRON_SECRET`.
+- Manual admin run: call the endpoint from an authenticated admin session during testing.
 
 ## Health Diagnostics
 
@@ -134,7 +139,8 @@ CI runs the same gates with `pnpm install --frozen-lockfile`.
 - Use a strong `TALON_ADMIN_PASSWORD`, `TALON_SESSION_SECRET`, and `CRON_SECRET`.
 - Confirm `SUPABASE_SERVICE_ROLE_KEY` is set and never exposed to the browser.
 - Keep Supabase RLS enabled; do not add broad anon policies for private app tables.
-- Confirm Vercel cron is enabled and sends `CRON_SECRET` to protected cron routes.
+- Confirm Vercel cron is enabled for watched-repo checks.
+- Configure a frequent scrape-worker trigger for `/api/scrape-jobs/run` using Vercel Pro cron or an external scheduler.
 - Configure `GITHUB_TOKEN` with enough rate limit for scrape jobs.
 - Configure `SLACK_WEBHOOK_URL` only if watched-repo Slack alerts should be sent.
 - Confirm `/api/health` reports `ok` after deployment.
