@@ -1,11 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { requireAuth } from "@/lib/auth"
+import { normalizeGithubToken, readJsonObject } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
-  try {
-    const { token } = await request.json()
+  const authError = requireAuth(request)
+  if (authError) return authError
 
+  try {
+    const body = await readJsonObject(request)
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+
+    const token = normalizeGithubToken(body.token)
     if (!token) {
-      return NextResponse.json({ error: "Token required" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid GitHub token" }, { status: 400 })
     }
 
     const response = await fetch("https://api.github.com/rate_limit", {
@@ -27,7 +36,7 @@ export async function POST(request: NextRequest) {
       remaining,
       reset,
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to check rate limit" }, { status: 500 })
   }
 }

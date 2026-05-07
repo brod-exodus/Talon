@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import { hasCronSecret, requireAuth } from "@/lib/auth"
 import { supabase } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
@@ -34,7 +35,12 @@ async function sendSlackNotification(
   }
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!hasCronSecret(request)) {
+    const authError = requireAuth(request)
+    if (authError) return authError
+  }
+
   const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL
   const githubToken = process.env.GITHUB_TOKEN
 

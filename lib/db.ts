@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
@@ -9,7 +10,7 @@ export type ScrapeRow = {
   id: string
   type: string
   target: string
-  status: "active" | "completed" | "failed"
+  status: "active" | "completed" | "failed" | "canceled"
   progress: number
   current: number
   total: number
@@ -43,6 +44,121 @@ export type ScrapeContributorRow = {
   scrape_id: string
   contributor_id: string
   contributions: number
+}
+
+export type ScrapeJobContributionRow = {
+  job_id: string
+  github_login: string
+  contributions: number
+  updated_at: string
+}
+
+export type ScrapeJobEventRow = {
+  id: string
+  job_id: string | null
+  scrape_id: string | null
+  event_type: string
+  message: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type ScrapeJobEventSummary = {
+  id: string
+  jobId: string | null
+  scrapeId: string | null
+  eventType: string
+  message: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+type ScrapeContributorPageRow = {
+  contributor_id: string
+  github_username: string
+  name: string | null
+  avatar_url: string | null
+  bio: string | null
+  location: string | null
+  company: string | null
+  email: string | null
+  twitter: string | null
+  linkedin: string | null
+  website: string | null
+  contacted: boolean
+  contacted_date: string | null
+  outreach_notes: string | null
+  status: string | null
+  contributions: number
+  contributor_total: number
+}
+
+export type ScrapeJobRow = {
+  id: string
+  scrape_id: string
+  type: "organization" | "repository"
+  target: string
+  min_contributions: number
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled"
+  attempts: number
+  max_attempts: number
+  run_after: string
+  locked_at: string | null
+  locked_by: string | null
+  last_error: string | null
+  state: Record<string, unknown>
+  cancel_requested: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ScrapeJobSummary = {
+  id: string
+  scrapeId: string
+  type: "organization" | "repository"
+  target: string
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled"
+  attempts: number
+  maxAttempts: number
+  runAfter: string
+  lockedAt: string | null
+  lockedBy: string | null
+  lastError: string | null
+  cancelRequested: boolean
+  recentEvents?: ScrapeJobEventSummary[]
+  createdAt: string
+  updatedAt: string
+}
+
+function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
+  return {
+    id: row.id,
+    scrapeId: row.scrape_id,
+    type: row.type,
+    target: row.target,
+    status: row.status,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    runAfter: row.run_after,
+    lockedAt: row.locked_at,
+    lockedBy: row.locked_by,
+    lastError: row.last_error,
+    cancelRequested: row.cancel_requested,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function toScrapeJobEventSummary(row: ScrapeJobEventRow): ScrapeJobEventSummary {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    scrapeId: row.scrape_id,
+    eventType: row.event_type,
+    message: row.message,
+    metadata: row.metadata ?? {},
+    createdAt: row.created_at,
+  }
 }
 
 // App-facing contributor shape (from DB + scrape_contributors.contributions)
@@ -107,6 +223,343 @@ export async function createScrape(
     min_contributions: Math.max(1, Math.floor(minContributions)),
   })
   if (error) throw error
+}
+
+export async function createScrapeJob(
+  scrapeId: string,
+  type: "organization" | "repository",
+  target: string,
+  minContributions = 1
+): Promise<ScrapeJobRow> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .insert({
+      scrape_id: scrapeId,
+      type,
+      target,
+      min_contributions: Math.max(1, Math.floor(minContributions)),
+      status: "queued",
+      run_after: new Date().toISOString(),
+      state: {},
+      cancel_requested: false,
+    })
+    .select("*")
+    .single()
+  if (error) throw error
+  const job = data as ScrapeJobRow
+  await recordScrapeJobEvent(job.id, job.scrape_id, "queued", `Queued ${type} scrape for ${target}`, {
+    type,
+    target,
+    minContributions: Math.max(1, Math.floor(minContributions)),
+  })
+  return job
+}
+
+export async function claimNextScrapeJob(workerId: string): Promise<ScrapeJobRow | null> {
+  const now = new Date().toISOString()
+  const { data: candidates, error: selectError } = await supabase
+    .from("scrape_jobs")
+    .select("*")
+    .eq("status", "queued")
+    .lte("run_after", now)
+    .order("created_at", { ascending: true })
+    .limit(5)
+  if (selectError) throw selectError
+
+  for (const candidate of (candidates ?? []) as ScrapeJobRow[]) {
+    const { data: claimed, error: updateError } = await supabase
+      .from("scrape_jobs")
+      .update({
+        status: "running",
+        attempts: candidate.attempts + 1,
+        locked_at: now,
+        locked_by: workerId,
+        updated_at: now,
+      })
+      .eq("id", candidate.id)
+      .eq("status", "queued")
+      .select("*")
+      .maybeSingle()
+    if (updateError) throw updateError
+    if (claimed) {
+      const job = claimed as ScrapeJobRow
+      await recordScrapeJobEvent(job.id, job.scrape_id, "claimed", "Worker claimed scrape job", {
+        workerId,
+        attempt: job.attempts,
+      })
+      return job
+    }
+  }
+
+  return null
+}
+
+export async function succeedScrapeJob(id: string): Promise<"succeeded" | "canceled"> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .update({
+      status: "succeeded",
+      locked_at: null,
+      locked_by: null,
+      last_error: null,
+      cancel_requested: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("cancel_requested", false)
+    .neq("status", "canceled")
+    .select("id")
+    .maybeSingle()
+  if (error) throw error
+  if (!data) {
+    await cancelScrapeJob(id)
+    return "canceled"
+  }
+  await recordScrapeJobEvent(id, null, "succeeded", "Scrape job succeeded")
+  return "succeeded"
+}
+
+export async function updateScrapeJobState(id: string, state: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase
+    .from("scrape_jobs")
+    .update({
+      state,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function recordScrapeJobEvent(
+  jobId: string | null,
+  scrapeId: string | null,
+  eventType: string,
+  message: string,
+  metadata: Record<string, unknown> = {}
+): Promise<void> {
+  const { error } = await supabase.from("scrape_job_events").insert({
+    job_id: jobId,
+    scrape_id: scrapeId,
+    event_type: eventType,
+    message,
+    metadata,
+  })
+  if (error) {
+    console.error("[scrape-job-events] insert failed:", error)
+  }
+}
+
+export async function getScrapeJobContributionMap(jobId: string): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("scrape_job_contributions")
+      .select("github_login, contributions")
+      .eq("job_id", jobId)
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    for (const row of (data ?? []) as Pick<ScrapeJobContributionRow, "github_login" | "contributions">[]) {
+      map.set(row.github_login, row.contributions)
+    }
+    if (!data || data.length < pageSize) break
+  }
+  return map
+}
+
+export async function upsertScrapeJobContributionTotals(
+  jobId: string,
+  totals: Array<{ login: string; contributions: number }>
+): Promise<void> {
+  const now = new Date().toISOString()
+  for (let i = 0; i < totals.length; i += 500) {
+    const batch = totals.slice(i, i + 500)
+    const { error } = await supabase.from("scrape_job_contributions").upsert(
+      batch.map((row) => ({
+        job_id: jobId,
+        github_login: row.login,
+        contributions: Math.max(0, Math.floor(row.contributions)),
+        updated_at: now,
+      })),
+      { onConflict: "job_id,github_login" }
+    )
+    if (error) throw error
+  }
+}
+
+export async function getScrapeJobContributionCandidates(
+  jobId: string,
+  minContributions: number
+): Promise<Array<{ login: string; contributions: number }>> {
+  const candidates: Array<{ login: string; contributions: number }> = []
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("scrape_job_contributions")
+      .select("github_login, contributions")
+      .eq("job_id", jobId)
+      .gte("contributions", Math.max(1, Math.floor(minContributions)))
+      .order("contributions", { ascending: false })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    candidates.push(
+      ...((data ?? []) as Pick<ScrapeJobContributionRow, "github_login" | "contributions">[]).map((row) => ({
+        login: row.github_login,
+        contributions: row.contributions,
+      }))
+    )
+    if (!data || data.length < pageSize) break
+  }
+  return candidates
+}
+
+export async function getScrapeJobControl(id: string): Promise<Pick<ScrapeJobRow, "status" | "cancel_requested"> | null> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .select("status, cancel_requested")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  return data as Pick<ScrapeJobRow, "status" | "cancel_requested"> | null
+}
+
+export async function cancelScrapeJob(id: string, reason = "Scrape canceled"): Promise<ScrapeJobSummary> {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .update({
+      status: "canceled",
+      cancel_requested: true,
+      locked_at: null,
+      locked_by: null,
+      last_error: reason,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .neq("status", "succeeded")
+    .select("*")
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Succeeded scrape jobs cannot be canceled")
+
+  const job = data as ScrapeJobRow
+  const { error: scrapeError } = await supabase
+    .from("scrapes")
+    .update({
+      status: "canceled",
+      completed_at: now,
+      error: reason,
+      current_user_login: null,
+    })
+    .eq("id", job.scrape_id)
+  if (scrapeError) throw scrapeError
+
+  await recordScrapeJobEvent(job.id, job.scrape_id, "canceled", reason)
+  return toScrapeJobSummary(job)
+}
+
+export async function failScrapeJob(
+  job: ScrapeJobRow,
+  errorMessage: string,
+  options: { retryAfterMs?: number } = {}
+): Promise<"queued" | "failed"> {
+  const terminal = job.attempts >= job.max_attempts
+  const retryDelayMs =
+    options.retryAfterMs && Number.isFinite(options.retryAfterMs)
+      ? Math.max(60 * 1000, options.retryAfterMs)
+      : Math.min(60, 2 ** job.attempts) * 60 * 1000
+  const nextRun = new Date(Date.now() + retryDelayMs).toISOString()
+  const { error } = await supabase
+    .from("scrape_jobs")
+    .update({
+      status: terminal ? "failed" : "queued",
+      locked_at: null,
+      locked_by: null,
+      last_error: errorMessage,
+      run_after: terminal ? job.run_after : nextRun,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", job.id)
+  if (error) throw error
+  if (terminal) {
+    await failScrape(job.scrape_id, errorMessage)
+  }
+  await recordScrapeJobEvent(job.id, job.scrape_id, terminal ? "failed" : "retry_scheduled", errorMessage, {
+    nextRun: terminal ? null : nextRun,
+    attempt: job.attempts,
+    maxAttempts: job.max_attempts,
+  })
+  return terminal ? "failed" : "queued"
+}
+
+export async function getScrapeJobSummaries(limit = 50): Promise<ScrapeJobSummary[]> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  const jobs = ((data ?? []) as ScrapeJobRow[]).map(toScrapeJobSummary)
+  const jobIds = jobs.map((job) => job.id)
+  const { data: events, error: eventsError } = jobIds.length
+    ? await supabase
+        .from("scrape_job_events")
+        .select("*")
+        .in("job_id", jobIds)
+        .order("created_at", { ascending: false })
+        .limit(jobIds.length * 5)
+    : { data: [], error: null }
+  if (eventsError) throw eventsError
+
+  const eventsByJob = new Map<string, ScrapeJobEventSummary[]>()
+  for (const event of ((events ?? []) as ScrapeJobEventRow[]).map(toScrapeJobEventSummary)) {
+    if (!event.jobId) continue
+    const list = eventsByJob.get(event.jobId) ?? []
+    if (list.length < 5) list.push(event)
+    eventsByJob.set(event.jobId, list)
+  }
+
+  return jobs.map((job) => ({ ...job, recentEvents: eventsByJob.get(job.id) ?? [] }))
+}
+
+export async function retryScrapeJob(id: string): Promise<ScrapeJobSummary> {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .update({
+      status: "queued",
+      attempts: 0,
+      run_after: now,
+      locked_at: null,
+      locked_by: null,
+      last_error: null,
+      cancel_requested: false,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .in("status", ["failed", "canceled"])
+    .select("*")
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Only failed or canceled scrape jobs can be retried")
+
+  const job = data as ScrapeJobRow
+  const { error: scrapeError } = await supabase
+    .from("scrapes")
+    .update({
+      status: "active",
+      progress: 0,
+      current: 0,
+      total: 0,
+      current_user_login: null,
+      completed_at: null,
+      error: null,
+    })
+    .eq("id", job.scrape_id)
+  if (scrapeError) throw scrapeError
+
+  await recordScrapeJobEvent(job.id, job.scrape_id, "retried", "Scrape job was manually requeued")
+  return toScrapeJobSummary(job)
 }
 
 export async function updateScrapeProgress(
@@ -208,20 +661,21 @@ export async function linkScrapeContributor(
   if (error) throw error
 }
 
-export async function completeScrape(
+export type ScrapeContributorProfile = {
+  username: string
+  name: string
+  avatar: string
+  contributions: number
+  bio?: string
+  location?: string
+  company?: string
+  contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
+}
+
+export async function persistScrapeContributors(
   id: string,
-  contributors: Array<{
-    username: string
-    name: string
-    avatar: string
-    contributions: number
-    bio?: string
-    location?: string
-    company?: string
-    contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
-  }>
+  contributors: ScrapeContributorProfile[]
 ): Promise<void> {
-  let contactInfoCount = 0
   for (const c of contributors) {
     const contributorId = await upsertContributor({
       github_username: c.username,
@@ -236,15 +690,65 @@ export async function completeScrape(
       website: c.contacts?.website ?? null,
     })
     await linkScrapeContributor(id, contributorId, c.contributions)
-    if (
-      c.contacts?.email?.trim() ||
-      c.contacts?.twitter?.trim() ||
-      c.contacts?.linkedin?.trim() ||
-      c.contacts?.website?.trim()
-    ) {
-      contactInfoCount++
-    }
   }
+}
+
+export async function getScrapeContributorUsernames(id: string): Promise<Set<string>> {
+  const { data: links, error: linkError } = await supabase
+    .from("scrape_contributors")
+    .select("contributor_id")
+    .eq("scrape_id", id)
+  if (linkError) throw linkError
+  if (!links?.length) return new Set()
+
+  const contributorIds = links.map((link) => link.contributor_id)
+  const usernames = new Set<string>()
+  for (let i = 0; i < contributorIds.length; i += 100) {
+    const batch = contributorIds.slice(i, i + 100)
+    const { data: contributors, error } = await supabase
+      .from("contributors")
+      .select("github_username")
+      .in("id", batch)
+    if (error) throw error
+    for (const contributor of contributors ?? []) usernames.add(contributor.github_username)
+  }
+  return usernames
+}
+
+export async function getScrapeContributorStats(id: string): Promise<{
+  contributorTotal: number
+  contactInfoCount: number
+}> {
+  const { data: links, error: linkError } = await supabase
+    .from("scrape_contributors")
+    .select("contributor_id")
+    .eq("scrape_id", id)
+  if (linkError) throw linkError
+  if (!links?.length) return { contributorTotal: 0, contactInfoCount: 0 }
+
+  const contributorIds = links.map((link) => link.contributor_id)
+  let contactInfoCount = 0
+  for (let i = 0; i < contributorIds.length; i += 100) {
+    const batch = contributorIds.slice(i, i + 100)
+    const { data: contributors, error } = await supabase
+      .from("contributors")
+      .select("email, twitter, linkedin, website")
+      .in("id", batch)
+    if (error) throw error
+    contactInfoCount += (contributors ?? []).filter((c) =>
+      [c.email, c.twitter, c.linkedin, c.website].some((value) => value != null && String(value).trim() !== "")
+    ).length
+  }
+
+  return { contributorTotal: links.length, contactInfoCount }
+}
+
+export async function completeScrape(
+  id: string,
+  contributors: ScrapeContributorProfile[]
+): Promise<void> {
+  await persistScrapeContributors(id, contributors)
+  const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
   const { error } = await supabase
     .from("scrapes")
     .update({
@@ -253,7 +757,7 @@ export async function completeScrape(
       error: null,
       current_user_login: null,
       contact_info_count: contactInfoCount,
-      total_contributors: contributors.length,
+      total_contributors: contributorTotal,
     })
     .eq("id", id)
   if (error) throw error
@@ -365,6 +869,8 @@ export type ScrapeSummary = {
   completedAt: string
   contributorCount: number
   contactInfoCount: number  // requires: ALTER TABLE scrapes ADD COLUMN contact_info_count INTEGER DEFAULT 0;
+  error?: string
+  job?: ScrapeJobSummary
 }
 
 /**
@@ -380,18 +886,28 @@ export async function getScrapes(): Promise<{
     total: number
     currentUser?: string
     startedAt: string
+    job?: ScrapeJobSummary
   }>
+  failed: ScrapeSummary[]
   completed: ScrapeSummary[]
 }> {
   const { data: rows, error } = await supabase
     .from("scrapes")
     .select(
-      "id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, contact_info_count, total_contributors"
+      "id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors"
     )
     .order("started_at", { ascending: false })
   if (error) throw error
 
+  const scrapeIds = (rows ?? []).map((row) => row.id)
+  const { data: jobRows, error: jobError } = scrapeIds.length
+    ? await supabase.from("scrape_jobs").select("*").in("scrape_id", scrapeIds)
+    : { data: [], error: null }
+  if (jobError) throw jobError
+  const jobMap = new Map(((jobRows ?? []) as ScrapeJobRow[]).map((job) => [job.scrape_id, toScrapeJobSummary(job)]))
+
   const completedRows = (rows ?? []).filter((r) => r.status === "completed")
+  const failedRows = (rows ?? []).filter((r) => r.status === "failed" || r.status === "canceled")
 
   const active = (rows ?? [])
     .filter((r) => r.status === "active")
@@ -404,6 +920,7 @@ export async function getScrapes(): Promise<{
       total: r.total,
       currentUser: r.current_user_login ?? undefined,
       startedAt: r.started_at,
+      job: jobMap.get(r.id),
     }))
 
   const completed: ScrapeSummary[] = completedRows.map((r) => ({
@@ -413,21 +930,35 @@ export async function getScrapes(): Promise<{
     completedAt: r.completed_at ?? r.started_at,
     contributorCount: r.total_contributors ?? 0,
     contactInfoCount: r.contact_info_count ?? 0,
+    job: jobMap.get(r.id),
   }))
 
-  return { active, completed }
+  const failed: ScrapeSummary[] = failedRows.map((r) => ({
+    id: r.id,
+    target: r.target,
+    type: r.type,
+    completedAt: r.completed_at ?? r.started_at,
+    contributorCount: r.total_contributors ?? 0,
+    contactInfoCount: r.contact_info_count ?? 0,
+    error: r.error ?? undefined,
+    job: jobMap.get(r.id),
+  }))
+
+  return { active, failed, completed }
 }
 
 const PAGE_SIZE = 100
 
-/**
- * Fetch one page of contributors for a scrape.
- *
- * Deliberately avoids PostgREST count/range headers entirely — those features
- * trigger Bad Request on large result sets in some Supabase versions.
- * Instead: fetch all link IDs in one plain query, slice in JS, then fetch the
- * contributor rows for just that slice.
- */
+async function getStoredContributorTotal(scrapeId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("scrapes")
+    .select("total_contributors")
+    .eq("id", scrapeId)
+    .maybeSingle()
+  if (error) throw error
+  return data?.total_contributors ?? 0
+}
+
 export async function getScrapeContributorsPage(
   scrapeId: string,
   page: number,
@@ -438,77 +969,43 @@ export async function getScrapeContributorsPage(
   page: number
   hasMore: boolean
 }> {
-  console.log(`[db] getScrapeContributorsPage START – scrapeId=${scrapeId} page=${page} pageSize=${pageSize}`)
+  const safePageSize = Math.min(500, Math.max(1, Math.floor(pageSize)))
+  const safePage = Math.max(1, Math.floor(page))
+  const offset = (safePage - 1) * safePageSize
+  const { data, error } = await supabase.rpc("get_scrape_contributors_page", {
+    p_scrape_id: scrapeId,
+    p_limit: safePageSize,
+    p_offset: offset,
+  })
+  if (error) throw error
 
-  // Query 1: fetch all (contributor_id, contributions) pairs for this scrape — no count, no range.
-  console.log(`[db] Q1 START – scrape_contributors.select where scrape_id=${scrapeId}`)
-  let allLinks: { contributor_id: string; contributions: number }[]
-  try {
-    const { data, error: linksError } = await supabase
-      .from("scrape_contributors")
-      .select("contributor_id, contributions")
-      .eq("scrape_id", scrapeId)
-    if (linksError) {
-      console.error("[db] Q1 FAILED – scrape_contributors query\n" + JSON.stringify(linksError, null, 2))
-      throw linksError
-    }
-    allLinks = data ?? []
-    console.log(`[db] Q1 OK – got ${allLinks.length} link rows`)
-  } catch (err) {
-    console.error("[db] Q1 THREW (unexpected) –\n" + JSON.stringify(err, null, 2))
-    throw err
-  }
-
-  const contributorTotal = allLinks.length
-
-  if (contributorTotal === 0) {
-    console.log("[db] getScrapeContributorsPage END – no contributors")
-    return { contributors: [], contributorTotal, page, hasMore: false }
-  }
-
-  // Slice in JavaScript — no PostgREST range header needed.
-  const from = (page - 1) * pageSize
-  const pageLinks = allLinks.slice(from, from + pageSize)
-  console.log(`[db] page slice from=${from} pageLinks.length=${pageLinks.length}`)
-
-  if (pageLinks.length === 0) {
-    console.log("[db] getScrapeContributorsPage END – page beyond last row")
-    return { contributors: [], contributorTotal, page, hasMore: false }
-  }
-
-  // Query 2: full contributor rows for this page's IDs only.
-  const pageIds = pageLinks.map((l) => l.contributor_id)
-  console.log(`[db] Q2 START – contributors.select where id in [${pageIds.length} ids]`)
-  let contribRows: ContributorRow[]
-  try {
-    const { data, error: contribError } = await supabase
-      .from("contributors")
-      .select("*")
-      .in("id", pageIds)
-    if (contribError) {
-      console.error("[db] Q2 FAILED – contributors query\n" + JSON.stringify(contribError, null, 2))
-      throw contribError
-    }
-    contribRows = data ?? []
-    console.log(`[db] Q2 OK – got ${contribRows.length} contributor rows`)
-  } catch (err) {
-    console.error("[db] Q2 THREW (unexpected) –\n" + JSON.stringify(err, null, 2))
-    throw err
-  }
-
-  const linkMap = new Map(pageLinks.map((l) => [l.contributor_id, l.contributions]))
-  const withContributions: ContributorWithContributions[] = contribRows.map((c) => ({
-    ...c,
-    contributions: linkMap.get(c.id) ?? 0,
+  const rows = (data ?? []) as ScrapeContributorPageRow[]
+  const contributorTotal = rows[0]?.contributor_total ?? (await getStoredContributorTotal(scrapeId))
+  const withContributions: ContributorWithContributions[] = rows.map((row) => ({
+    id: row.contributor_id,
+    github_username: row.github_username,
+    name: row.name,
+    avatar_url: row.avatar_url,
+    bio: row.bio,
+    location: row.location,
+    company: row.company,
+    email: row.email,
+    twitter: row.twitter,
+    linkedin: row.linkedin,
+    website: row.website,
+    contacted: row.contacted,
+    contacted_date: row.contacted_date,
+    outreach_notes: row.outreach_notes,
+    status: row.status,
+    contributions: row.contributions,
   }))
 
-  const hasMore = from + pageLinks.length < contributorTotal
-  console.log(`[db] getScrapeContributorsPage END – returning ${withContributions.length} contributors hasMore=${hasMore}`)
+  const hasMore = offset + rows.length < contributorTotal
 
   return {
     contributors: withContributions.map(toAppContributor),
     contributorTotal,
-    page,
+    page: safePage,
     hasMore,
   }
 }
@@ -716,9 +1213,6 @@ export async function getEcosystemContributors(ecosystemId: string): Promise<Eco
     for (const r of scrapeRows ?? []) targetMap.set(r.id, r.target as string)
   }
 
-  type Agg = { scrapeIdSet: Set<string>; totalContributions: number }
-  const aggMap = new Map<string, Agg>()
-
   const linkResults = await Promise.all(
     scrapeIds.map((scrapeId) =>
       supabase
@@ -727,19 +1221,15 @@ export async function getEcosystemContributors(ecosystemId: string): Promise<Eco
         .eq("scrape_id", scrapeId)
     )
   )
+  const allLinks: Array<{ scrape_id: string; contributor_id: string; contributions: number }> = []
   for (const { data: rows, error: linksErr } of linkResults) {
     if (linksErr) throw linksErr
-    for (const l of rows ?? []) {
-      const agg = aggMap.get(l.contributor_id) ?? { scrapeIdSet: new Set<string>(), totalContributions: 0 }
-      agg.scrapeIdSet.add(l.scrape_id)
-      agg.totalContributions += l.contributions
-      aggMap.set(l.contributor_id, agg)
-    }
+    allLinks.push(...((rows ?? []) as Array<{ scrape_id: string; contributor_id: string; contributions: number }>))
   }
 
-  if (!aggMap.size) return []
+  if (!allLinks.length) return []
 
-  const contributorIds = Array.from(aggMap.keys())
+  const contributorIds = Array.from(new Set(allLinks.map((link) => link.contributor_id)))
   const contributors: ContributorRow[] = []
   for (let i = 0; i < contributorIds.length; i += 50) {
     const batch = contributorIds.slice(i, i + 50)
@@ -748,30 +1238,7 @@ export async function getEcosystemContributors(ecosystemId: string): Promise<Eco
     contributors.push(...(batchRows ?? []))
   }
 
-  const hasContact = (c: ContributorRow) =>
-    [c.email, c.twitter, c.linkedin, c.website].some((v) => v != null && String(v).trim() !== "")
-
-  return contributors
-    .filter(hasContact)
-    .map((c) => {
-      const agg = aggMap.get(c.id)!
-      return {
-        id: c.id,
-        username: c.github_username,
-        name: c.name ?? c.github_username,
-        avatar: c.avatar_url ?? "",
-        scrapeCount: agg.scrapeIdSet.size,
-        scrapeTargets: Array.from(agg.scrapeIdSet).map((sid) => targetMap.get(sid) ?? sid),
-        totalContributions: agg.totalContributions,
-        contacts: {
-          email:    c.email    ?? undefined,
-          twitter:  c.twitter  ?? undefined,
-          linkedin: c.linkedin ?? undefined,
-          website:  c.website  ?? undefined,
-        },
-      }
-    })
-    .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
+  return aggregateEcosystemContributors(contributors, allLinks, targetMap)
 }
 
 /** Resolve a share token → full scrape with contributors, or null if not found. */

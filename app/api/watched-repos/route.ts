@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { requireAuth } from "@/lib/auth"
 import { supabase } from "@/lib/supabase"
+import { normalizeRepo, parseIntervalHours, readJsonObject } from "@/lib/validation"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = requireAuth(request)
+  if (authError) return authError
+
   try {
     const { data, error } = await supabase
       .from("watched_repos")
@@ -16,21 +21,29 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const { repo, interval_hours } = await request.json()
+  const authError = requireAuth(request)
+  if (authError) return authError
 
-    if (!repo || typeof repo !== "string" || !repo.trim()) {
+  try {
+    const body = await readJsonObject(request)
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    const normalizedRepo = normalizeRepo(body.repo)
+    const normalizedInterval = parseIntervalHours(body.interval_hours)
+
+    if (!normalizedRepo) {
       return NextResponse.json({ error: "Missing or invalid repo (expected owner/repo)" }, { status: 400 })
     }
-    if (!interval_hours || typeof interval_hours !== "number" || interval_hours <= 0) {
+    if (!normalizedInterval) {
       return NextResponse.json({ error: "Missing or invalid interval_hours" }, { status: 400 })
     }
 
     const { data, error } = await supabase
       .from("watched_repos")
       .insert({
-        repo: repo.trim(),
-        interval_hours,
+        repo: normalizedRepo,
+        interval_hours: normalizedInterval,
         active: true,
         last_checked_at: null,
       })
@@ -41,6 +54,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error("[watched-repos] POST error:", error)
+    if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+      return NextResponse.json({ error: "Repo is already being watched" }, { status: 409 })
+    }
     return NextResponse.json({ error: "Failed to add watched repo" }, { status: 500 })
   }
 }

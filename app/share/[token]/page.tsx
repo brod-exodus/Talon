@@ -136,7 +136,7 @@ export default function SharePage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-2">
           <p className="text-2xl font-bold">404</p>
-          <p className="text-muted-foreground text-sm">This shared list doesn't exist or has been deleted.</p>
+          <p className="text-muted-foreground text-sm">This shared list does not exist or has been deleted.</p>
         </div>
       </div>
     )

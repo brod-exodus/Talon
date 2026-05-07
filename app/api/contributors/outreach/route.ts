@@ -1,11 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { requireAuth } from "@/lib/auth"
 import { updateContributorOutreach } from "@/lib/db"
+import {
+  normalizeGithubUsername,
+  normalizeOptionalIsoDate,
+  normalizeOptionalNotes,
+  normalizeOptionalStatus,
+  readJsonObject,
+} from "@/lib/validation"
 
 export async function PATCH(request: NextRequest) {
+  const authError = requireAuth(request)
+  if (authError) return authError
+
   try {
-    const body = await request.json()
-    const username = body.username as string | undefined
-    if (!username || typeof username !== "string") {
+    const body = await readJsonObject(request)
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    const username = normalizeGithubUsername(body.username)
+    if (!username) {
       return NextResponse.json({ error: "Missing or invalid username" }, { status: 400 })
     }
 
@@ -16,9 +30,21 @@ export async function PATCH(request: NextRequest) {
       status?: string | null
     } = {}
     if (typeof body.contacted === "boolean") updates.contacted = body.contacted
-    if (body.contactedDate !== undefined) updates.contacted_date = body.contactedDate ?? null
-    if (body.notes !== undefined) updates.outreach_notes = body.notes ?? null
-    if (body.status !== undefined) updates.status = body.status ?? null
+    const contactedDate = normalizeOptionalIsoDate(body.contactedDate)
+    if (body.contactedDate !== undefined && contactedDate === undefined) {
+      return NextResponse.json({ error: "Invalid contactedDate" }, { status: 400 })
+    }
+    if (body.contactedDate !== undefined) updates.contacted_date = contactedDate ?? null
+    const notes = normalizeOptionalNotes(body.notes)
+    const status = normalizeOptionalStatus(body.status)
+    if (body.notes !== undefined && notes === undefined) {
+      return NextResponse.json({ error: "Invalid notes" }, { status: 400 })
+    }
+    if (body.status !== undefined && status === undefined) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 })
+    }
+    if (body.notes !== undefined) updates.outreach_notes = notes ?? null
+    if (body.status !== undefined) updates.status = status ?? null
 
     await updateContributorOutreach(username, updates)
     return NextResponse.json({ success: true })

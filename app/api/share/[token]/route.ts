@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSharedScrape } from "@/lib/db"
+import { normalizeShareToken } from "@/lib/validation"
 
 export async function GET(
   _request: NextRequest,
@@ -7,7 +8,11 @@ export async function GET(
 ) {
   try {
     const { token } = await params
-    const scrape = await getSharedScrape(token)
+    const shareToken = normalizeShareToken(token)
+    if (!shareToken) {
+      return NextResponse.json({ error: "Invalid share token" }, { status: 400 })
+    }
+    const scrape = await getSharedScrape(shareToken)
     if (!scrape) {
       return NextResponse.json({ error: "Share not found" }, { status: 404 })
     }
