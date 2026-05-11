@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     supabaseUrl: envCheck("NEXT_PUBLIC_SUPABASE_URL", { required: true }),
     supabaseAnonKey: envCheck("NEXT_PUBLIC_SUPABASE_ANON_KEY", { required: true }),
     supabaseServiceRoleKey: envCheck("SUPABASE_SERVICE_ROLE_KEY", { required: true }),
-    adminPassword: envCheck("TALON_ADMIN_PASSWORD", { required: true, minLength: 12 }),
+    adminPassword: envCheck("TALON_ADMIN_PASSWORD", { required: true }),
     sessionSecret: envCheck("TALON_SESSION_SECRET", { required: true, minLength: 32 }),
     cronSecret: envCheck("CRON_SECRET", { required: true, minLength: 32 }),
     slackWebhook: envCheck("SLACK_WEBHOOK_URL"),

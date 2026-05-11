@@ -973,16 +973,27 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {scrape.type} · {formatTimeAgo(scrape.completedAt)}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="bg-transparent"
-                    disabled={!scrape.job?.id}
-                    onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
-                  >
-                    <RotateCw className="w-3 h-3 mr-1" />
-                    Retry
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-transparent"
+                      disabled={!scrape.job?.id}
+                      onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
+                    >
+                      <RotateCw className="w-3 h-3 mr-1" />
+                      Retry
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteScrape(scrape.id)}
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
                   {scrape.job?.lastError || scrape.error || "The scrape failed without a recorded error."}
