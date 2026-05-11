@@ -474,8 +474,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const deleteScrape = useCallback(async (scrapeId: string) => {
     if (!window.confirm("Are you sure you want to permanently delete this scrape? This action cannot be undone.")) return
     try {
-      await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
+      const response = await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
+      if (!response.ok) {
+        throw new Error("Failed to delete scrape")
+      }
       setScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
+      setFailedScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
       setContributorCache((prev) => { const next = new Map(prev); next.delete(scrapeId); return next })
     } catch (err) {
       console.error("[v0] Failed to delete scrape:", err)
