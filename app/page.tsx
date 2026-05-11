@@ -5,7 +5,6 @@ import { Header } from "@/components/header"
 import { ScrapeForm } from "@/components/scrape-form"
 import { ActiveScrapes } from "@/components/active-scrapes"
 import { RecentScrapes, type RecentScrapesHandle } from "@/components/recent-scrapes"
-import { ScrapeJobsPanel } from "@/components/scrape-jobs-panel"
 import { HealthPanel } from "@/components/health-panel"
 
 export default function Home() {
@@ -29,7 +28,6 @@ export default function Home() {
           {/* Main content area */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             <HealthPanel />
-            <ScrapeJobsPanel />
             <ActiveScrapes onScrapeCompleted={handleScrapeCompleted} />
             <RecentScrapes ref={recentScrapesRef} />
           </div>
