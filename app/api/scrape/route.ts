@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { createGitHubClient } from "@/lib/github"
 import { createScrape, createScrapeJob } from "@/lib/db"
+import { runScrapeWorker } from "@/lib/scrape-worker"
 import {
   normalizeGithubToken,
   normalizeScrapeTarget,
@@ -47,10 +48,13 @@ export async function POST(request: NextRequest) {
     const scrapeId = `scrape-${randomUUID()}`
     await createScrape(scrapeId, type, target, minContributions)
     await createScrapeJob(scrapeId, type, target, minContributions)
+    const workerRun = await runScrapeWorker(1)
+    const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
 
     return NextResponse.json({
       scrapeId,
-      message: "Scrape queued",
+      message: triggered ? "Scrape started" : "Scrape queued",
+      workerTriggered: triggered,
       rateLimit: {
         limit: rateLimit.resources.core.limit,
         remaining: rateLimit.resources.core.remaining,
