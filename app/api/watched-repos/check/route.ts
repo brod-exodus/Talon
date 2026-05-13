@@ -36,7 +36,8 @@ async function sendSlackNotification(
 }
 
 export async function POST(request: NextRequest) {
-  if (!hasCronSecret(request)) {
+  const isCronRequest = hasCronSecret(request)
+  if (!isCronRequest) {
     const authError = requireAuth(request)
     if (authError) return authError
   }
@@ -54,13 +55,13 @@ export async function POST(request: NextRequest) {
       .eq("active", true)
     if (fetchError) throw fetchError
 
-    const dueRepos: WatchedRepo[] = (allWatched ?? []).filter((row) => {
+    const dueRepos: WatchedRepo[] = isCronRequest ? (allWatched ?? []).filter((row) => {
       if (!row.last_checked_at) return true
       const nextCheck = new Date(
         new Date(row.last_checked_at).getTime() + row.interval_hours * 60 * 60 * 1000
       )
       return now >= nextCheck
-    })
+    }) : (allWatched ?? [])
 
     console.log(`[watched-repos/check] ${dueRepos.length} repo(s) due for check out of ${(allWatched ?? []).length}`)
 

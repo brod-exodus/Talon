@@ -537,11 +537,11 @@ export async function retryScrapeJob(id: string): Promise<ScrapeJobSummary> {
       updated_at: now,
     })
     .eq("id", id)
-    .in("status", ["failed", "canceled"])
+    .in("status", ["failed", "canceled", "queued"])
     .select("*")
     .maybeSingle()
   if (error) throw error
-  if (!data) throw new Error("Only failed or canceled scrape jobs can be retried")
+  if (!data) throw new Error("Only failed, canceled, or queued retry scrape jobs can be retried")
 
   const job = data as ScrapeJobRow
   const { error: scrapeError } = await supabase

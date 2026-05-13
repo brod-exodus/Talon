@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ job, workerTriggered: triggered })
   } catch (error) {
     console.error("[scrape-jobs/retry] POST error:", error)
-    if (error instanceof Error && error.message.startsWith("Only failed or canceled")) {
+    if (error instanceof Error && error.message.startsWith("Only failed, canceled, or queued retry")) {
       return NextResponse.json({ error: error.message }, { status: 409 })
     }
     return NextResponse.json({ error: "Failed to retry scrape job" }, { status: 500 })

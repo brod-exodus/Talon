@@ -3,7 +3,7 @@
 import { useEffect, useState, memo, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Users, Clock, AlertTriangle, XCircle } from "lucide-react"
+import { Activity, Users, Clock, AlertTriangle, RotateCw, XCircle } from "lucide-react"
 import { motion } from "framer-motion"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -39,6 +39,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
+  const [retrying, setRetrying] = useState<Set<string>>(new Set())
   const { toast } = useToast()
   // Track whether we had active scrapes on the previous poll so we can detect
   // the non-empty → empty transition that signals a scrape just completed.
@@ -108,6 +109,30 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
       })
     } finally {
       setCanceling((prev) => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
+    }
+  }
+
+  const retryJob = async (jobId: string) => {
+    setRetrying((prev) => new Set(prev).add(jobId))
+    try {
+      const response = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to retry scrape")
+      }
+      toast({ title: "Retry started", description: "The scrape worker has been kicked off again." })
+    } catch (error) {
+      toast({
+        title: "Retry failed",
+        description: error instanceof Error ? error.message : "Unable to retry scrape",
+        variant: "destructive",
+      })
+    } finally {
+      setRetrying((prev) => {
         const next = new Set(prev)
         next.delete(jobId)
         return next
@@ -231,7 +256,19 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
                   </p>
                 )}
                 {scrape.job && scrape.job.status !== "failed" && scrape.job.status !== "canceled" && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    {scrape.job.status === "queued" && scrape.job.attempts > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-transparent"
+                        disabled={retrying.has(scrape.job.id)}
+                        onClick={() => retryJob(scrape.job!.id)}
+                      >
+                        <RotateCw className="w-4 h-4 mr-2" />
+                        Retry
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
