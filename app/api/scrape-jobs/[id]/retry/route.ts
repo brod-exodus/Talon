@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { retryScrapeJob } from "@/lib/db"
+import { runScrapeWorker } from "@/lib/scrape-worker"
 import { normalizeUuid } from "@/lib/validation"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -15,7 +16,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const job = await retryScrapeJob(jobId)
-    return NextResponse.json({ job })
+    const workerRun = await runScrapeWorker(1)
+    const triggered = workerRun.results.some((result) => result.jobId === job.id)
+    return NextResponse.json({ job, workerTriggered: triggered })
   } catch (error) {
     console.error("[scrape-jobs/retry] POST error:", error)
     if (error instanceof Error && error.message.startsWith("Only failed or canceled")) {

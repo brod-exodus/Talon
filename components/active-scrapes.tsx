@@ -88,6 +88,12 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     return "Processing"
   }
 
+  const getProgressLabel = (scrape: ActiveScrape) => {
+    if (!scrape.job) return "Processing contributors"
+    if (scrape.job.status === "queued") return "Waiting for worker"
+    return "Processing contributors"
+  }
+
   const cancelJob = async (jobId: string) => {
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
@@ -176,7 +182,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      Processing contributors
+                      {getProgressLabel(scrape)}
                     </span>
                     <motion.span
                       key={Math.round(scrape.progress)}

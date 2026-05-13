@@ -124,8 +124,10 @@ export function WatchedRepos() {
 
   const handleManualCheck = useCallback(async () => {
     setIsChecking(true)
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 25000)
     try {
-      const res = await fetch("/api/watched-repos/check", { method: "POST" })
+      const res = await fetch("/api/watched-repos/check", { method: "POST", signal: controller.signal })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Check failed")
 
@@ -139,12 +141,21 @@ export function WatchedRepos() {
       })
       await fetchRepos()
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        toast({
+          title: "Check still running",
+          description: "Manual check is taking longer than expected. Refresh in a moment for updated results.",
+        })
+        await fetchRepos()
+        return
+      }
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : "Check failed",
         variant: "destructive",
       })
     } finally {
+      window.clearTimeout(timeoutId)
       setIsChecking(false)
     }
   }, [toast, fetchRepos])
