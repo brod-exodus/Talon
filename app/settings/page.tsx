@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 
 type AuditEvent = {
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
+  const [auditExporting, setAuditExporting] = useState(false)
 
   useEffect(() => {
     const stored = getStoredGithubToken()
@@ -180,6 +181,28 @@ export default function SettingsPage() {
       .slice(0, 3)
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
       .join(" | ")
+  }
+
+  async function exportAuditEventsCsv() {
+    setAuditExporting(true)
+    try {
+      const response = await fetch("/api/audit-events?limit=100&format=csv")
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || "Failed to export security events")
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `talon-audit-events-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setAuditEventsError(err instanceof Error ? err.message : "Failed to export security events")
+    } finally {
+      setAuditExporting(false)
+    }
   }
 
   const last24Hours = Date.now() - 24 * 60 * 60 * 1000
@@ -473,17 +496,30 @@ export default function SettingsPage() {
                     Admin login, scrape, sharing, watched-repo, and outreach changes.
                   </CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={loadAuditEvents}
-                  disabled={auditEventsLoading}
-                  className="shrink-0"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${auditEventsLoading ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={exportAuditEventsCsv}
+                    disabled={auditExporting}
+                    className="shrink-0"
+                  >
+                    <Download className={`w-4 h-4 mr-2 ${auditExporting ? "animate-pulse" : ""}`} />
+                    Export CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={loadAuditEvents}
+                    disabled={auditEventsLoading}
+                    className="shrink-0"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${auditEventsLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
