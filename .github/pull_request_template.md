@@ -2,6 +2,16 @@
 
 Describe what changed and why.
 
+## Release Ownership
+
+- [ ] Release owner assigned: `@______`
+- [ ] Rollback owner assigned: `@______`
+- [ ] Rollback plan documented below
+
+## Rollback Plan
+
+Describe how to quickly roll this back if the deploy is unhealthy.
+
 ## Validation
 
 - [ ] `pnpm verify` passes locally
