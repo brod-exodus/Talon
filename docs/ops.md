@@ -8,6 +8,19 @@
 4. Run Watched Repos `Check Now` and confirm `last checked` updates.
 5. Create a share link and open it in a private browser window.
 
+## Post-Deploy Smoke Checklist
+
+Run this after every production deploy:
+
+1. Open `/api/health` and confirm all checks are `ok`.
+2. Login with the admin password.
+3. Verify `Settings -> Recent Security Events` loads and logs new actions.
+4. Run a small scrape and confirm queued -> running -> completed.
+5. Force a failing scrape and confirm retry path works.
+6. Run Watched Repos `Check Now` and confirm `last checked` updates.
+7. Create a share link and verify read-only access in a private window.
+8. Verify Vercel deploy checks are green and no unresolved preview comments remain.
+
 ## Database Migrations
 
 Apply migrations in order from `db/migrations`.

@@ -49,14 +49,8 @@ jobs:
       - name: Check whitespace
         run: git diff --check
 
-      - name: Run tests
-        run: pnpm test
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Verify
+        run: pnpm verify
 
       - name: Build
         run: pnpm build

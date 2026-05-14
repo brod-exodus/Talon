@@ -9,6 +9,7 @@
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test",
     "start": "next start",
     "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
