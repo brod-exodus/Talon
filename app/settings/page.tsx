@@ -8,8 +8,17 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
+
+type AuditEvent = {
+  id: string
+  action: string
+  outcome: "success" | "failure" | "blocked"
+  actor: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
 
 export default function SettingsPage() {
   const [token, setToken] = useState("")
@@ -20,6 +29,9 @@ export default function SettingsPage() {
   const [error, setError] = useState("")
   const [slackError, setSlackError] = useState("")
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [auditEventsLoading, setAuditEventsLoading] = useState(false)
+  const [auditEventsError, setAuditEventsError] = useState("")
 
   useEffect(() => {
     const stored = getStoredGithubToken()
@@ -28,7 +40,23 @@ export default function SettingsPage() {
       setRememberToken(stored.persisted)
       void checkRateLimit(stored.token)
     }
+    void loadAuditEvents()
   }, [])
+
+  async function loadAuditEvents() {
+    setAuditEventsLoading(true)
+    setAuditEventsError("")
+    try {
+      const response = await fetch("/api/audit-events?limit=12")
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to load security events")
+      setAuditEvents(Array.isArray(data.events) ? data.events : [])
+    } catch (err) {
+      setAuditEventsError(err instanceof Error ? err.message : "Failed to load security events")
+    } finally {
+      setAuditEventsLoading(false)
+    }
+  }
 
   async function checkRateLimit(tokenToCheck: string) {
     try {
@@ -127,6 +155,31 @@ export default function SettingsPage() {
     setSlackWebhook("")
     setSlackSaved(false)
     setSlackError("")
+  }
+
+  function formatAuditTime(date: string) {
+    return new Date(date).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  function formatAction(action: string) {
+    return action
+      .split(".")
+      .map((part) => part.replace(/_/g, " "))
+      .join(" ")
+  }
+
+  function formatAuditMetadata(metadata: Record<string, unknown>) {
+    const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined)
+    if (!entries.length) return "No details"
+    return entries
+      .slice(0, 3)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+      .join(" | ")
   }
 
   return (
@@ -366,6 +419,68 @@ export default function SettingsPage() {
                   </li>
                 </ol>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" />
+                    Recent Security Events
+                  </CardTitle>
+                  <CardDescription>
+                    Admin login, scrape, sharing, watched-repo, and outreach changes.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={loadAuditEvents}
+                  disabled={auditEventsLoading}
+                  className="shrink-0"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${auditEventsLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {auditEventsError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {auditEventsError}. Apply the latest database migration if this is a fresh deploy.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!auditEventsError && auditEvents.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {auditEventsLoading ? "Loading security events..." : "No security events recorded yet."}
+                </p>
+              )}
+
+              {auditEvents.map((event) => (
+                <div key={event.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatAuditMetadata(event.metadata)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                        {event.outcome}
+                      </span>
+                      <p className="text-xs text-muted-foreground">{formatAuditTime(event.createdAt)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

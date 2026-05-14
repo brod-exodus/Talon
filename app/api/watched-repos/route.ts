@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { supabase } from "@/lib/supabase"
 import { normalizeRepo, parseIntervalHours, readJsonObject } from "@/lib/validation"
 
@@ -51,6 +52,12 @@ export async function POST(request: NextRequest) {
       .single()
     if (error) throw error
 
+    await recordAuditEvent({
+      request,
+      action: "watched_repo.create",
+      outcome: "success",
+      metadata: { watchedRepoId: data.id, repo: normalizedRepo, intervalHours: normalizedInterval },
+    })
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error("[watched-repos] POST error:", error)

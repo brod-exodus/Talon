@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { retryScrapeJob } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { normalizeUuid } from "@/lib/validation"
@@ -18,6 +19,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const job = await retryScrapeJob(jobId)
     const workerRun = await runScrapeWorker(1)
     const triggered = workerRun.results.some((result) => result.jobId === job.id)
+    await recordAuditEvent({
+      request,
+      action: "scrape.retry",
+      outcome: "success",
+      metadata: { jobId: job.id, scrapeId: job.scrapeId, workerTriggered: triggered },
+    })
     return NextResponse.json({ job, workerTriggered: triggered })
   } catch (error) {
     console.error("[scrape-jobs/retry] POST error:", error)

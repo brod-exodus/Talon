@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { supabase } from "@/lib/supabase"
 import { normalizeUuid } from "@/lib/validation"
 
@@ -20,6 +21,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { error } = await supabase.from("watched_repos").delete().eq("id", watchedRepoId)
     if (error) throw error
 
+    await recordAuditEvent({
+      request,
+      action: "watched_repo.delete",
+      outcome: "success",
+      metadata: { watchedRepoId },
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[watched-repos] DELETE error:", error)

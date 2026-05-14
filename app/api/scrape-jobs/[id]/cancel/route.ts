@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { cancelScrapeJob } from "@/lib/db"
 import { normalizeUuid } from "@/lib/validation"
 
@@ -15,6 +16,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const job = await cancelScrapeJob(jobId)
+    await recordAuditEvent({
+      request,
+      action: "scrape.cancel",
+      outcome: "success",
+      metadata: { jobId: job.id, scrapeId: job.scrapeId },
+    })
     return NextResponse.json({ job })
   } catch (error) {
     console.error("[scrape-jobs] cancel error:", error)

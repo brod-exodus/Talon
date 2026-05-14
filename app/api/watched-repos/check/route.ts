@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { hasCronSecret, requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { supabase } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
@@ -164,6 +165,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await recordAuditEvent({
+      request,
+      action: "watched_repo.check",
+      outcome: "success",
+      actor: isCronRequest ? "cron" : "admin",
+      metadata: {
+        checked: dueRepos.length,
+        trigger: isCronRequest ? "cron" : "manual",
+        newContributors: results.reduce((sum, result) => sum + result.newContributors, 0),
+        errors: results.filter((result) => result.error).length,
+      },
+    })
     return NextResponse.json({ checked: dueRepos.length, results })
   } catch (error) {
     console.error("[watched-repos/check] Fatal error:", error)

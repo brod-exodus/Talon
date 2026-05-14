@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { updateContributorOutreach } from "@/lib/db"
 import {
   normalizeGithubUsername,
@@ -47,6 +48,15 @@ export async function PATCH(request: NextRequest) {
     if (body.status !== undefined) updates.status = status ?? null
 
     await updateContributorOutreach(username, updates)
+    await recordAuditEvent({
+      request,
+      action: "outreach.update",
+      outcome: "success",
+      metadata: {
+        username,
+        fields: Object.keys(updates),
+      },
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Update contributor outreach error:", error)

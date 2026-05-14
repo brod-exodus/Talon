@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { createGitHubClient } from "@/lib/github"
 import { createScrape, createScrapeJob } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
@@ -50,6 +51,12 @@ export async function POST(request: NextRequest) {
     await createScrapeJob(scrapeId, type, target, minContributions)
     const workerRun = await runScrapeWorker(1)
     const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
+    await recordAuditEvent({
+      request,
+      action: "scrape.start",
+      outcome: "success",
+      metadata: { scrapeId, type, target, minContributions, workerTriggered: triggered },
+    })
 
     return NextResponse.json({
       scrapeId,

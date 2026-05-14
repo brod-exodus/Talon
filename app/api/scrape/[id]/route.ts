@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { getScrapeMetadata, getScrapeContributorsPage, deleteScrape } from "@/lib/db"
 import { normalizeScrapeId } from "@/lib/validation"
 
@@ -68,6 +69,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: "Invalid scrape id" }, { status: 400 })
     }
     await deleteScrape(scrapeId)
+    await recordAuditEvent({
+      request,
+      action: "scrape.delete",
+      outcome: "success",
+      metadata: { scrapeId },
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Delete scrape error:", error)

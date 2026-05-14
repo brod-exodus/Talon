@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordAuditEvent } from "@/lib/audit"
 import { createSharedScrape } from "@/lib/db"
 import { normalizeScrapeId, readJsonObject } from "@/lib/validation"
 
@@ -30,6 +31,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await recordAuditEvent({
+      request,
+      action: "share.create",
+      outcome: "success",
+      metadata: { scrapeId },
+    })
     return NextResponse.json({ token })
   } catch (error) {
     console.error("[share] Failed to create share:", error)
