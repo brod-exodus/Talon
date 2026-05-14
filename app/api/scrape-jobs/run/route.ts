@@ -13,10 +13,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { workerId, results } = await runScrapeWorker(MAX_JOBS_PER_INVOCATION)
+  const hasFailedResult = results.some((result) => result.status === "failed")
   await recordAuditEvent({
     request,
     action: "scrape_worker.run",
-    outcome: "success",
+    outcome: hasFailedResult ? "failure" : "success",
     actor: isCronRequest ? "cron" : "admin",
     metadata: {
       workerId,
@@ -24,6 +25,21 @@ export async function POST(request: NextRequest) {
       statuses: results.map((result) => result.status),
     },
   })
+  for (const result of results) {
+    if (result.status !== "failed") continue
+    await recordAuditEvent({
+      request,
+      action: "scrape.failure",
+      outcome: "failure",
+      actor: isCronRequest ? "cron" : "admin",
+      metadata: {
+        workerId,
+        jobId: result.jobId,
+        scrapeId: result.scrapeId,
+        error: result.error ?? "Unknown scrape job error",
+      },
+    })
+  }
 
   return NextResponse.json({ workerId, processed: results.length, results })
 }

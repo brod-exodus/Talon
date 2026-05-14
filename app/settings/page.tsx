@@ -47,7 +47,7 @@ export default function SettingsPage() {
     setAuditEventsLoading(true)
     setAuditEventsError("")
     try {
-      const response = await fetch("/api/audit-events?limit=12")
+      const response = await fetch("/api/audit-events?limit=100")
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || "Failed to load security events")
       setAuditEvents(Array.isArray(data.events) ? data.events : [])
@@ -181,6 +181,15 @@ export default function SettingsPage() {
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
       .join(" | ")
   }
+
+  const last24Hours = Date.now() - 24 * 60 * 60 * 1000
+  const recentEvents = auditEvents.filter((event) => new Date(event.createdAt).getTime() >= last24Hours)
+  const recentLockouts = recentEvents.filter(
+    (event) => event.action === "auth.login" && event.outcome === "blocked"
+  ).length
+  const recentScrapeFailures = recentEvents.filter(
+    (event) => event.action === "scrape.failure" && event.outcome === "failure"
+  ).length
 
   return (
     <div className="min-h-screen bg-background">
@@ -317,6 +326,36 @@ export default function SettingsPage() {
                     <span>Generate and paste the token here</span>
                   </li>
                 </ol>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Operational Signals
+              </CardTitle>
+              <CardDescription>
+                Alert-style summary over the last 24 hours from security events.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Admin login lockouts</p>
+                <p className="text-xs text-muted-foreground">
+                  {recentLockouts === 0
+                    ? "No lockouts in the last 24 hours."
+                    : `${recentLockouts} lockout event(s) in the last 24 hours.`}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Scrape worker failures</p>
+                <p className="text-xs text-muted-foreground">
+                  {recentScrapeFailures === 0
+                    ? "No scrape failures in the last 24 hours."
+                    : `${recentScrapeFailures} scrape failure event(s) in the last 24 hours.`}
+                </p>
               </div>
             </CardContent>
           </Card>
