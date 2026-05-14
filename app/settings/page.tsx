@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 
 type AuditEvent = {
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
+  const [auditExporting, setAuditExporting] = useState(false)
 
   useEffect(() => {
     const stored = getStoredGithubToken()
@@ -47,7 +48,7 @@ export default function SettingsPage() {
     setAuditEventsLoading(true)
     setAuditEventsError("")
     try {
-      const response = await fetch("/api/audit-events?limit=12")
+      const response = await fetch("/api/audit-events?limit=100")
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || "Failed to load security events")
       setAuditEvents(Array.isArray(data.events) ? data.events : [])
@@ -181,6 +182,37 @@ export default function SettingsPage() {
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
       .join(" | ")
   }
+
+  async function exportAuditEventsCsv() {
+    setAuditExporting(true)
+    try {
+      const response = await fetch("/api/audit-events?limit=100&format=csv")
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || "Failed to export security events")
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `talon-audit-events-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setAuditEventsError(err instanceof Error ? err.message : "Failed to export security events")
+    } finally {
+      setAuditExporting(false)
+    }
+  }
+
+  const last24Hours = Date.now() - 24 * 60 * 60 * 1000
+  const recentEvents = auditEvents.filter((event) => new Date(event.createdAt).getTime() >= last24Hours)
+  const recentLockouts = recentEvents.filter(
+    (event) => event.action === "auth.login" && event.outcome === "blocked"
+  ).length
+  const recentScrapeFailures = recentEvents.filter(
+    (event) => event.action === "scrape.failure" && event.outcome === "failure"
+  ).length
 
   return (
     <div className="min-h-screen bg-background">
@@ -324,6 +356,36 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Operational Signals
+              </CardTitle>
+              <CardDescription>
+                Alert-style summary over the last 24 hours from security events.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Admin login lockouts</p>
+                <p className="text-xs text-muted-foreground">
+                  {recentLockouts === 0
+                    ? "No lockouts in the last 24 hours."
+                    : `${recentLockouts} lockout event(s) in the last 24 hours.`}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Scrape worker failures</p>
+                <p className="text-xs text-muted-foreground">
+                  {recentScrapeFailures === 0
+                    ? "No scrape failures in the last 24 hours."
+                    : `${recentScrapeFailures} scrape failure event(s) in the last 24 hours.`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <Bell className="w-5 h-5" />
                 Slack Webhook Test
               </CardTitle>
@@ -434,17 +496,30 @@ export default function SettingsPage() {
                     Admin login, scrape, sharing, watched-repo, and outreach changes.
                   </CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={loadAuditEvents}
-                  disabled={auditEventsLoading}
-                  className="shrink-0"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${auditEventsLoading ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={exportAuditEventsCsv}
+                    disabled={auditExporting}
+                    className="shrink-0"
+                  >
+                    <Download className={`w-4 h-4 mr-2 ${auditExporting ? "animate-pulse" : ""}`} />
+                    Export CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={loadAuditEvents}
+                    disabled={auditEventsLoading}
+                    className="shrink-0"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${auditEventsLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
