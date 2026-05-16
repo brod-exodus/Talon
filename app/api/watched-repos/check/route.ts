@@ -4,9 +4,11 @@ import { recordAuditEvent } from "@/lib/audit"
 import { supabase } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
+import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 type WatchedRepo = {
   id: string
+  team_id: string
   repo: string
   interval_hours: number
   active: boolean
@@ -38,9 +40,18 @@ async function sendSlackNotification(
 
 export async function POST(request: NextRequest) {
   const isCronRequest = hasCronSecret(request)
+  let requestTeamId: string | null = null
+  let requestTeamSlug: string | null = null
   if (!isCronRequest) {
     const authError = requireAuth(request)
     if (authError) return authError
+    try {
+      const team = await resolveTeamContext(request)
+      requestTeamId = team.teamId
+      requestTeamSlug = team.teamSlug
+    } catch (error) {
+      return teamContextError(error)
+    }
   }
 
   const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL
@@ -56,13 +67,16 @@ export async function POST(request: NextRequest) {
       .eq("active", true)
     if (fetchError) throw fetchError
 
-    const dueRepos: WatchedRepo[] = isCronRequest ? (allWatched ?? []).filter((row) => {
+    const scopedWatched = requestTeamId
+      ? (allWatched ?? []).filter((row) => row.team_id === requestTeamId)
+      : (allWatched ?? [])
+    const dueRepos: WatchedRepo[] = isCronRequest ? scopedWatched.filter((row) => {
       if (!row.last_checked_at) return true
       const nextCheck = new Date(
         new Date(row.last_checked_at).getTime() + row.interval_hours * 60 * 60 * 1000
       )
       return now >= nextCheck
-    }) : (allWatched ?? [])
+    }) : scopedWatched
 
     console.log(`[watched-repos/check] ${dueRepos.length} repo(s) due for check out of ${(allWatched ?? []).length}`)
 
@@ -78,6 +92,7 @@ export async function POST(request: NextRequest) {
             .from("watched_repos")
             .update({ last_checked_at: now.toISOString() })
             .eq("id", watched.id)
+            .eq("team_id", watched.team_id)
           results.push({ repo: watched.repo, newContributors: 0 })
           continue
         }
@@ -86,6 +101,7 @@ export async function POST(request: NextRequest) {
         const { data: existingLinks } = await supabase
           .from("watched_repo_contributors")
           .select("github_username")
+          .eq("team_id", watched.team_id)
           .eq("watched_repo_id", watched.id)
         const knownUsernames = new Set((existingLinks ?? []).map((r) => r.github_username))
 
@@ -114,6 +130,7 @@ export async function POST(request: NextRequest) {
             }
 
             await upsertContributor({
+              team_id: watched.team_id,
               github_username: contributor.login,
               name: details.name ?? null,
               avatar_url: details.avatar_url ?? null,
@@ -128,6 +145,7 @@ export async function POST(request: NextRequest) {
 
             // Record in watched_repo_contributors so we don't flag them again
             await supabase.from("watched_repo_contributors").insert({
+              team_id: watched.team_id,
               watched_repo_id: watched.id,
               github_username: contributor.login,
               first_seen_at: now.toISOString(),
@@ -153,6 +171,7 @@ export async function POST(request: NextRequest) {
           .from("watched_repos")
           .update({ last_checked_at: now.toISOString() })
           .eq("id", watched.id)
+          .eq("team_id", watched.team_id)
 
         results.push({ repo: watched.repo, newContributors: newContributors.length })
       } catch (err) {
@@ -173,12 +192,14 @@ export async function POST(request: NextRequest) {
       metadata: {
         checked: dueRepos.length,
         trigger: isCronRequest ? "cron" : "manual",
+        teamSlug: requestTeamSlug,
         newContributors: results.reduce((sum, result) => sum + result.newContributors, 0),
         errors: results.filter((result) => result.error).length,
       },
     })
     return NextResponse.json({ checked: dueRepos.length, results })
   } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[watched-repos/check] Fatal error:", error)
     return NextResponse.json({ error: "Failed to run check" }, { status: 500 })
   }

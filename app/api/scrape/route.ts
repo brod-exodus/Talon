@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit"
 import { createGitHubClient } from "@/lib/github"
 import { createScrape, createScrapeJob } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
+import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubToken,
   normalizeScrapeTarget,
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
+    const { teamId, teamSlug } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -47,15 +49,15 @@ export async function POST(request: NextRequest) {
     }
 
     const scrapeId = `scrape-${randomUUID()}`
-    await createScrape(scrapeId, type, target, minContributions)
-    await createScrapeJob(scrapeId, type, target, minContributions)
-    const workerRun = await runScrapeWorker(1)
+    await createScrape(scrapeId, type, target, minContributions, teamId)
+    await createScrapeJob(scrapeId, type, target, minContributions, teamId)
+    const workerRun = await runScrapeWorker(1, teamId)
     const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
     await recordAuditEvent({
       request,
       action: "scrape.start",
       outcome: "success",
-      metadata: { scrapeId, type, target, minContributions, workerTriggered: triggered },
+      metadata: { scrapeId, teamSlug, type, target, minContributions, workerTriggered: triggered },
     })
 
     return NextResponse.json({
@@ -68,9 +70,17 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[v0] Scrape error:", error)
+
+    const extractedError =
+      error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Failed to start scrape"
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to start scrape" },
+      { error: extractedError },
       { status: 500 },
     )
   }

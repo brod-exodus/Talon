@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { updateContributorOutreach } from "@/lib/db"
+import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubUsername,
   normalizeOptionalIsoDate,
@@ -15,6 +16,7 @@ export async function PATCH(request: NextRequest) {
   if (authError) return authError
 
   try {
+    const { teamId, teamSlug } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -47,18 +49,20 @@ export async function PATCH(request: NextRequest) {
     if (body.notes !== undefined) updates.outreach_notes = notes ?? null
     if (body.status !== undefined) updates.status = status ?? null
 
-    await updateContributorOutreach(username, updates)
+    await updateContributorOutreach(username, updates, teamId)
     await recordAuditEvent({
       request,
       action: "outreach.update",
       outcome: "success",
       metadata: {
         username,
+        teamSlug,
         fields: Object.keys(updates),
       },
     })
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[v0] Update contributor outreach error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to update contributor" },
