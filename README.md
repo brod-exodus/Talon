@@ -60,6 +60,8 @@ Optional:
 - Users can optionally persist the token in local browser storage on that machine.
 - Private app APIs require the signed admin session cookie created from `TALON_ADMIN_PASSWORD`.
 - Server-side database reads and writes require `SUPABASE_SERVICE_ROLE_KEY`.
+- Recruiter accounts can sign in with Supabase Auth email/password when their email exists in `team_memberships`.
+- The shared admin password remains available as break-glass access when the login email field is blank.
 - Server-side watched-repo checks use `GITHUB_TOKEN` from the deployment environment.
 - Automated Slack alerts use `SLACK_WEBHOOK_URL` from the deployment environment.
 - Cron invocations of watched-repo checks should send `Authorization: Bearer $CRON_SECRET`.
@@ -80,6 +82,7 @@ Apply migrations in order before deploying the app:
 8. `db/migrations/008_team_foundation.sql`
 9. `db/migrations/009_team_unique_constraints.sql`
 10. `db/migrations/010_service_role_rls_lockdown.sql`
+11. `db/migrations/011_team_user_auth.sql`
 
 The baseline schema enables RLS and intentionally creates no broad anon policies. Talon server routes use `SUPABASE_SERVICE_ROLE_KEY` and enforce the app admin session before reading or mutating private data. Migration `010` removes temporary app-wide anon/auth policies and adds authenticated team-member read policies for the future Supabase Auth rollout.
 

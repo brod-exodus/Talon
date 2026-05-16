@@ -1,64 +1,32 @@
-import { createHmac, timingSafeEqual } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
+import {
+  createSessionToken,
+  getAuthSessionFromToken,
+  isAuthOptionalForLocalDev,
+  SESSION_TTL_SECONDS,
+  sessionSecret,
+  validateAdminPassword,
+  verifySessionToken,
+  type AuthRole,
+  type AuthSession,
+} from "@/lib/auth-token"
 
 const COOKIE_NAME = "talon_session"
-const SESSION_TTL_SECONDS = 60 * 60 * 12
 
-function configuredPassword(): string | undefined {
-  return process.env.TALON_ADMIN_PASSWORD
+export {
+  createSessionToken,
+  getAuthSessionFromToken,
+  validateAdminPassword,
+  verifySessionToken,
+  type AuthRole,
+  type AuthSession,
 }
 
-function sessionSecret(): string | undefined {
-  return process.env.TALON_SESSION_SECRET || process.env.TALON_ADMIN_PASSWORD
-}
-
-function isAuthOptionalForLocalDev(): boolean {
-  return process.env.NODE_ENV !== "production" && !configuredPassword()
-}
-
-function sign(value: string, secret: string): string {
-  return createHmac("sha256", secret).update(value).digest("base64url")
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a)
-  const right = Buffer.from(b)
-  return left.length === right.length && timingSafeEqual(left, right)
-}
-
-export function createSessionToken(): string {
-  const secret = sessionSecret()
-  if (!secret) {
-    throw new Error("TALON_SESSION_SECRET or TALON_ADMIN_PASSWORD is required")
+export function getAuthSession(request: NextRequest): AuthSession | null {
+  if (isAuthOptionalForLocalDev()) {
+    return { version: 1, actor: "admin", expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS }
   }
-
-  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS
-  const payload = Buffer.from(JSON.stringify({ expiresAt })).toString("base64url")
-  return `${payload}.${sign(payload, secret)}`
-}
-
-export function verifySessionToken(token: string | undefined): boolean {
-  if (isAuthOptionalForLocalDev()) return true
-  if (!token) return false
-
-  const secret = sessionSecret()
-  if (!secret) return false
-
-  const [payload, signature] = token.split(".")
-  if (!payload || !signature) return false
-  if (!safeEqual(signature, sign(payload, secret))) return false
-
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { expiresAt?: number }
-    return typeof parsed.expiresAt === "number" && parsed.expiresAt > Math.floor(Date.now() / 1000)
-  } catch {
-    return false
-  }
-}
-
-export function validateAdminPassword(password: unknown): boolean {
-  const expected = configuredPassword()
-  return typeof password === "string" && !!expected && safeEqual(password, expected)
+  return getAuthSessionFromToken(request.cookies.get(COOKIE_NAME)?.value)
 }
 
 export function setAuthCookie(response: NextResponse, token: string): void {
@@ -88,14 +56,14 @@ export function clearAuthCookie(response: NextResponse): void {
 export function requireAuth(request: NextRequest): NextResponse | null {
   if (isAuthOptionalForLocalDev()) return null
 
-  if (!configuredPassword() || !sessionSecret()) {
+  if (!sessionSecret()) {
     return NextResponse.json(
-      { error: "Server auth is not configured. Set TALON_ADMIN_PASSWORD and TALON_SESSION_SECRET." },
+      { error: "Server auth is not configured. Set TALON_SESSION_SECRET." },
       { status: 500 }
     )
   }
 
-  if (!verifySessionToken(request.cookies.get(COOKIE_NAME)?.value)) {
+  if (!getAuthSession(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -109,4 +77,3 @@ export function hasCronSecret(request: NextRequest): boolean {
   const auth = request.headers.get("authorization")
   return auth === `Bearer ${secret}`
 }
-

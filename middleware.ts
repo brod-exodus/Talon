@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 const PROTECTED_PATHS = ["/", "/ecosystems", "/settings", "/watched"]
 
 export function middleware(request: NextRequest) {
-  if (!process.env.TALON_ADMIN_PASSWORD) {
+  if (!process.env.TALON_SESSION_SECRET && !process.env.TALON_ADMIN_PASSWORD) {
     return NextResponse.next()
   }
 
@@ -26,4 +26,3 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: ["/", "/ecosystems/:path*", "/settings", "/watched"],
 }
-
