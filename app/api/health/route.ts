@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 
 type CheckStatus = "ok" | "warn" | "error"
 
@@ -25,7 +25,7 @@ function envCheck(name: string, options: { required?: boolean; minLength?: numbe
 
 async function dbCheck(): Promise<HealthCheck> {
   try {
-    const { error } = await supabase.from("scrapes").select("id").limit(1)
+    const { error } = await supabaseAdmin.from("scrapes").select("id").limit(1)
     if (error) {
       return { status: "error", message: "Database query failed", detail: error.message }
     }

@@ -17,6 +17,8 @@ Enable multiple recruiters to use Talon within shared team workspaces, with role
 Migration:
 
 - `db/migrations/008_team_foundation.sql`
+- `db/migrations/009_team_unique_constraints.sql`
+- `db/migrations/010_service_role_rls_lockdown.sql`
 
 Adds:
 
@@ -25,8 +27,10 @@ Adds:
 - `team_id` ownership columns on core entities
 - Backfill to a seeded `default` team
 - Team-focused indexes
+- Team-scoped uniqueness for contributors, ecosystems, and watched repos
+- Authenticated team-member read policies for the future Supabase Auth rollout
 
-This is backward-compatible with current behavior until app-level team scoping is turned on.
+Current private data access still flows through Talon server routes using `SUPABASE_SERVICE_ROLE_KEY` and the app admin session. The authenticated team-member RLS policies are foundation for the next identity slice, not the active app login model yet.
 
 ## Next Slices
 
@@ -113,5 +117,6 @@ For “anyone can use it” mode:
 ## Rollout Notes
 
 - Apply migration `008` before app-level team scoping.
+- Apply migrations `009` and `010` after `008` to enforce team-scoped uniqueness and remove temporary broad app policies.
 - Keep `default` team in place until all legacy data is migrated and users are assigned real teams.
 - Ship slices incrementally behind feature flags where practical.

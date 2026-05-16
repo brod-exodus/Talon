@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server"
 import { getClientIp, hashAuditValue } from "@/lib/audit"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 
 const MAX_ATTEMPTS = 5
 const WINDOW_MS = 15 * 60 * 1000
@@ -52,7 +52,7 @@ function fallbackReset(key: string): void {
 export async function checkLoginRateLimit(request: NextRequest): Promise<RateLimitDecision> {
   const key = keyForRequest(request)
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("auth_rate_limits")
       .select("locked_until")
       .eq("key", key)
@@ -75,7 +75,7 @@ export async function recordLoginFailure(request: NextRequest): Promise<void> {
   const now = Date.now()
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("auth_rate_limits")
       .select("attempts, window_started_at")
       .eq("key", key)
@@ -88,7 +88,7 @@ export async function recordLoginFailure(request: NextRequest): Promise<void> {
     const nextWindowStartedAt = inWindow ? new Date(windowStartedAt) : new Date(now)
     const lockedUntil = attempts >= MAX_ATTEMPTS ? new Date(now + LOCKOUT_MS).toISOString() : null
 
-    const { error: upsertError } = await supabase.from("auth_rate_limits").upsert({
+    const { error: upsertError } = await supabaseAdmin.from("auth_rate_limits").upsert({
       key,
       attempts,
       window_started_at: nextWindowStartedAt.toISOString(),
@@ -105,7 +105,7 @@ export async function recordLoginFailure(request: NextRequest): Promise<void> {
 export async function resetLoginRateLimit(request: NextRequest): Promise<void> {
   const key = keyForRequest(request)
   try {
-    const { error } = await supabase.from("auth_rate_limits").delete().eq("key", key)
+    const { error } = await supabaseAdmin.from("auth_rate_limits").delete().eq("key", key)
     if (error) throw error
   } catch (error) {
     console.warn("[auth] Failed to reset persistent login rate limit:", error)

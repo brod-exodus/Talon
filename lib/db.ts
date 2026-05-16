@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
 
@@ -220,7 +220,7 @@ export async function createScrape(
   teamId?: string
 ): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { error } = await supabase.from("scrapes").insert({
+  const { error } = await supabaseAdmin.from("scrapes").insert({
     id,
     team_id: resolvedTeamId,
     type,
@@ -246,7 +246,7 @@ export async function createScrapeJob(
   teamId?: string
 ): Promise<ScrapeJobRow> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .insert({
       scrape_id: scrapeId,
@@ -273,7 +273,7 @@ export async function createScrapeJob(
 
 export async function claimNextScrapeJob(workerId: string, teamId?: string): Promise<ScrapeJobRow | null> {
   const now = new Date().toISOString()
-  let query = supabase
+  let query = supabaseAdmin
     .from("scrape_jobs")
     .select("*")
     .eq("status", "queued")
@@ -285,7 +285,7 @@ export async function claimNextScrapeJob(workerId: string, teamId?: string): Pro
   if (selectError) throw selectError
 
   for (const candidate of (candidates ?? []) as ScrapeJobRow[]) {
-    const { data: claimed, error: updateError } = await supabase
+    const { data: claimed, error: updateError } = await supabaseAdmin
       .from("scrape_jobs")
       .update({
         status: "running",
@@ -314,7 +314,7 @@ export async function claimNextScrapeJob(workerId: string, teamId?: string): Pro
 }
 
 export async function succeedScrapeJob(id: string): Promise<"succeeded" | "canceled"> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
       status: "succeeded",
@@ -339,7 +339,7 @@ export async function succeedScrapeJob(id: string): Promise<"succeeded" | "cance
 }
 
 export async function updateScrapeJobState(id: string, state: Record<string, unknown>): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
       state,
@@ -359,16 +359,16 @@ export async function recordScrapeJobEvent(
 ): Promise<void> {
   let resolvedTeamId = teamId
   if (!resolvedTeamId && jobId) {
-    const { data } = await supabase.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
+    const { data } = await supabaseAdmin.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
     resolvedTeamId = data?.team_id
   }
   if (!resolvedTeamId && scrapeId) {
-    const { data } = await supabase.from("scrapes").select("team_id").eq("id", scrapeId).maybeSingle()
+    const { data } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", scrapeId).maybeSingle()
     resolvedTeamId = data?.team_id
   }
   resolvedTeamId ??= await getDefaultTeamId()
 
-  const { error } = await supabase.from("scrape_job_events").insert({
+  const { error } = await supabaseAdmin.from("scrape_job_events").insert({
     team_id: resolvedTeamId,
     job_id: jobId,
     scrape_id: scrapeId,
@@ -382,7 +382,7 @@ export async function recordScrapeJobEvent(
 }
 
 async function getScrapeJobTeamId(jobId: string): Promise<string> {
-  const { data, error } = await supabase.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
+  const { data, error } = await supabaseAdmin.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
   if (error) throw error
   return data?.team_id ?? (await getDefaultTeamId())
 }
@@ -391,7 +391,7 @@ export async function getScrapeJobContributionMap(jobId: string): Promise<Map<st
   const map = new Map<string, number>()
   const pageSize = 1000
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("scrape_job_contributions")
       .select("github_login, contributions")
       .eq("job_id", jobId)
@@ -413,7 +413,7 @@ export async function upsertScrapeJobContributionTotals(
   const teamId = await getScrapeJobTeamId(jobId)
   for (let i = 0; i < totals.length; i += 500) {
     const batch = totals.slice(i, i + 500)
-    const { error } = await supabase.from("scrape_job_contributions").upsert(
+    const { error } = await supabaseAdmin.from("scrape_job_contributions").upsert(
       batch.map((row) => ({
         job_id: jobId,
         team_id: teamId,
@@ -434,7 +434,7 @@ export async function getScrapeJobContributionCandidates(
   const candidates: Array<{ login: string; contributions: number }> = []
   const pageSize = 1000
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("scrape_job_contributions")
       .select("github_login, contributions")
       .eq("job_id", jobId)
@@ -454,7 +454,7 @@ export async function getScrapeJobContributionCandidates(
 }
 
 export async function getScrapeJobControl(id: string): Promise<Pick<ScrapeJobRow, "status" | "cancel_requested"> | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .select("status, cancel_requested")
     .eq("id", id)
@@ -469,7 +469,7 @@ export async function cancelScrapeJob(
   teamId?: string
 ): Promise<ScrapeJobSummary> {
   const now = new Date().toISOString()
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
       status: "canceled",
@@ -488,7 +488,7 @@ export async function cancelScrapeJob(
   if (!data) throw new Error("Succeeded scrape jobs cannot be canceled")
 
   const job = data as ScrapeJobRow
-  const { error: scrapeError } = await supabase
+  const { error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .update({
       status: "canceled",
@@ -515,7 +515,7 @@ export async function failScrapeJob(
       ? Math.max(60 * 1000, options.retryAfterMs)
       : Math.min(60, 2 ** job.attempts) * 60 * 1000
   const nextRun = new Date(Date.now() + retryDelayMs).toISOString()
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
       status: terminal ? "failed" : "queued",
@@ -540,7 +540,7 @@ export async function failScrapeJob(
 
 export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promise<ScrapeJobSummary[]> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .select("*")
     .eq("team_id", resolvedTeamId)
@@ -550,7 +550,7 @@ export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promis
   const jobs = ((data ?? []) as ScrapeJobRow[]).map(toScrapeJobSummary)
   const jobIds = jobs.map((job) => job.id)
   const { data: events, error: eventsError } = jobIds.length
-    ? await supabase
+    ? await supabaseAdmin
         .from("scrape_job_events")
         .select("*")
         .eq("team_id", resolvedTeamId)
@@ -573,7 +573,7 @@ export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promis
 
 export async function retryScrapeJob(id: string, teamId?: string): Promise<ScrapeJobSummary> {
   const now = new Date().toISOString()
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
       status: "queued",
@@ -594,7 +594,7 @@ export async function retryScrapeJob(id: string, teamId?: string): Promise<Scrap
   if (!data) throw new Error("Only failed, canceled, or queued retry scrape jobs can be retried")
 
   const job = data as ScrapeJobRow
-  const { error: scrapeError } = await supabase
+  const { error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .update({
       status: "active",
@@ -617,7 +617,7 @@ export async function updateScrapeProgress(
   id: string,
   data: { progress: number; current: number; total: number; current_user_login?: string | null }
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("scrapes")
     .update({
       progress: data.progress,
@@ -630,7 +630,7 @@ export async function updateScrapeProgress(
 }
 
 export async function failScrape(id: string, errorMessage: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("scrapes")
     .update({ status: "failed", error: errorMessage })
     .eq("id", id)
@@ -652,7 +652,7 @@ export async function upsertContributor(profile: {
   team_id?: string
 }): Promise<string> {
   const teamId = profile.team_id ?? (await getDefaultTeamId())
-  const { data: existing } = await supabase
+  const { data: existing } = await supabaseAdmin
     .from("contributors")
     .select("id")
     .eq("team_id", teamId)
@@ -660,7 +660,7 @@ export async function upsertContributor(profile: {
     .maybeSingle()
 
   if (existing) {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("contributors")
       .update({
         name: profile.name,
@@ -679,7 +679,7 @@ export async function upsertContributor(profile: {
     return existing.id
   }
 
-  const { data: inserted, error } = await supabase
+  const { data: inserted, error } = await supabaseAdmin
     .from("contributors")
     .insert({
       team_id: teamId,
@@ -710,7 +710,7 @@ export async function linkScrapeContributor(
   contributorId: string,
   contributions: number
 ): Promise<void> {
-  const { error } = await supabase.from("scrape_contributors").upsert(
+  const { error } = await supabaseAdmin.from("scrape_contributors").upsert(
     { scrape_id: scrapeId, contributor_id: contributorId, contributions },
     { onConflict: "scrape_id,contributor_id" }
   )
@@ -732,7 +732,7 @@ export async function persistScrapeContributors(
   id: string,
   contributors: ScrapeContributorProfile[]
 ): Promise<void> {
-  const { data: scrape, error: scrapeError } = await supabase.from("scrapes").select("team_id").eq("id", id).maybeSingle()
+  const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
   const teamId = scrape?.team_id ?? (await getDefaultTeamId())
 
@@ -755,11 +755,11 @@ export async function persistScrapeContributors(
 }
 
 export async function getScrapeContributorUsernames(id: string): Promise<Set<string>> {
-  const { data: scrape, error: scrapeError } = await supabase.from("scrapes").select("team_id").eq("id", id).maybeSingle()
+  const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
   const teamId = scrape?.team_id ?? (await getDefaultTeamId())
 
-  const { data: links, error: linkError } = await supabase
+  const { data: links, error: linkError } = await supabaseAdmin
     .from("scrape_contributors")
     .select("contributor_id")
     .eq("scrape_id", id)
@@ -770,7 +770,7 @@ export async function getScrapeContributorUsernames(id: string): Promise<Set<str
   const usernames = new Set<string>()
   for (let i = 0; i < contributorIds.length; i += 100) {
     const batch = contributorIds.slice(i, i + 100)
-    const { data: contributors, error } = await supabase
+    const { data: contributors, error } = await supabaseAdmin
       .from("contributors")
       .select("github_username")
       .eq("team_id", teamId)
@@ -785,11 +785,11 @@ export async function getScrapeContributorStats(id: string): Promise<{
   contributorTotal: number
   contactInfoCount: number
 }> {
-  const { data: scrape, error: scrapeError } = await supabase.from("scrapes").select("team_id").eq("id", id).maybeSingle()
+  const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
   const teamId = scrape?.team_id ?? (await getDefaultTeamId())
 
-  const { data: links, error: linkError } = await supabase
+  const { data: links, error: linkError } = await supabaseAdmin
     .from("scrape_contributors")
     .select("contributor_id")
     .eq("scrape_id", id)
@@ -800,7 +800,7 @@ export async function getScrapeContributorStats(id: string): Promise<{
   let contactInfoCount = 0
   for (let i = 0; i < contributorIds.length; i += 100) {
     const batch = contributorIds.slice(i, i + 100)
-    const { data: contributors, error } = await supabase
+    const { data: contributors, error } = await supabaseAdmin
       .from("contributors")
       .select("email, twitter, linkedin, website")
       .eq("team_id", teamId)
@@ -820,7 +820,7 @@ export async function completeScrape(
 ): Promise<void> {
   await persistScrapeContributors(id, contributors)
   const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("scrapes")
     .update({
       status: "completed",
@@ -855,7 +855,7 @@ export async function getScrapeMetadata(
   teamId?: string
 ): Promise<Omit<AppScrape, "contributors"> | null> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: scrape, error } = await supabase
+  const { data: scrape, error } = await supabaseAdmin
     .from("scrapes")
     .select("*")
     .eq("id", id)
@@ -880,7 +880,7 @@ export async function getScrapeMetadata(
 
 export async function getScrape(id: string, teamId?: string): Promise<AppScrape | null> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: scrape, error: scrapeError } = await supabase
+  const { data: scrape, error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .select("*")
     .eq("id", id)
@@ -889,7 +889,7 @@ export async function getScrape(id: string, teamId?: string): Promise<AppScrape 
   if (scrapeError) throw scrapeError
   if (!scrape) return null
 
-  const { data: links, error: linksError } = await supabase
+  const { data: links, error: linksError } = await supabaseAdmin
     .from("scrape_contributors")
     .select("contributor_id, contributions")
     .eq("scrape_id", id)
@@ -912,7 +912,7 @@ export async function getScrape(id: string, teamId?: string): Promise<AppScrape 
     }
   }
 
-  const { data: contributors, error: contribError } = await supabase
+  const { data: contributors, error: contribError } = await supabaseAdmin
     .from("contributors")
     .select("*")
     .eq("team_id", resolvedTeamId)
@@ -971,7 +971,7 @@ export async function getScrapes(teamId?: string): Promise<{
   completed: ScrapeSummary[]
 }> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await supabaseAdmin
     .from("scrapes")
     .select(
       "id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors"
@@ -982,7 +982,7 @@ export async function getScrapes(teamId?: string): Promise<{
 
   const scrapeIds = (rows ?? []).map((row) => row.id)
   const { data: jobRows, error: jobError } = scrapeIds.length
-    ? await supabase.from("scrape_jobs").select("*").eq("team_id", resolvedTeamId).in("scrape_id", scrapeIds)
+    ? await supabaseAdmin.from("scrape_jobs").select("*").eq("team_id", resolvedTeamId).in("scrape_id", scrapeIds)
     : { data: [], error: null }
   if (jobError) throw jobError
   const jobMap = new Map(((jobRows ?? []) as ScrapeJobRow[]).map((job) => [job.scrape_id, toScrapeJobSummary(job)]))
@@ -1032,7 +1032,7 @@ const PAGE_SIZE = 100
 
 async function getStoredContributorTotal(scrapeId: string, teamId?: string): Promise<number> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("scrapes")
     .select("total_contributors")
     .eq("id", scrapeId)
@@ -1057,7 +1057,7 @@ export async function getScrapeContributorsPage(
   const safePage = Math.max(1, Math.floor(page))
   const resolvedTeamId = await resolveTeamId(teamId)
   const offset = (safePage - 1) * safePageSize
-  const { data: scrape, error: scrapeError } = await supabase
+  const { data: scrape, error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .select("id")
     .eq("id", scrapeId)
@@ -1066,7 +1066,7 @@ export async function getScrapeContributorsPage(
   if (scrapeError) throw scrapeError
   if (!scrape) return { contributors: [], contributorTotal: 0, page: safePage, hasMore: false }
 
-  const { data, error } = await supabase.rpc("get_scrape_contributors_page", {
+  const { data, error } = await supabaseAdmin.rpc("get_scrape_contributors_page", {
     p_scrape_id: scrapeId,
     p_limit: safePageSize,
     p_offset: offset,
@@ -1123,7 +1123,7 @@ export async function updateContributorOutreach(
   if (updates.status !== undefined) set.status = updates.status
   if (Object.keys(set).length === 0) return
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("contributors")
     .update(set)
     .eq("team_id", resolvedTeamId)
@@ -1133,7 +1133,7 @@ export async function updateContributorOutreach(
 
 export async function deleteScrape(id: string, teamId?: string): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: scrape, error: fetchError } = await supabase
+  const { data: scrape, error: fetchError } = await supabaseAdmin
     .from("scrapes")
     .select("id")
     .eq("id", id)
@@ -1142,9 +1142,9 @@ export async function deleteScrape(id: string, teamId?: string): Promise<void> {
   if (fetchError) throw fetchError
   if (!scrape) return
 
-  const { error: linkError } = await supabase.from("scrape_contributors").delete().eq("scrape_id", id)
+  const { error: linkError } = await supabaseAdmin.from("scrape_contributors").delete().eq("scrape_id", id)
   if (linkError) throw linkError
-  const { error: scrapeError } = await supabase.from("scrapes").delete().eq("id", id).eq("team_id", resolvedTeamId)
+  const { error: scrapeError } = await supabaseAdmin.from("scrapes").delete().eq("id", id).eq("team_id", resolvedTeamId)
   if (scrapeError) throw scrapeError
 }
 
@@ -1158,7 +1158,7 @@ export async function deleteScrape(id: string, teamId?: string): Promise<void> {
 /** Insert a share row and return the token. */
 export async function createSharedScrape(scrapeId: string, token: string, teamId?: string): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: scrape, error: scrapeError } = await supabase
+  const { data: scrape, error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .select("id")
     .eq("id", scrapeId)
@@ -1167,7 +1167,7 @@ export async function createSharedScrape(scrapeId: string, token: string, teamId
   if (scrapeError) throw scrapeError
   if (!scrape) throw new Error("Scrape not found")
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("shared_scrapes")
     .insert({ id: token, scrape_id: scrapeId, team_id: resolvedTeamId })
   if (error) throw error
@@ -1203,7 +1203,7 @@ export type EcosystemContributor = {
 
 export async function createEcosystem(name: string, teamId?: string): Promise<EcosystemSummary> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("ecosystems")
     .insert({ name, team_id: resolvedTeamId })
     .select("*")
@@ -1214,7 +1214,7 @@ export async function createEcosystem(name: string, teamId?: string): Promise<Ec
 
 export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: ecosystems, error } = await supabase
+  const { data: ecosystems, error } = await supabaseAdmin
     .from("ecosystems")
     .select("*")
     .eq("team_id", resolvedTeamId)
@@ -1222,7 +1222,7 @@ export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]
   if (error) throw error
   if (!ecosystems?.length) return []
 
-  const { data: links } = await supabase
+  const { data: links } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .select("ecosystem_id")
     .eq("team_id", resolvedTeamId)
@@ -1243,7 +1243,7 @@ export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]
 
 export async function getEcosystem(id: string, teamId?: string): Promise<EcosystemDetail | null> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: eco, error } = await supabase
+  const { data: eco, error } = await supabaseAdmin
     .from("ecosystems")
     .select("*")
     .eq("id", id)
@@ -1252,7 +1252,7 @@ export async function getEcosystem(id: string, teamId?: string): Promise<Ecosyst
   if (error) throw error
   if (!eco) return null
 
-  const { data: links } = await supabase
+  const { data: links } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .select("scrape_id")
     .eq("ecosystem_id", id)
@@ -1271,7 +1271,7 @@ export async function getEcosystem(id: string, teamId?: string): Promise<Ecosyst
   const scrapeRows: ScrapeMeta[] = []
   for (let i = 0; i < scrapeIds.length; i += 50) {
     const batch = scrapeIds.slice(i, i + 50)
-    const { data: batchRows, error: sErr } = await supabase
+    const { data: batchRows, error: sErr } = await supabaseAdmin
       .from("scrapes")
       .select("id, target, type, completed_at, total_contributors")
       .eq("team_id", resolvedTeamId)
@@ -1303,7 +1303,7 @@ export async function addScrapeToEcosystem(
   teamId?: string
 ): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: ecosystem, error: ecosystemError } = await supabase
+  const { data: ecosystem, error: ecosystemError } = await supabaseAdmin
     .from("ecosystems")
     .select("id")
     .eq("id", ecosystemId)
@@ -1312,7 +1312,7 @@ export async function addScrapeToEcosystem(
   if (ecosystemError) throw ecosystemError
   if (!ecosystem) throw new Error("Ecosystem not found")
 
-  const { data: scrape, error: scrapeError } = await supabase
+  const { data: scrape, error: scrapeError } = await supabaseAdmin
     .from("scrapes")
     .select("id")
     .eq("id", scrapeId)
@@ -1321,7 +1321,7 @@ export async function addScrapeToEcosystem(
   if (scrapeError) throw scrapeError
   if (!scrape) throw new Error("Scrape not found")
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .insert({ ecosystem_id: ecosystemId, scrape_id: scrapeId, team_id: resolvedTeamId })
   if (error) throw error
@@ -1333,7 +1333,7 @@ export async function removeScrapeFromEcosystem(
   teamId?: string
 ): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .delete()
     .eq("ecosystem_id", ecosystemId)
@@ -1344,7 +1344,7 @@ export async function removeScrapeFromEcosystem(
 
 export async function deleteEcosystem(id: string, teamId?: string): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { error } = await supabase.from("ecosystems").delete().eq("id", id).eq("team_id", resolvedTeamId)
+  const { error } = await supabaseAdmin.from("ecosystems").delete().eq("id", id).eq("team_id", resolvedTeamId)
   if (error) throw error
 }
 
@@ -1353,7 +1353,7 @@ export async function getEcosystemContributors(
   teamId?: string
 ): Promise<EcosystemContributor[]> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const { data: ecoLinks, error: elErr } = await supabase
+  const { data: ecoLinks, error: elErr } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .select("scrape_id")
     .eq("ecosystem_id", ecosystemId)
@@ -1366,7 +1366,7 @@ export async function getEcosystemContributors(
   const targetMap = new Map<string, string>()
   for (let i = 0; i < scrapeIds.length; i += 50) {
     const batch = scrapeIds.slice(i, i + 50)
-    const { data: scrapeRows, error: sErr } = await supabase
+    const { data: scrapeRows, error: sErr } = await supabaseAdmin
       .from("scrapes")
       .select("id, target")
       .eq("team_id", resolvedTeamId)
@@ -1377,7 +1377,7 @@ export async function getEcosystemContributors(
 
   const linkResults = await Promise.all(
     scrapeIds.map((scrapeId) =>
-      supabase
+      supabaseAdmin
         .from("scrape_contributors")
         .select("scrape_id, contributor_id, contributions")
         .eq("scrape_id", scrapeId)
@@ -1395,7 +1395,7 @@ export async function getEcosystemContributors(
   const contributors: ContributorRow[] = []
   for (let i = 0; i < contributorIds.length; i += 50) {
     const batch = contributorIds.slice(i, i + 50)
-    const { data: batchRows, error: cErr } = await supabase
+    const { data: batchRows, error: cErr } = await supabaseAdmin
       .from("contributors")
       .select("*")
       .eq("team_id", resolvedTeamId)
@@ -1409,7 +1409,7 @@ export async function getEcosystemContributors(
 
 /** Resolve a share token → full scrape with contributors, or null if not found. */
 export async function getSharedScrape(token: string): Promise<AppScrape | null> {
-  const { data: share, error: shareError } = await supabase
+  const { data: share, error: shareError } = await supabaseAdmin
     .from("shared_scrapes")
     .select("scrape_id, team_id")
     .eq("id", token)

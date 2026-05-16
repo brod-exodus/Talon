@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 
@@ -18,13 +18,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     // Remove linked contributor tracking rows first
-    await supabase
+    await supabaseAdmin
       .from("watched_repo_contributors")
       .delete()
       .eq("team_id", teamId)
       .eq("watched_repo_id", watchedRepoId)
 
-    const { error } = await supabase.from("watched_repos").delete().eq("id", watchedRepoId).eq("team_id", teamId)
+    const { error } = await supabaseAdmin.from("watched_repos").delete().eq("id", watchedRepoId).eq("team_id", teamId)
     if (error) throw error
 
     await recordAuditEvent({

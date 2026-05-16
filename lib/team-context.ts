@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 
 const DEFAULT_TEAM_SLUG = "default"
 
@@ -13,7 +13,7 @@ export type TeamContext = {
 export async function getDefaultTeamId(): Promise<string> {
   if (cachedDefaultTeamId) return cachedDefaultTeamId
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("teams")
     .select("id")
     .eq("slug", DEFAULT_TEAM_SLUG)

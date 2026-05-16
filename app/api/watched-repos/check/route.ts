@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { hasCronSecret, requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Fetch all active watched repos that are due for a check
-    const { data: allWatched, error: fetchError } = await supabase
+    const { data: allWatched, error: fetchError } = await supabaseAdmin
       .from("watched_repos")
       .select("*")
       .eq("active", true)
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         const contributors = await githubClient.getRepoContributors(watched.repo)
 
         if (!contributors || contributors.length === 0) {
-          await supabase
+          await supabaseAdmin
             .from("watched_repos")
             .update({ last_checked_at: now.toISOString() })
             .eq("id", watched.id)
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch existing tracked contributor logins for this watched repo
-        const { data: existingLinks } = await supabase
+        const { data: existingLinks } = await supabaseAdmin
           .from("watched_repo_contributors")
           .select("github_username")
           .eq("team_id", watched.team_id)
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
             })
 
             // Record in watched_repo_contributors so we don't flag them again
-            await supabase.from("watched_repo_contributors").insert({
+            await supabaseAdmin.from("watched_repo_contributors").insert({
               team_id: watched.team_id,
               watched_repo_id: watched.id,
               github_username: contributor.login,
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Update last_checked_at
-        await supabase
+        await supabaseAdmin
           .from("watched_repos")
           .update({ last_checked_at: now.toISOString() })
           .eq("id", watched.id)
