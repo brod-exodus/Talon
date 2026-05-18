@@ -22,6 +22,7 @@ type AuditEvent = {
 }
 
 export default function SettingsPage() {
+  const MAX_VISIBLE_AUDIT_EVENTS = 12
   const { canWrite, canAdmin } = useAuthPermissions()
   const [token, setToken] = useState("")
   const [rememberToken, setRememberToken] = useState(false)
@@ -32,6 +33,7 @@ export default function SettingsPage() {
   const [slackError, setSlackError] = useState("")
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [showAllAuditEvents, setShowAllAuditEvents] = useState(false)
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
   const [auditExporting, setAuditExporting] = useState(false)
@@ -228,6 +230,9 @@ export default function SettingsPage() {
   const recentScrapeFailures = recentEvents.filter(
     (event) => event.action === "scrape.failure" && event.outcome === "failure"
   ).length
+  const visibleAuditEvents = showAllAuditEvents
+    ? auditEvents
+    : auditEvents.slice(0, MAX_VISIBLE_AUDIT_EVENTS)
 
   return (
     <div className="min-h-screen bg-background">
@@ -568,7 +573,13 @@ export default function SettingsPage() {
                 </p>
               )}
 
-              {auditEvents.map((event) => (
+              {auditEvents.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Showing {visibleAuditEvents.length} of {auditEvents.length} events.
+                </p>
+              )}
+
+              {visibleAuditEvents.map((event) => (
                 <div key={event.id} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -586,6 +597,17 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
+
+              {auditEvents.length > MAX_VISIBLE_AUDIT_EVENTS && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAllAuditEvents((prev) => !prev)}
+                >
+                  {showAllAuditEvents ? "Show Less" : `Show More (${auditEvents.length - MAX_VISIBLE_AUDIT_EVENTS} more)`}
+                </Button>
+              )}
             </CardContent>
           </Card>
           )}
