@@ -17,7 +17,8 @@ type HealthCheck = {
 type HealthResponse = {
   status: CheckStatus
   checkedAt: string
-  checks: Record<string, HealthCheck>
+  checks?: Record<string, HealthCheck>
+  error?: string
 }
 
 function statusBadge(status: CheckStatus) {
@@ -46,7 +47,7 @@ export function HealthPanel() {
   const [refreshing, setRefreshing] = useState(false)
 
   const visibleChecks = useMemo(() => {
-    if (!health) return []
+    if (!health?.checks) return []
     return Object.entries(health.checks).filter(([, check]) => check.status !== "ok")
   }, [health])
 
@@ -55,6 +56,20 @@ export function HealthPanel() {
     try {
       const res = await fetch("/api/health", { cache: "no-store" })
       const data = await res.json()
+      if (!res.ok) {
+        setHealth({
+          status: "warn",
+          checkedAt: new Date().toISOString(),
+          checks: {
+            healthEndpoint: {
+              status: "warn",
+              message: "Operational diagnostics are restricted to admins.",
+              detail: typeof data?.error === "string" ? data.error : "Forbidden",
+            },
+          },
+        })
+        return
+      }
       setHealth(data)
     } catch (error) {
       console.error("[health] fetch error:", error)
