@@ -40,6 +40,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -323,6 +324,7 @@ export type RecentScrapesHandle = {
 }
 
 export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScrapes(_, ref) {
+  const { canWrite } = useAuthPermissions()
   const [scrapes, setScrapes] = useState<CompletedScrapeSummary[]>([])
   const [failedScrapes, setFailedScrapes] = useState<CompletedScrapeSummary[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
@@ -440,6 +442,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       username: string,
       updates: { contacted?: boolean; contactedDate?: string; notes?: string; status?: string }
     ) => {
+      if (!canWrite) return
       try {
         const res = await fetch("/api/contributors/outreach", {
           method: "PATCH",
@@ -467,11 +470,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         return next
       })
     },
-    [toast]
+    [canWrite, toast]
   )
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const deleteScrape = useCallback(async (scrapeId: string) => {
+    if (!canWrite) return
     if (!window.confirm("Are you sure you want to permanently delete this scrape? This action cannot be undone.")) return
     try {
       const response = await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
@@ -484,7 +488,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     } catch (err) {
       console.error("[v0] Failed to delete scrape:", err)
     }
-  }, [])
+  }, [canWrite])
 
   // ── Export ────────────────────────────────────────────────────────────────
   const exportToCSV = useCallback(
@@ -512,6 +516,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
 
   const retryJob = useCallback(async (jobId: string) => {
+    if (!canWrite) return
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
       if (!res.ok) throw new Error("Failed to retry job")
@@ -524,7 +529,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         variant: "destructive",
       })
     }
-  }, [fetchScrapes, toast])
+  }, [canWrite, fetchScrapes, toast])
 
   // ── Per-card filter / sort state ──────────────────────────────────────────
   type ContactFilter = "email" | "linkedin" | "twitter"
@@ -581,6 +586,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [copied, setCopied] = useState(false)
 
   const handleShare = useCallback(async (scrapeId: string) => {
+    if (!canWrite) return
     setShareModal({ open: true, url: "", loading: true })
     try {
       const res = await fetch("/api/share", {
@@ -597,7 +603,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       setShareModal({ open: false, url: "", loading: false })
       toast({ title: "Error", description: "Failed to create share link", variant: "destructive" })
     }
-  }, [toast])
+  }, [canWrite, toast])
 
   const copyShareUrl = useCallback(async () => {
     if (!shareModal.url) return
@@ -651,14 +657,16 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   <CardDescription className="text-xs">{formatTimeAgo(scrape.completedAt)}</CardDescription>
                   <CardTitle className="text-base font-mono mt-2">{scrape.target}</CardTitle>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
-                  onClick={() => deleteScrape(scrape.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
+                    onClick={() => deleteScrape(scrape.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </CardHeader>
 
@@ -732,14 +740,16 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  <Button
-                    variant="outline"
-                    className="bg-transparent hover:bg-primary/10 transition-all duration-300"
-                    onClick={() => handleShare(scrape.id)}
-                  >
-                    <Share2 className="w-4 h-4 mr-2" />
-                    Share
-                  </Button>
+                  {canWrite && (
+                    <Button
+                      variant="outline"
+                      className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                      onClick={() => handleShare(scrape.id)}
+                    >
+                      <Share2 className="w-4 h-4 mr-2" />
+                      Share
+                    </Button>
+                  )}
                 </div>
 
                 {/* Expanded contributor list */}
@@ -911,11 +921,13 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           </div>
 
                           {/* Outreach tracking */}
-                          <OutreachFields
-                            scrapeId={scrape.id}
-                            contributor={contributor}
-                            onUpdate={updateContributorOutreach}
-                          />
+                          {canWrite && (
+                            <OutreachFields
+                              scrapeId={scrape.id}
+                              contributor={contributor}
+                              onUpdate={updateContributorOutreach}
+                            />
+                          )}
                         </motion.div>
                       ))}
 
@@ -954,6 +966,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       updateContributorOutreach,
       defaultCardSettings,
       setContributorSearch,
+      canWrite,
     ]
   )
 
@@ -977,27 +990,29 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {scrape.type} · {formatTimeAgo(scrape.completedAt)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="bg-transparent"
-                      disabled={!scrape.job?.id}
-                      onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
-                    >
-                      <RotateCw className="w-3 h-3 mr-1" />
-                      Retry
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteScrape(scrape.id)}
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
+                  {canWrite && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-transparent"
+                        disabled={!scrape.job?.id}
+                        onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
+                      >
+                        <RotateCw className="w-3 h-3 mr-1" />
+                        Retry
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => deleteScrape(scrape.id)}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
                   {scrape.job?.lastError || scrape.error || "The scrape failed without a recorded error."}

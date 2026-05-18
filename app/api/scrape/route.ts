@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { createGitHubClient } from "@/lib/github"
 import { createScrape, createScrapeJob } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
+import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubToken,
@@ -15,7 +15,7 @@ import {
 } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {

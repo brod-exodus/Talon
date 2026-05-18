@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
+import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeRepo, parseIntervalHours, readJsonObject } from "@/lib/validation"
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {

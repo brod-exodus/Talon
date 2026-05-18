@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { hasCronSecret, requireAuth } from "@/lib/auth"
+import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
+import { requirePermission } from "@/lib/permissions"
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
   let teamId: string | undefined
   let teamSlug: string | undefined
   if (!isCronRequest) {
-    const authError = requireAuth(request)
+    const authError = requirePermission(request, "write")
     if (authError) return authError
     try {
       const team = await resolveTeamContext(request)

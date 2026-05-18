@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { updateContributorOutreach } from "@/lib/db"
+import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubUsername,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/validation"
 
 export async function PATCH(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {

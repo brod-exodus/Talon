@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { getRecentAuditEvents } from "@/lib/audit"
 
 function csvCell(value: unknown): string {
@@ -8,7 +8,7 @@ function csvCell(value: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "admin")
   if (authError) return authError
 
   try {

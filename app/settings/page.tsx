@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type AuditEvent = {
   id: string
@@ -21,6 +22,7 @@ type AuditEvent = {
 }
 
 export default function SettingsPage() {
+  const { canWrite, canAdmin } = useAuthPermissions()
   const [token, setToken] = useState("")
   const [rememberToken, setRememberToken] = useState(false)
   const [slackWebhook, setSlackWebhook] = useState("")
@@ -39,10 +41,10 @@ export default function SettingsPage() {
     if (stored.token) {
       setToken(stored.token)
       setRememberToken(stored.persisted)
-      void checkRateLimit(stored.token)
+      if (canWrite) void checkRateLimit(stored.token)
     }
-    void loadAuditEvents()
-  }, [])
+    if (canAdmin) void loadAuditEvents()
+  }, [canAdmin, canWrite])
 
   async function loadAuditEvents() {
     setAuditEventsLoading(true)
@@ -76,6 +78,11 @@ export default function SettingsPage() {
   }
 
   async function handleSave() {
+    if (!canWrite) {
+      setError("Your current role cannot save GitHub tokens.")
+      return
+    }
+
     if (!token.trim()) {
       setError("Please enter a GitHub token")
       return
@@ -112,6 +119,7 @@ export default function SettingsPage() {
   }
 
   function handleClear() {
+    if (!canWrite) return
     clearStoredGithubToken()
     setToken("")
     setRememberToken(false)
@@ -121,6 +129,11 @@ export default function SettingsPage() {
   }
 
   async function handleSlackSave() {
+    if (!canAdmin) {
+      setSlackError("Only admins can send Slack webhook tests.")
+      return
+    }
+
     if (!slackWebhook.trim()) {
       setSlackError("Please enter a Slack webhook URL")
       return
@@ -153,6 +166,7 @@ export default function SettingsPage() {
   }
 
   function handleSlackClear() {
+    if (!canAdmin) return
     setSlackWebhook("")
     setSlackSaved(false)
     setSlackError("")
@@ -184,6 +198,7 @@ export default function SettingsPage() {
   }
 
   async function exportAuditEventsCsv() {
+    if (!canAdmin) return
     setAuditExporting(true)
     try {
       const response = await fetch("/api/audit-events?limit=100&format=csv")
@@ -226,6 +241,15 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-6">
+          {!canWrite && (
+            <Alert>
+              <Shield className="h-4 w-4" />
+              <AlertDescription>
+                Viewer access is read-only. GitHub token, Slack, and security-event settings require a recruiter or admin role.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -253,6 +277,7 @@ export default function SettingsPage() {
                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
+                  disabled={!canWrite}
                   className="font-mono"
                 />
                 <p className="text-sm text-muted-foreground">
@@ -267,7 +292,7 @@ export default function SettingsPage() {
                     Stores the token in local browser storage instead of the current tab session.
                   </p>
                 </div>
-                <Switch checked={rememberToken} onCheckedChange={setRememberToken} />
+                <Switch checked={rememberToken} onCheckedChange={setRememberToken} disabled={!canWrite} />
               </div>
 
               {error && (
@@ -302,10 +327,10 @@ export default function SettingsPage() {
               )}
 
               <div className="flex gap-3">
-                <Button onClick={handleSave} className="flex-1">
+                <Button onClick={handleSave} className="flex-1" disabled={!canWrite}>
                   Verify & Save Token
                 </Button>
-                <Button onClick={handleClear} variant="outline">
+                <Button onClick={handleClear} variant="outline" disabled={!canWrite}>
                   Clear
                 </Button>
               </div>
@@ -353,36 +378,39 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5" />
-                Operational Signals
-              </CardTitle>
-              <CardDescription>
-                Alert-style summary over the last 24 hours from security events.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-sm font-medium">Admin login lockouts</p>
-                <p className="text-xs text-muted-foreground">
-                  {recentLockouts === 0
-                    ? "No lockouts in the last 24 hours."
-                    : `${recentLockouts} lockout event(s) in the last 24 hours.`}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-sm font-medium">Scrape worker failures</p>
-                <p className="text-xs text-muted-foreground">
-                  {recentScrapeFailures === 0
-                    ? "No scrape failures in the last 24 hours."
-                    : `${recentScrapeFailures} scrape failure event(s) in the last 24 hours.`}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          {canAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Operational Signals
+                </CardTitle>
+                <CardDescription>
+                  Alert-style summary over the last 24 hours from security events.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-sm font-medium">Admin login lockouts</p>
+                  <p className="text-xs text-muted-foreground">
+                    {recentLockouts === 0
+                      ? "No lockouts in the last 24 hours."
+                      : `${recentLockouts} lockout event(s) in the last 24 hours.`}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-sm font-medium">Scrape worker failures</p>
+                  <p className="text-xs text-muted-foreground">
+                    {recentScrapeFailures === 0
+                      ? "No scrape failures in the last 24 hours."
+                      : `${recentScrapeFailures} scrape failure event(s) in the last 24 hours.`}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
+          {canAdmin && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -433,10 +461,10 @@ export default function SettingsPage() {
               )}
 
               <div className="flex gap-3">
-                <Button onClick={handleSlackSave} className="flex-1">
+                <Button onClick={handleSlackSave} className="flex-1" disabled={!canAdmin}>
                   Send Test Message
                 </Button>
-                <Button onClick={handleSlackClear} variant="outline">
+                <Button onClick={handleSlackClear} variant="outline" disabled={!canAdmin}>
                   Clear
                 </Button>
               </div>
@@ -483,7 +511,9 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          )}
 
+          {canAdmin && (
           <Card>
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
@@ -558,6 +588,7 @@ export default function SettingsPage() {
               ))}
             </CardContent>
           </Card>
+          )}
         </div>
       </main>
     </div>

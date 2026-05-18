@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { createSharedScrape } from "@/lib/db"
+import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeScrapeId, readJsonObject } from "@/lib/validation"
 
@@ -11,7 +11,7 @@ function randomToken(): string {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {

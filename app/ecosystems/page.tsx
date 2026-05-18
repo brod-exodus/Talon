@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Plus, Layers, ChevronRight, Trash2 } from "lucide-react"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type EcosystemSummary = {
   id: string
@@ -42,6 +43,7 @@ function EcosystemCardSkeleton({ index }: { index: number }) {
 }
 
 export default function EcosystemsPage() {
+  const { canWrite } = useAuthPermissions()
   const [ecosystems, setEcosystems] = useState<EcosystemSummary[]>([])
   const [loading, setLoading]       = useState(true)
   const [creating, setCreating]     = useState(false)
@@ -64,6 +66,7 @@ export default function EcosystemsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    if (!canWrite) return
     if (!newName.trim()) return
     setSaving(true)
     try {
@@ -84,6 +87,7 @@ export default function EcosystemsPage() {
   }
 
   async function handleDelete(id: string, name: string) {
+    if (!canWrite) return
     if (!confirm(`Delete ecosystem "${name}"? This cannot be undone.`)) return
     await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
     setEcosystems((prev) => prev.filter((e) => e.id !== id))
@@ -102,7 +106,7 @@ export default function EcosystemsPage() {
               Group scrapes together to find contributors active across multiple repos.
             </p>
           </div>
-          {!creating && (
+          {!creating && canWrite && (
             <Button onClick={() => setCreating(true)} className="gap-2">
               <Plus className="w-4 h-4" />
               New Ecosystem
@@ -111,7 +115,7 @@ export default function EcosystemsPage() {
         </div>
 
         {/* ── Create form ───────────────────────────────────────────────── */}
-        {creating && (
+        {creating && canWrite && (
           <Card className="mb-6 border-primary/30 bg-card">
             <CardContent className="pt-5">
               <form onSubmit={handleCreate} className="flex gap-3">
@@ -158,10 +162,12 @@ export default function EcosystemsPage() {
             <p className="text-sm text-muted-foreground mb-6">
               Create an ecosystem to group scrapes and surface cross-repo contributors.
             </p>
-            <Button onClick={() => setCreating(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              New Ecosystem
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setCreating(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                New Ecosystem
+              </Button>
+            )}
           </div>
         )}
 
@@ -176,12 +182,14 @@ export default function EcosystemsPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base leading-snug">{eco.name}</CardTitle>
-                    <button
-                      onClick={(e) => { e.preventDefault(); handleDelete(eco.id, eco.name) }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canWrite && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); handleDelete(eco.id, eco.name) }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>

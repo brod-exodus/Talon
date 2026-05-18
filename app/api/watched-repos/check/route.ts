@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { hasCronSecret, requireAuth } from "@/lib/auth"
+import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
+import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
   let requestTeamId: string | null = null
   let requestTeamSlug: string | null = null
   if (!isCronRequest) {
-    const authError = requireAuth(request)
+    const authError = requirePermission(request, "write")
     if (authError) return authError
     try {
       const team = await resolveTeamContext(request)
