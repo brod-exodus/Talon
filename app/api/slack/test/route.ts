@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { normalizeSlackWebhookUrl, readJsonObject } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "admin")
   if (authError) return authError
 
   try {

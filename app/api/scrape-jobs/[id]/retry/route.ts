@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { retryScrapeJob } from "@/lib/db"
+import { requirePermission } from "@/lib/permissions"
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {

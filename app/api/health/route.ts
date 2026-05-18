@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 
 type CheckStatus = "ok" | "warn" | "error"
@@ -83,7 +83,7 @@ function overallStatus(checks: Record<string, HealthCheck>): CheckStatus {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = requirePermission(request, "admin")
   if (authError) return authError
 
   const checks: Record<string, HealthCheck> = {

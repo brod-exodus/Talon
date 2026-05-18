@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail
 } from "lucide-react"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,7 @@ function ContributorTableSkeleton() {
 }
 
 export default function EcosystemDetailPage() {
+  const { canWrite } = useAuthPermissions()
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
@@ -218,6 +220,7 @@ export default function EcosystemDetailPage() {
   )
 
   async function handleAddScrape() {
+    if (!canWrite) return
     if (!selectedScrape) return
     setAdding(true)
     await fetch(`/api/ecosystems/${id}/scrapes`, {
@@ -231,6 +234,7 @@ export default function EcosystemDetailPage() {
   }
 
   async function handleRemoveScrape(scrapeId: string) {
+    if (!canWrite) return
     await fetch(`/api/ecosystems/${id}/scrapes`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -240,6 +244,7 @@ export default function EcosystemDetailPage() {
   }
 
   async function handleDeleteEcosystem() {
+    if (!canWrite) return
     if (!confirm(`Delete ecosystem "${ecosystem?.name}"? This cannot be undone.`)) return
     await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
     router.push("/ecosystems")
@@ -272,16 +277,18 @@ export default function EcosystemDetailPage() {
           ) : ecosystem ? (
             <h1 className="text-3xl font-bold tracking-tight">{ecosystem.name}</h1>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-destructive gap-1.5 shrink-0"
-            onClick={handleDeleteEcosystem}
-            disabled={ecosystemLoading || !ecosystem}
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </Button>
+          {canWrite && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive gap-1.5 shrink-0"
+              onClick={handleDeleteEcosystem}
+              disabled={ecosystemLoading || !ecosystem}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </Button>
+          )}
         </div>
 
         {/* ── Stats bar ────────────────────────────────────────────────── */}
@@ -341,19 +348,21 @@ export default function EcosystemDetailPage() {
               >
                 <span className="font-mono text-foreground">{s.target}</span>
                 <span className="text-xs text-muted-foreground">· {s.contributorCount}</span>
-                <button
-                  onClick={() => handleRemoveScrape(s.id)}
-                  className="ml-1 rounded-full p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  title="Remove from ecosystem"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                {canWrite && (
+                  <button
+                    onClick={() => handleRemoveScrape(s.id)}
+                    className="ml-1 rounded-full p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Remove from ecosystem"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
               ))}
           </div>
 
           {/* Add scrape */}
-          {!ecosystemLoading && availableScrapes.length > 0 && (
+          {canWrite && !ecosystemLoading && availableScrapes.length > 0 && (
             <div className="flex items-center gap-2">
               <Select value={selectedScrape} onValueChange={setSelectedScrape}>
                 <SelectTrigger className="h-8 w-64 text-sm bg-transparent border-border">

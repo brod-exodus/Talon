@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type WatchedRepo = {
   id: string
@@ -43,6 +44,7 @@ function formatTimeAgo(dateStr: string | null): string {
 }
 
 export function WatchedRepos() {
+  const { canWrite } = useAuthPermissions()
   const [repos, setRepos] = useState<WatchedRepo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
@@ -71,6 +73,7 @@ export function WatchedRepos() {
   const handleAdd = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
+      if (!canWrite) return
       if (!repo.trim()) return
 
       setIsAdding(true)
@@ -98,12 +101,13 @@ export function WatchedRepos() {
         setIsAdding(false)
       }
     },
-    [repo, intervalHours, toast]
+    [canWrite, repo, intervalHours, toast]
   )
 
   const handleDelete = useCallback(
     async (id: string, repoName: string) => {
       const confirmed = window.confirm(`Stop watching ${repoName}?`)
+      if (!canWrite) return
       if (!confirmed) return
 
       try {
@@ -119,10 +123,11 @@ export function WatchedRepos() {
         })
       }
     },
-    [toast]
+    [canWrite, toast]
   )
 
   const handleManualCheck = useCallback(async () => {
+    if (!canWrite) return
     setIsChecking(true)
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => controller.abort(), 25000)
@@ -158,7 +163,7 @@ export function WatchedRepos() {
       window.clearTimeout(timeoutId)
       setIsChecking(false)
     }
-  }, [toast, fetchRepos])
+  }, [canWrite, toast, fetchRepos])
 
   return (
     <div className="space-y-4">
@@ -171,7 +176,7 @@ export function WatchedRepos() {
           variant="outline"
           size="sm"
           onClick={handleManualCheck}
-          disabled={isChecking || repos.length === 0}
+          disabled={!canWrite || isChecking || repos.length === 0}
           className="bg-transparent hover:bg-primary/10 transition-all duration-300 text-xs"
         >
           <RefreshCw className={`w-3 h-3 mr-2 ${isChecking ? "animate-spin" : ""}`} />
@@ -180,64 +185,66 @@ export function WatchedRepos() {
       </div>
 
       {/* Add form */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
-        <CardHeader className="relative pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Watch a Repository
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Get notified when new contributors appear
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="relative">
-          <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="watch-repo" className="text-xs text-muted-foreground">
-                Repository (owner/repo)
-              </Label>
-              <Input
-                id="watch-repo"
-                placeholder="e.g. vercel/next.js"
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors h-8 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="watch-interval" className="text-xs text-muted-foreground">
-                Check interval
-              </Label>
-              <Select value={intervalHours} onValueChange={setIntervalHours}>
-                <SelectTrigger
-                  id="watch-interval"
-                  className="bg-input/50 border-border/50 h-8 text-sm w-40"
+      {canWrite && (
+        <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
+          <CardHeader className="relative pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Watch a Repository
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Get notified when new contributors appear
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="relative">
+            <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="watch-repo" className="text-xs text-muted-foreground">
+                  Repository (owner/repo)
+                </Label>
+                <Input
+                  id="watch-repo"
+                  placeholder="e.g. vercel/next.js"
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
+                  className="bg-input/50 border-border/50 focus:border-primary/50 transition-colors h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="watch-interval" className="text-xs text-muted-foreground">
+                  Check interval
+                </Label>
+                <Select value={intervalHours} onValueChange={setIntervalHours}>
+                  <SelectTrigger
+                    id="watch-interval"
+                    className="bg-input/50 border-border/50 h-8 text-sm w-40"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVAL_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="submit"
+                  disabled={!repo.trim() || isAdding}
+                  size="sm"
+                  className="h-8 text-sm bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTERVAL_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                type="submit"
-                disabled={!repo.trim() || isAdding}
-                size="sm"
-                className="h-8 text-sm bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                {isAdding ? "Adding..." : "Watch"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+                  {isAdding ? "Adding..." : "Watch"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Repo list */}
       {isLoading ? (
@@ -262,9 +269,11 @@ export function WatchedRepos() {
             <div className="text-center py-6">
               <Eye className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">No repos being watched yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Add a repo above to track new contributors.
-              </p>
+              {canWrite && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add a repo above to track new contributors.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -299,14 +308,16 @@ export function WatchedRepos() {
                           </span>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-                        onClick={() => handleDelete(r.id, r.repo)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {canWrite && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                          onClick={() => handleDelete(r.id, r.repo)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -8,6 +8,7 @@ import { motion } from "framer-motion"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type ScrapeJobSummary = {
   id: string
@@ -36,6 +37,7 @@ type ActiveScrapesProps = {
 }
 
 export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: ActiveScrapesProps) {
+  const { canWrite } = useAuthPermissions()
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
@@ -96,6 +98,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
   }
 
   const cancelJob = async (jobId: string) => {
+    if (!canWrite) return
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
       const response = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
@@ -117,6 +120,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
   }
 
   const retryJob = async (jobId: string) => {
+    if (!canWrite) return
     setRetrying((prev) => new Set(prev).add(jobId))
     try {
       const response = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
@@ -255,7 +259,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
                     {new Date(scrape.job.runAfter).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
                   </p>
                 )}
-                {scrape.job && scrape.job.status !== "failed" && scrape.job.status !== "canceled" && (
+                {canWrite && scrape.job && scrape.job.status !== "failed" && scrape.job.status !== "canceled" && (
                   <div className="flex justify-end gap-2">
                     {scrape.job.status === "queued" && scrape.job.attempts > 0 && (
                       <Button

@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { getStoredGithubToken } from "@/lib/client-secrets"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 
 // ─── Starfield Canvas ─────────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ function GalaxyGlassCard({ children, className }: GalaxyCardProps) {
 }
 
 export function ScrapeForm() {
+  const { canWrite } = useAuthPermissions()
   const [type, setType] = useState("organization")
   const [target, setTarget] = useState("")
   const [minContributions, setMinContributions] = useState(1)
@@ -230,6 +232,15 @@ export function ScrapeForm() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
+
+      if (!canWrite) {
+        toast({
+          title: "Read-only access",
+          description: "Your current role can view scrapes but cannot start new ones.",
+          variant: "destructive",
+        })
+        return
+      }
 
       const { token } = getStoredGithubToken()
 
@@ -276,7 +287,7 @@ export function ScrapeForm() {
         setIsLoading(false)
       }
     },
-    [type, target, minContributions, toast],
+    [canWrite, type, target, minContributions, toast],
   )
 
   const getPlaceholder = () => {
@@ -310,11 +321,20 @@ export function ScrapeForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {!canWrite && (
+          <Alert className="border-slate-600/60 bg-slate-900/70">
+            <AlertCircle className="h-4 w-4 text-slate-300" />
+            <AlertDescription className="text-xs text-slate-300">
+              Viewer access is read-only. Ask an admin to upgrade your role to start scrapes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="type" className="text-sm font-medium text-slate-400">
             Source Type
           </Label>
-          <Select value={type} onValueChange={setType}>
+          <Select value={type} onValueChange={setType} disabled={!canWrite}>
             <SelectTrigger
               id="type"
               className="bg-slate-950/60 border-white/5 text-white focus:border-blue-500/50 transition-colors"
@@ -337,6 +357,7 @@ export function ScrapeForm() {
             placeholder={getPlaceholder()}
             value={target}
             onChange={(e) => setTarget(e.target.value)}
+            disabled={!canWrite}
             className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
           />
         </div>
@@ -351,6 +372,7 @@ export function ScrapeForm() {
             min={1}
             value={minContributions}
             onChange={(e) => setMinContributions(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+            disabled={!canWrite}
             className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
           />
           <p className="text-xs text-slate-500">
@@ -417,7 +439,7 @@ export function ScrapeForm() {
           onMouseLeave={(e) => {
             e.currentTarget.style.boxShadow = "0 0 15px rgba(59, 130, 246, 0.4)"
           }}
-          disabled={!target || isLoading}
+          disabled={!canWrite || !target || isLoading}
         >
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
           {isLoading ? "Starting..." : "Start Scrape"}

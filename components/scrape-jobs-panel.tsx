@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type ScrapeJobSummary = {
   id: string
@@ -59,6 +60,7 @@ function statusBadge(job: ScrapeJobSummary) {
 }
 
 export function ScrapeJobsPanel() {
+  const { canWrite } = useAuthPermissions()
   const [jobs, setJobs] = useState<ScrapeJobSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
@@ -90,6 +92,7 @@ export function ScrapeJobsPanel() {
   }, [loadJobs])
 
   const retryJob = useCallback(async (jobId: string) => {
+    if (!canWrite) return
     setRetrying((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
@@ -109,9 +112,10 @@ export function ScrapeJobsPanel() {
         return next
       })
     }
-  }, [loadJobs, toast])
+  }, [canWrite, loadJobs, toast])
 
   const cancelJob = useCallback(async (jobId: string) => {
+    if (!canWrite) return
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
@@ -131,7 +135,7 @@ export function ScrapeJobsPanel() {
         return next
       })
     }
-  }, [loadJobs, toast])
+  }, [canWrite, loadJobs, toast])
 
   if (!loading && visibleJobs.length === 0) return null
 
@@ -184,32 +188,34 @@ export function ScrapeJobsPanel() {
                   <Clock className="w-3 h-3" />
                   Next run {formatTime(job.runAfter)}
                 </span>
-                <div className="flex items-center gap-2">
-                  {(job.status === "queued" || job.status === "running") && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 bg-transparent"
-                      disabled={canceling.has(job.id)}
-                      onClick={() => cancelJob(job.id)}
-                    >
-                      <XCircle className="w-3 h-3 mr-1" />
-                      Cancel
-                    </Button>
-                  )}
-                  {(job.status === "failed" || job.status === "canceled") && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 bg-transparent"
-                      disabled={retrying.has(job.id)}
-                      onClick={() => retryJob(job.id)}
-                    >
-                      <RotateCw className={`w-3 h-3 mr-1 ${retrying.has(job.id) ? "animate-spin" : ""}`} />
-                      Retry
-                    </Button>
-                  )}
-                </div>
+                {canWrite && (
+                  <div className="flex items-center gap-2">
+                    {(job.status === "queued" || job.status === "running") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 bg-transparent"
+                        disabled={canceling.has(job.id)}
+                        onClick={() => cancelJob(job.id)}
+                      >
+                        <XCircle className="w-3 h-3 mr-1" />
+                        Cancel
+                      </Button>
+                    )}
+                    {(job.status === "failed" || job.status === "canceled") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 bg-transparent"
+                        disabled={retrying.has(job.id)}
+                        onClick={() => retryJob(job.id)}
+                      >
+                        <RotateCw className={`w-3 h-3 mr-1 ${retrying.has(job.id) ? "animate-spin" : ""}`} />
+                        Retry
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
