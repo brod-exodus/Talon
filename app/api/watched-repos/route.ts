@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeRepo, parseIntervalHours, readJsonObject } from "@/lib/validation"
 
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const { teamId } = await resolveTeamContext(request)
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("watched_repos")
       .select("*")
       .eq("team_id", teamId)
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing or invalid interval_hours" }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("watched_repos")
       .insert({
         team_id: teamId,

@@ -25,18 +25,20 @@ Run this after every production deploy:
 
 Apply migrations in order from `db/migrations`.
 
-The security hardening migration is:
+Security hardening migrations include:
 
 ```text
 db/migrations/007_security_events.sql
+db/migrations/010_service_role_rls_lockdown.sql
 ```
 
-It creates:
+They create or enforce:
 
 - `audit_events`: recent admin, cron, scrape, share, watched-repo, and outreach events.
 - `auth_rate_limits`: persistent failed-login counters and temporary lockouts.
+- Service-role-only app access for private tables, plus future authenticated team-member read policies.
 
-If Settings cannot load recent security events, confirm this migration has been applied.
+If Settings cannot load recent security events, confirm migration `007` has been applied. If scrapes fail after removing temporary Supabase policies, confirm `SUPABASE_SERVICE_ROLE_KEY` is configured and migration `010` has been applied.
 
 ## Auth Lockouts
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { type NextRequest } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 
 export type AuditOutcome = "success" | "failure" | "blocked"
 
@@ -48,7 +48,7 @@ export async function recordAuditEvent({
 }): Promise<void> {
   try {
     const ip = getClientIp(request)
-    const { error } = await supabase.from("audit_events").insert({
+    const { error } = await supabaseAdmin.from("audit_events").insert({
       action,
       outcome,
       actor,
@@ -63,7 +63,7 @@ export async function recordAuditEvent({
 }
 
 export async function getRecentAuditEvents(limit = 25): Promise<AuditEvent[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("audit_events")
     .select("id, action, outcome, actor, ip_hash, user_agent, metadata, created_at")
     .order("created_at", { ascending: false })

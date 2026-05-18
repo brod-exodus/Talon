@@ -17,6 +17,9 @@ Enable multiple recruiters to use Talon within shared team workspaces, with role
 Migration:
 
 - `db/migrations/008_team_foundation.sql`
+- `db/migrations/009_team_unique_constraints.sql`
+- `db/migrations/010_service_role_rls_lockdown.sql`
+- `db/migrations/011_team_user_auth.sql`
 
 Adds:
 
@@ -25,8 +28,11 @@ Adds:
 - `team_id` ownership columns on core entities
 - Backfill to a seeded `default` team
 - Team-focused indexes
+- Team-scoped uniqueness for contributors, ecosystems, and watched repos
+- Authenticated team-member read policies for the future Supabase Auth rollout
+- Lowercase email indexes for team membership login lookups
 
-This is backward-compatible with current behavior until app-level team scoping is turned on.
+Current private data access still flows through Talon server routes using `SUPABASE_SERVICE_ROLE_KEY`. Recruiters can sign in with Supabase Auth email/password once their email is present in `team_memberships`; the shared admin password remains as break-glass access.
 
 ## Next Slices
 
@@ -41,12 +47,12 @@ This is backward-compatible with current behavior until app-level team scoping i
 Target:
 
 - Move from shared admin password to per-user sign-in.
-- Recommended: Supabase Auth (email magic link or password).
+- Use Supabase Auth email/password for the first recruiter-account slice.
 
 Requirements:
 
-- Add `users` table or map to Supabase auth users.
-- Persist user id + active team id in server session/cookie.
+- Map Supabase Auth users to `team_memberships.email`.
+- Persist email, active team id, team slug, and role in the signed Talon session cookie.
 - Keep admin emergency access only for break-glass use.
 
 ## Slice 2: Team Context Resolution
@@ -113,5 +119,7 @@ For “anyone can use it” mode:
 ## Rollout Notes
 
 - Apply migration `008` before app-level team scoping.
+- Apply migrations `009` and `010` after `008` to enforce team-scoped uniqueness and remove temporary broad app policies.
+- Apply migration `011` before enabling recruiter email/password login.
 - Keep `default` team in place until all legacy data is migrated and users are assigned real teams.
 - Ship slices incrementally behind feature flags where practical.
