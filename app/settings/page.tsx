@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -31,11 +32,11 @@ type TeamMember = {
   createdAt: string
 }
 
-const ROLE_OPTIONS: Array<{ value: AuthRole; label: string }> = [
-  { value: "owner", label: "Owner" },
-  { value: "admin", label: "Admin" },
-  { value: "recruiter", label: "Recruiter" },
-  { value: "viewer", label: "Viewer" },
+const ROLE_OPTIONS: Array<{ value: AuthRole; label: string; description: string }> = [
+  { value: "owner", label: "Owner", description: "Full access, including ownership transfer and billing-era controls." },
+  { value: "admin", label: "Admin", description: "Can manage settings, teammates, scrapes, and watched repos." },
+  { value: "recruiter", label: "Recruiter", description: "Can run scrapes, manage outreach, and use watched repos." },
+  { value: "viewer", label: "Viewer", description: "Read-only access for reviewing lists and shared team context." },
 ]
 
 export default function SettingsPage() {
@@ -56,6 +57,8 @@ export default function SettingsPage() {
   const [memberPassword, setMemberPassword] = useState("")
   const [memberRole, setMemberRole] = useState<AuthRole>("recruiter")
   const [savingMember, setSavingMember] = useState(false)
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
@@ -250,8 +253,19 @@ export default function SettingsPage() {
 
   async function handleRoleChange(member: TeamMember, role: AuthRole) {
     if (!canAdmin || member.role === role) return
+    const roleLabel = ROLE_OPTIONS.find((option) => option.value === role)?.label ?? role
+    const currentRoleLabel = ROLE_OPTIONS.find((option) => option.value === member.role)?.label ?? member.role
+    const requiresConfirmation = role === "owner" || role === "admin" || member.role === "owner"
+    if (
+      requiresConfirmation &&
+      !window.confirm(`Change ${member.email} from ${currentRoleLabel} to ${roleLabel}?`)
+    ) {
+      return
+    }
+
     setTeamMembersError("")
     setTeamMembersSaved("")
+    setUpdatingMemberId(member.id)
     try {
       const response = await fetch(`/api/team-members/${member.id}`, {
         method: "PATCH",
@@ -266,6 +280,8 @@ export default function SettingsPage() {
       setTimeout(() => setTeamMembersSaved(""), 3000)
     } catch (err) {
       setTeamMembersError(err instanceof Error ? err.message : "Failed to update role")
+    } finally {
+      setUpdatingMemberId(null)
     }
   }
 
@@ -274,6 +290,7 @@ export default function SettingsPage() {
     if (!window.confirm(`Remove ${member.email} from this Talon team?`)) return
     setTeamMembersError("")
     setTeamMembersSaved("")
+    setRemovingMemberId(member.id)
     try {
       const response = await fetch(`/api/team-members/${member.id}`, { method: "DELETE" })
       const data = await response.json().catch(() => null)
@@ -283,6 +300,8 @@ export default function SettingsPage() {
       setTimeout(() => setTeamMembersSaved(""), 3000)
     } catch (err) {
       setTeamMembersError(err instanceof Error ? err.message : "Failed to remove team member")
+    } finally {
+      setRemovingMemberId(null)
     }
   }
 
@@ -342,6 +361,8 @@ export default function SettingsPage() {
   const recentScrapeFailures = recentEvents.filter(
     (event) => event.action === "scrape.failure" && event.outcome === "failure"
   ).length
+  const ownerCount = teamMembers.filter((member) => member.role === "owner").length
+  const selectedRoleDescription = ROLE_OPTIONS.find((role) => role.value === memberRole)?.description
 
   return (
     <div className="min-h-screen bg-background">
@@ -554,8 +575,8 @@ export default function SettingsPage() {
                 <Alert>
                   <Shield className="h-4 w-4" />
                   <AlertDescription>
-                    New users are auto-confirmed because Supabase SMTP is not configured yet. Use a temporary password
-                    and share it out of band until password-reset emails are configured.
+                    New users are auto-confirmed because Supabase SMTP is not configured yet. Temporary passwords are
+                    required for brand-new users and should be shared out of band until password-reset emails are configured.
                   </AlertDescription>
                 </Alert>
 
@@ -581,6 +602,9 @@ export default function SettingsPage() {
                       placeholder="8+ characters"
                       autoComplete="new-password"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank only when the Auth user already exists.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="team-member-role">Role</Label>
@@ -596,6 +620,9 @@ export default function SettingsPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedRoleDescription && (
+                      <p className="text-xs text-muted-foreground">{selectedRoleDescription}</p>
+                    )}
                   </div>
                   <div className="flex items-end">
                     <Button
@@ -631,43 +658,65 @@ export default function SettingsPage() {
                     <p className="p-4 text-sm text-muted-foreground">No team members configured yet.</p>
                   ) : (
                     <div className="divide-y divide-border">
-                      {teamMembers.map((member) => (
-                        <div key={member.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">{member.email}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Added {new Date(member.createdAt).toLocaleDateString()}
-                            </p>
+                      {teamMembers.map((member) => {
+                        const isSoleOwner = member.role === "owner" && ownerCount <= 1
+                        const roleDescription = ROLE_OPTIONS.find((role) => role.value === member.role)?.description
+                        return (
+                          <div key={member.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate text-sm font-medium text-foreground">{member.email}</p>
+                                {isSoleOwner && (
+                                  <Badge variant="outline" className="shrink-0 text-xs">
+                                    Protected
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Added {new Date(member.createdAt).toLocaleDateString()}
+                              </p>
+                              {roleDescription && (
+                                <p className="text-xs text-muted-foreground">{roleDescription}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={member.role}
+                                disabled={isSoleOwner || updatingMemberId === member.id}
+                                onValueChange={(value) => handleRoleChange(member, value as AuthRole)}
+                              >
+                                <SelectTrigger className="h-8 w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ROLE_OPTIONS.map((role) => (
+                                    <SelectItem key={role.value} value={role.value}>
+                                      {role.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                disabled={isSoleOwner || removingMemberId === member.id}
+                                onClick={() => handleRemoveMember(member)}
+                                aria-label={`Remove ${member.email}`}
+                                title={isSoleOwner ? "At least one owner must remain" : `Remove ${member.email}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                            {isSoleOwner && (
+                              <p className="text-xs text-muted-foreground sm:hidden">
+                                Add another owner before changing or removing this one.
+                              </p>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={member.role}
-                              onValueChange={(value) => handleRoleChange(member, value as AuthRole)}
-                            >
-                              <SelectTrigger className="h-8 w-32">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ROLE_OPTIONS.map((role) => (
-                                  <SelectItem key={role.value} value={role.value}>
-                                    {role.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => handleRemoveMember(member)}
-                              aria-label={`Remove ${member.email}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
