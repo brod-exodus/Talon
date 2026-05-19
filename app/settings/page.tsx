@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2 } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 import { useAuthPermissions } from "@/lib/client-permissions"
+import { type AuthRole } from "@/lib/auth-token"
 
 type AuditEvent = {
   id: string
@@ -20,6 +22,21 @@ type AuditEvent = {
   metadata: Record<string, unknown>
   createdAt: string
 }
+
+type TeamMember = {
+  id: string
+  email: string
+  role: AuthRole
+  invitedBy: string | null
+  createdAt: string
+}
+
+const ROLE_OPTIONS: Array<{ value: AuthRole; label: string }> = [
+  { value: "owner", label: "Owner" },
+  { value: "admin", label: "Admin" },
+  { value: "recruiter", label: "Recruiter" },
+  { value: "viewer", label: "Viewer" },
+]
 
 export default function SettingsPage() {
   const { canWrite, canAdmin } = useAuthPermissions()
@@ -31,6 +48,14 @@ export default function SettingsPage() {
   const [error, setError] = useState("")
   const [slackError, setSlackError] = useState("")
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false)
+  const [teamMembersError, setTeamMembersError] = useState("")
+  const [teamMembersSaved, setTeamMembersSaved] = useState("")
+  const [memberEmail, setMemberEmail] = useState("")
+  const [memberPassword, setMemberPassword] = useState("")
+  const [memberRole, setMemberRole] = useState<AuthRole>("recruiter")
+  const [savingMember, setSavingMember] = useState(false)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
@@ -43,8 +68,26 @@ export default function SettingsPage() {
       setRememberToken(stored.persisted)
       if (canWrite) void checkRateLimit(stored.token)
     }
-    if (canAdmin) void loadAuditEvents()
+    if (canAdmin) {
+      void loadTeamMembers()
+      void loadAuditEvents()
+    }
   }, [canAdmin, canWrite])
+
+  async function loadTeamMembers() {
+    setTeamMembersLoading(true)
+    setTeamMembersError("")
+    try {
+      const response = await fetch("/api/team-members", { cache: "no-store" })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to load team members")
+      setTeamMembers(Array.isArray(data.members) ? data.members : [])
+    } catch (err) {
+      setTeamMembersError(err instanceof Error ? err.message : "Failed to load team members")
+    } finally {
+      setTeamMembersLoading(false)
+    }
+  }
 
   async function loadAuditEvents() {
     setAuditEventsLoading(true)
@@ -170,6 +213,77 @@ export default function SettingsPage() {
     setSlackWebhook("")
     setSlackSaved(false)
     setSlackError("")
+  }
+
+  async function handleAddMember() {
+    if (!canAdmin) return
+    setSavingMember(true)
+    setTeamMembersError("")
+    setTeamMembersSaved("")
+    try {
+      const response = await fetch("/api/team-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail, password: memberPassword, role: memberRole }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to save team member")
+      const nextMember = data.member as TeamMember
+      setTeamMembers((prev) => {
+        const existing = prev.findIndex((member) => member.id === nextMember.id)
+        if (existing === -1) return [...prev, nextMember]
+        const copy = [...prev]
+        copy[existing] = nextMember
+        return copy
+      })
+      setMemberEmail("")
+      setMemberPassword("")
+      setMemberRole("recruiter")
+      setTeamMembersSaved(data.authUserCreated ? "Team member created and auto-confirmed." : "Team member role saved.")
+      setTimeout(() => setTeamMembersSaved(""), 3000)
+    } catch (err) {
+      setTeamMembersError(err instanceof Error ? err.message : "Failed to save team member")
+    } finally {
+      setSavingMember(false)
+    }
+  }
+
+  async function handleRoleChange(member: TeamMember, role: AuthRole) {
+    if (!canAdmin || member.role === role) return
+    setTeamMembersError("")
+    setTeamMembersSaved("")
+    try {
+      const response = await fetch(`/api/team-members/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Failed to update role")
+      const updated = data.member as TeamMember
+      setTeamMembers((prev) => prev.map((item) => item.id === updated.id ? updated : item))
+      setTeamMembersSaved("Role updated.")
+      setTimeout(() => setTeamMembersSaved(""), 3000)
+    } catch (err) {
+      setTeamMembersError(err instanceof Error ? err.message : "Failed to update role")
+    }
+  }
+
+  async function handleRemoveMember(member: TeamMember) {
+    if (!canAdmin) return
+    if (!window.confirm(`Remove ${member.email} from this Talon team?`)) return
+    setTeamMembersError("")
+    setTeamMembersSaved("")
+    try {
+      const response = await fetch(`/api/team-members/${member.id}`, { method: "DELETE" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to remove team member")
+      setTeamMembers((prev) => prev.filter((item) => item.id !== member.id))
+      setTeamMembersSaved("Team member removed.")
+      setTimeout(() => setTeamMembersSaved(""), 3000)
+    } catch (err) {
+      setTeamMembersError(err instanceof Error ? err.message : "Failed to remove team member")
+    }
   }
 
   function formatAuditTime(date: string) {
@@ -405,6 +519,157 @@ export default function SettingsPage() {
                       ? "No scrape failures in the last 24 hours."
                       : `${recentScrapeFailures} scrape failure event(s) in the last 24 hours.`}
                   </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {canAdmin && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5" />
+                      Team Access
+                    </CardTitle>
+                    <CardDescription>
+                      Add teammates and manage Talon roles without editing SQL.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={loadTeamMembers}
+                    disabled={teamMembersLoading}
+                    className="shrink-0"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${teamMembersLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <Alert>
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    New users are auto-confirmed because Supabase SMTP is not configured yet. Use a temporary password
+                    and share it out of band until password-reset emails are configured.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_9rem_auto]">
+                  <div className="space-y-2">
+                    <Label htmlFor="team-member-email">Email</Label>
+                    <Input
+                      id="team-member-email"
+                      type="email"
+                      value={memberEmail}
+                      onChange={(event) => setMemberEmail(event.target.value)}
+                      placeholder="recruiter@example.com"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="team-member-password">Temporary password</Label>
+                    <Input
+                      id="team-member-password"
+                      type="password"
+                      value={memberPassword}
+                      onChange={(event) => setMemberPassword(event.target.value)}
+                      placeholder="8+ characters"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="team-member-role">Role</Label>
+                    <Select value={memberRole} onValueChange={(value) => setMemberRole(value as AuthRole)}>
+                      <SelectTrigger id="team-member-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLE_OPTIONS.map((role) => (
+                          <SelectItem key={role.value} value={role.value}>
+                            {role.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      onClick={handleAddMember}
+                      disabled={savingMember || !memberEmail.trim()}
+                      className="w-full gap-2"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      {savingMember ? "Saving..." : "Add"}
+                    </Button>
+                  </div>
+                </div>
+
+                {teamMembersError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{teamMembersError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {teamMembersSaved && (
+                  <Alert>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <AlertDescription>{teamMembersSaved}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="rounded-lg border border-border">
+                  {teamMembersLoading && teamMembers.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">Loading team members...</p>
+                  ) : teamMembers.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">No team members configured yet.</p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {teamMembers.map((member) => (
+                        <div key={member.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-foreground">{member.email}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Added {new Date(member.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={member.role}
+                              onValueChange={(value) => handleRoleChange(member, value as AuthRole)}
+                            >
+                              <SelectTrigger className="h-8 w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ROLE_OPTIONS.map((role) => (
+                                  <SelectItem key={role.value} value={role.value}>
+                                    {role.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => handleRemoveMember(member)}
+                              aria-label={`Remove ${member.email}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
