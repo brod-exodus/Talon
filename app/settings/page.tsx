@@ -22,7 +22,6 @@ type AuditEvent = {
 }
 
 export default function SettingsPage() {
-  const MAX_VISIBLE_AUDIT_EVENTS = 12
   const { canWrite, canAdmin } = useAuthPermissions()
   const [token, setToken] = useState("")
   const [rememberToken, setRememberToken] = useState(false)
@@ -33,7 +32,6 @@ export default function SettingsPage() {
   const [slackError, setSlackError] = useState("")
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
-  const [showAllAuditEvents, setShowAllAuditEvents] = useState(false)
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
   const [auditExporting, setAuditExporting] = useState(false)
@@ -230,9 +228,6 @@ export default function SettingsPage() {
   const recentScrapeFailures = recentEvents.filter(
     (event) => event.action === "scrape.failure" && event.outcome === "failure"
   ).length
-  const visibleAuditEvents = showAllAuditEvents
-    ? auditEvents
-    : auditEvents.slice(0, MAX_VISIBLE_AUDIT_EVENTS)
 
   return (
     <div className="min-h-screen bg-background">
@@ -575,38 +570,31 @@ export default function SettingsPage() {
 
               {auditEvents.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Showing {visibleAuditEvents.length} of {auditEvents.length} events.
+                  Showing {auditEvents.length} events. Scroll inside this panel to review older activity.
                 </p>
               )}
 
-              {visibleAuditEvents.map((event) => (
-                <div key={event.id} className="rounded-lg border border-border p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatAuditMetadata(event.metadata)}
-                      </p>
+              {auditEvents.length > 0 && (
+                <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                  {auditEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatAuditMetadata(event.metadata)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {event.outcome}
+                          </span>
+                          <p className="text-xs text-muted-foreground">{formatAuditTime(event.createdAt)}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                        {event.outcome}
-                      </span>
-                      <p className="text-xs text-muted-foreground">{formatAuditTime(event.createdAt)}</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-
-              {auditEvents.length > MAX_VISIBLE_AUDIT_EVENTS && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAllAuditEvents((prev) => !prev)}
-                >
-                  {showAllAuditEvents ? "Show Less" : `Show More (${auditEvents.length - MAX_VISIBLE_AUDIT_EVENTS} more)`}
-                </Button>
               )}
             </CardContent>
           </Card>
