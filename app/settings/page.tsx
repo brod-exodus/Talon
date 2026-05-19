@@ -534,7 +534,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-sm font-medium">Scrape worker failures</p>
+                  <p className="text-sm font-medium">Scrape processing failures</p>
                   <p className="text-xs text-muted-foreground">
                     {recentScrapeFailures === 0
                       ? "No scrape failures in the last 24 hours."
