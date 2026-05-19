@@ -93,7 +93,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
 
   const getProgressLabel = (scrape: ActiveScrape) => {
     if (!scrape.job) return "Processing contributors"
-    if (scrape.job.status === "queued") return "Waiting for worker"
+    if (scrape.job.status === "queued") return "Waiting to start"
     return "Processing contributors"
   }
 
@@ -103,7 +103,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     try {
       const response = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
       if (!response.ok) throw new Error("Failed to cancel scrape")
-      toast({ title: "Scrape canceled", description: "The worker will stop this scrape at its next checkpoint." })
+      toast({ title: "Scrape canceled", description: "Processing will stop safely shortly." })
     } catch (error) {
       toast({
         title: "Cancel failed",
@@ -128,7 +128,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
         const error = await response.json()
         throw new Error(error.error || "Failed to retry scrape")
       }
-      toast({ title: "Retry started", description: "The scrape worker has been kicked off again." })
+      toast({ title: "Retry queued", description: "The scrape will run again shortly." })
     } catch (error) {
       toast({
         title: "Retry failed",

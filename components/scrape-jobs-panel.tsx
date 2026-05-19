@@ -60,7 +60,7 @@ function statusBadge(job: ScrapeJobSummary) {
 }
 
 export function ScrapeJobsPanel() {
-  const { canWrite } = useAuthPermissions()
+  const { canAdmin } = useAuthPermissions()
   const [jobs, setJobs] = useState<ScrapeJobSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
@@ -73,6 +73,12 @@ export function ScrapeJobsPanel() {
   )
 
   const loadJobs = useCallback(async () => {
+    if (!canAdmin) {
+      setJobs([])
+      setLoading(false)
+      return
+    }
+
     try {
       const res = await fetch("/api/scrape-jobs")
       if (!res.ok) throw new Error("Failed to fetch jobs")
@@ -83,21 +89,27 @@ export function ScrapeJobsPanel() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canAdmin])
 
   useEffect(() => {
+    if (!canAdmin) {
+      setJobs([])
+      setLoading(false)
+      return
+    }
+
     loadJobs()
     const interval = setInterval(loadJobs, 5000)
     return () => clearInterval(interval)
-  }, [loadJobs])
+  }, [canAdmin, loadJobs])
 
   const retryJob = useCallback(async (jobId: string) => {
-    if (!canWrite) return
+    if (!canAdmin) return
     setRetrying((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
       if (!res.ok) throw new Error("Failed to retry job")
-      toast({ title: "Job queued", description: "The scrape job will run on the next worker tick." })
+      toast({ title: "Retry queued", description: "The scrape will run again shortly." })
       await loadJobs()
     } catch (error) {
       toast({
@@ -112,15 +124,15 @@ export function ScrapeJobsPanel() {
         return next
       })
     }
-  }, [canWrite, loadJobs, toast])
+  }, [canAdmin, loadJobs, toast])
 
   const cancelJob = useCallback(async (jobId: string) => {
-    if (!canWrite) return
+    if (!canAdmin) return
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
       if (!res.ok) throw new Error("Failed to cancel job")
-      toast({ title: "Job canceled", description: "The scrape will stop at its next checkpoint." })
+      toast({ title: "Processing canceled", description: "The scrape will stop safely shortly." })
       await loadJobs()
     } catch (error) {
       toast({
@@ -135,19 +147,20 @@ export function ScrapeJobsPanel() {
         return next
       })
     }
-  }, [canWrite, loadJobs, toast])
+  }, [canAdmin, loadJobs, toast])
 
+  if (!canAdmin) return null
   if (!loading && visibleJobs.length === 0) return null
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ServerCog className="w-5 h-5 text-primary" />
-        <h2 className="text-2xl font-semibold tracking-tight">Scrape Jobs</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Scrape Operations</h2>
       </div>
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Worker Queue</CardTitle>
+          <CardTitle className="text-sm font-medium">Recent Processing Activity</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? (
@@ -186,9 +199,9 @@ export function ScrapeJobsPanel() {
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  Next run {formatTime(job.runAfter)}
+                  Next attempt {formatTime(job.runAfter)}
                 </span>
-                {canWrite && (
+                {canAdmin && (
                   <div className="flex items-center gap-2">
                     {(job.status === "queued" || job.status === "running") && (
                       <Button
