@@ -5,6 +5,7 @@ import { Activity, AlertTriangle, CheckCircle2, RefreshCw, ShieldAlert } from "l
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useAuthPermissions } from "@/lib/client-permissions"
 
 type CheckStatus = "ok" | "warn" | "error"
 
@@ -42,6 +43,7 @@ function formatLabel(key: string): string {
 }
 
 export function HealthPanel() {
+  const { canAdmin } = useAuthPermissions()
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -91,11 +93,16 @@ export function HealthPanel() {
   }, [])
 
   useEffect(() => {
+    if (!canAdmin) {
+      setLoading(false)
+      return
+    }
     loadHealth()
     const interval = setInterval(loadHealth, 60000)
     return () => clearInterval(interval)
-  }, [loadHealth])
+  }, [canAdmin, loadHealth])
 
+  if (!canAdmin) return null
   if (loading) return null
   if (health?.status === "ok") return null
 
