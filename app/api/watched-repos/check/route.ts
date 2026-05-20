@@ -81,12 +81,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`[watched-repos/check] ${dueRepos.length} repo(s) due for check out of ${(allWatched ?? []).length}`)
 
-    const results: Array<{ repo: string; newContributors: number; error?: string }> = []
+    const results: Array<{ repo: string; newContributors: number; baselinedContributors?: number; notified?: boolean; error?: string }> = []
 
     for (const watched of dueRepos) {
       try {
         const githubClient = createGitHubClient(githubToken)
         const contributors = await githubClient.getRepoContributors(watched.repo)
+        const isInitialBaseline = !watched.last_checked_at
 
         if (!contributors || contributors.length === 0) {
           await supabaseAdmin
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
             .update({ last_checked_at: now.toISOString() })
             .eq("id", watched.id)
             .eq("team_id", watched.team_id)
-          results.push({ repo: watched.repo, newContributors: 0 })
+          results.push({ repo: watched.repo, newContributors: 0, baselinedContributors: isInitialBaseline ? 0 : undefined, notified: false })
           continue
         }
 
@@ -152,18 +153,21 @@ export async function POST(request: NextRequest) {
               first_seen_at: now.toISOString(),
             })
 
-            newContributors.push({
-              username: contributor.login,
-              name: details.name ?? null,
-              avatar: details.avatar_url ?? null,
-            })
+            if (!isInitialBaseline) {
+              newContributors.push({
+                username: contributor.login,
+                name: details.name ?? null,
+                avatar: details.avatar_url ?? null,
+              })
+            }
           } catch (err) {
             console.error(`[watched-repos/check] Failed to process ${contributor.login}:`, err)
           }
         }
 
         // Send Slack notification if there are new contributors and webhook is configured
-        if (newContributors.length > 0 && slackWebhookUrl) {
+        const shouldNotify = !isInitialBaseline && newContributors.length > 0 && Boolean(slackWebhookUrl)
+        if (shouldNotify && slackWebhookUrl) {
           await sendSlackNotification(slackWebhookUrl, watched.repo, newContributors)
         }
 
@@ -174,7 +178,12 @@ export async function POST(request: NextRequest) {
           .eq("id", watched.id)
           .eq("team_id", watched.team_id)
 
-        results.push({ repo: watched.repo, newContributors: newContributors.length })
+        results.push({
+          repo: watched.repo,
+          newContributors: newContributors.length,
+          baselinedContributors: isInitialBaseline ? contributors.length : undefined,
+          notified: shouldNotify,
+        })
       } catch (err) {
         console.error(`[watched-repos/check] Failed to check ${watched.repo}:`, err)
         results.push({
