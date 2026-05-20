@@ -330,6 +330,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
   const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
+  const [retryingJobs, setRetryingJobs] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
@@ -517,16 +518,35 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
   const retryJob = useCallback(async (jobId: string) => {
     if (!canWrite) return
+    setRetryingJobs((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed to retry job")
-      toast({ title: "Retry queued", description: "The scrape will run again shortly." })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to retry scrape")
+      if (data?.workerResult?.status === "failed") {
+        toast({
+          title: "Retry failed",
+          description: data.workerResult.error || "The scrape ran again but could not complete.",
+          variant: "destructive",
+        })
+      } else if (data?.workerResult?.status === "succeeded") {
+        toast({ title: "Retry completed", description: "The scrape completed successfully." })
+      } else {
+        toast({ title: "Retry queued", description: "The scrape will run again shortly." })
+      }
       await fetchScrapes()
     } catch (error) {
       toast({
         title: "Retry failed",
-        description: error instanceof Error ? error.message : "Unable to retry scrape job",
+        description: error instanceof Error ? error.message : "Unable to retry scrape",
         variant: "destructive",
+      })
+      await fetchScrapes()
+    } finally {
+      setRetryingJobs((prev) => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
       })
     }
   }, [canWrite, fetchScrapes, toast])
@@ -980,51 +1000,55 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           <h2 className="text-2xl font-semibold tracking-tight">Failed Scrapes</h2>
         </div>
         <div className="space-y-3">
-          {failedScrapes.map((scrape) => (
-            <Card key={scrape.id} className="border-destructive/25 bg-card">
-              <CardContent className="pt-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-sm text-foreground">{scrape.target}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {scrape.type} · {formatTimeAgo(scrape.completedAt)}
-                    </p>
-                  </div>
-                  {canWrite && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="bg-transparent"
-                        disabled={!scrape.job?.id}
-                        onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
-                      >
-                        <RotateCw className="w-3 h-3 mr-1" />
-                        Retry
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => deleteScrape(scrape.id)}
-                      >
-                        <Trash2 className="w-3 h-3 mr-1" />
-                        Delete
-                      </Button>
+          {failedScrapes.map((scrape) => {
+            const retrying = Boolean(scrape.job?.id && retryingJobs.has(scrape.job.id))
+
+            return (
+              <Card key={scrape.id} className="border-destructive/25 bg-card">
+                <CardContent className="pt-5 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-sm text-foreground">{scrape.target}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {scrape.type} · {formatTimeAgo(scrape.completedAt)}
+                      </p>
                     </div>
+                    {canWrite && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-transparent"
+                          disabled={!scrape.job?.id || retrying}
+                          onClick={() => scrape.job?.id && retryJob(scrape.job.id)}
+                        >
+                          <RotateCw className={`w-3 h-3 mr-1 ${retrying ? "animate-spin" : ""}`} />
+                          {retrying ? "Retrying..." : "Retry"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => deleteScrape(scrape.id)}
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                    {scrape.job?.lastError || scrape.error || "The scrape failed without a recorded error."}
+                  </div>
+                  {scrape.job && (
+                    <p className="text-xs text-muted-foreground">
+                      Attempt {scrape.job.attempts}/{scrape.job.maxAttempts} · {scrape.job.status}
+                    </p>
                   )}
-                </div>
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-                  {scrape.job?.lastError || scrape.error || "The scrape failed without a recorded error."}
-                </div>
-                {scrape.job && (
-                  <p className="text-xs text-muted-foreground">
-                    Attempt {scrape.job.attempts}/{scrape.job.maxAttempts} · job {scrape.job.status}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </div>
     )

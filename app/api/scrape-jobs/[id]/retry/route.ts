@@ -20,14 +20,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const job = await retryScrapeJob(jobId, teamId)
     const workerRun = await runScrapeWorker(1, teamId)
-    const triggered = workerRun.results.some((result) => result.jobId === job.id)
+    const workerResult = workerRun.results.find((result) => result.jobId === job.id) ?? null
+    const triggered = Boolean(workerResult)
     await recordAuditEvent({
       request,
       action: "scrape.retry",
       outcome: "success",
       metadata: { jobId: job.id, scrapeId: job.scrapeId, teamSlug, workerTriggered: triggered },
     })
-    return NextResponse.json({ job, workerTriggered: triggered })
+    return NextResponse.json({ job, workerTriggered: triggered, workerResult })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[scrape-jobs/retry] POST error:", error)
