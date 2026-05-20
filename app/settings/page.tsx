@@ -30,6 +30,7 @@ type TeamMember = {
   role: AuthRole
   invitedBy: string | null
   createdAt: string
+  authStatus: "active" | "unconfirmed" | "missing"
 }
 
 const ROLE_OPTIONS: Array<{ value: AuthRole; label: string; description: string }> = [
@@ -38,6 +39,21 @@ const ROLE_OPTIONS: Array<{ value: AuthRole; label: string; description: string 
   { value: "recruiter", label: "Recruiter", description: "Can run scrapes, manage outreach, and use watched repos." },
   { value: "viewer", label: "Viewer", description: "Read-only access for reviewing lists and shared team context." },
 ]
+
+const AUTH_STATUS_COPY: Record<TeamMember["authStatus"], { label: string; description: string }> = {
+  active: {
+    label: "Login ready",
+    description: "This teammate has a confirmed Supabase Auth account.",
+  },
+  unconfirmed: {
+    label: "Needs password",
+    description: "Save this teammate with a temporary password to confirm the login.",
+  },
+  missing: {
+    label: "No login",
+    description: "Save this teammate with a temporary password to create the login.",
+  },
+}
 
 export default function SettingsPage() {
   const { canWrite, canAdmin } = useAuthPermissions()
@@ -242,7 +258,13 @@ export default function SettingsPage() {
       setMemberEmail("")
       setMemberPassword("")
       setMemberRole("recruiter")
-      setTeamMembersSaved(data.authUserCreated ? "Team member created and auto-confirmed." : "Team member role saved.")
+      setTeamMembersSaved(
+        data.authUserCreated
+          ? "Team member login created and ready."
+          : data.authUserUpdated
+            ? "Team member login updated and ready."
+            : "Team member role saved."
+      )
       setTimeout(() => setTeamMembersSaved(""), 3000)
     } catch (err) {
       setTeamMembersError(err instanceof Error ? err.message : "Failed to save team member")
@@ -575,8 +597,9 @@ export default function SettingsPage() {
                 <Alert>
                   <Shield className="h-4 w-4" />
                   <AlertDescription>
-                    New users are auto-confirmed because Supabase SMTP is not configured yet. Temporary passwords are
-                    required for brand-new users and should be shared out of band until password-reset emails are configured.
+                    Add the teammate&apos;s email, choose a role, and set a temporary password. If the login already exists,
+                    entering a password resets it and confirms the account. Share temporary passwords out of band until
+                    password-reset emails are configured.
                   </AlertDescription>
                 </Alert>
 
@@ -603,7 +626,7 @@ export default function SettingsPage() {
                       autoComplete="new-password"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Leave blank only when the Auth user already exists.
+                      Required for new logins. Optional when only changing a role.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -666,6 +689,13 @@ export default function SettingsPage() {
                             <div className="min-w-0 space-y-1">
                               <div className="flex min-w-0 items-center gap-2">
                                 <p className="truncate text-sm font-medium text-foreground">{member.email}</p>
+                                <Badge
+                                  variant={member.authStatus === "active" ? "secondary" : "outline"}
+                                  className="shrink-0 text-xs"
+                                  title={AUTH_STATUS_COPY[member.authStatus].description}
+                                >
+                                  {AUTH_STATUS_COPY[member.authStatus].label}
+                                </Badge>
                                 {isSoleOwner && (
                                   <Badge variant="outline" className="shrink-0 text-xs">
                                     Protected
@@ -677,6 +707,11 @@ export default function SettingsPage() {
                               </p>
                               {roleDescription && (
                                 <p className="text-xs text-muted-foreground">{roleDescription}</p>
+                              )}
+                              {member.authStatus !== "active" && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                  {AUTH_STATUS_COPY[member.authStatus].description}
+                                </p>
                               )}
                             </div>
                             <div className="flex items-center gap-2">
