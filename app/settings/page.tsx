@@ -10,9 +10,9 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2 } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
-import { useAuthPermissions } from "@/lib/client-permissions"
+import { useAuthMe } from "@/lib/client-permissions"
 import { type AuthRole } from "@/lib/auth-token"
 
 type AuditEvent = {
@@ -56,7 +56,9 @@ const AUTH_STATUS_COPY: Record<TeamMember["authStatus"], { label: string; descri
 }
 
 export default function SettingsPage() {
-  const { canWrite, canAdmin } = useAuthPermissions()
+  const me = useAuthMe()
+  const canWrite = me?.permissions.canWrite ?? false
+  const canAdmin = me?.permissions.canAdmin ?? false
   const [token, setToken] = useState("")
   const [rememberToken, setRememberToken] = useState(false)
   const [slackWebhook, setSlackWebhook] = useState("")
@@ -79,6 +81,12 @@ export default function SettingsPage() {
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
   const [auditExporting, setAuditExporting] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [passwordChanging, setPasswordChanging] = useState(false)
+  const [passwordError, setPasswordError] = useState("")
+  const [passwordSaved, setPasswordSaved] = useState(false)
 
   useEffect(() => {
     const stored = getStoredGithubToken()
@@ -188,6 +196,43 @@ export default function SettingsPage() {
     setRateLimit(null)
     setSaved(false)
     setError("")
+  }
+
+  async function handlePasswordChange() {
+    if (me?.actor !== "user") return
+
+    setPasswordError("")
+    setPasswordSaved(false)
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.")
+      return
+    }
+
+    if (newPassword.trim().length < 8) {
+      setPasswordError("New password must be at least 8 characters.")
+      return
+    }
+
+    setPasswordChanging(true)
+    try {
+      const response = await fetch("/api/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to update password")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setPasswordSaved(true)
+      setTimeout(() => setPasswordSaved(false), 3000)
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Failed to update password")
+    } finally {
+      setPasswordChanging(false)
+    }
   }
 
   async function handleSlackSave() {
@@ -405,6 +450,76 @@ export default function SettingsPage() {
                 Viewer access is read-only. GitHub token, Slack, and security-event settings require a recruiter or admin role.
               </AlertDescription>
             </Alert>
+          )}
+
+          {me?.actor === "user" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LockKeyhole className="w-5 h-5" />
+                  Account Security
+                </CardTitle>
+                <CardDescription>
+                  Change the password for {me.email}. This does not affect break-glass admin access.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">Current password</Label>
+                    <Input
+                      id="current-password"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                {passwordError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{passwordError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {passwordSaved && (
+                  <Alert>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <AlertDescription>Password updated.</AlertDescription>
+                  </Alert>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={handlePasswordChange}
+                  disabled={passwordChanging || !currentPassword || !newPassword || !confirmPassword}
+                >
+                  {passwordChanging ? "Updating..." : "Update Password"}
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           <Card>
