@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,9 @@ type TeamMember = {
   authStatus: "active" | "unconfirmed" | "missing"
 }
 
+type AuditCategory = "all" | "auth" | "scrape" | "team" | "sharing" | "watched" | "outreach" | "slack" | "other"
+type AuditOutcomeFilter = "all" | AuditEvent["outcome"]
+
 const ROLE_OPTIONS: Array<{ value: AuthRole; label: string; description: string }> = [
   { value: "owner", label: "Owner", description: "Full access, including ownership transfer and billing-era controls." },
   { value: "admin", label: "Admin", description: "Can manage settings, teammates, scrapes, and watched repos." },
@@ -54,6 +57,25 @@ const AUTH_STATUS_COPY: Record<TeamMember["authStatus"], { label: string; descri
     description: "Save this teammate with a temporary password to create the login.",
   },
 }
+
+const AUDIT_CATEGORY_OPTIONS: Array<{ value: AuditCategory; label: string }> = [
+  { value: "all", label: "All events" },
+  { value: "auth", label: "Login & passwords" },
+  { value: "scrape", label: "Scrapes" },
+  { value: "team", label: "Team access" },
+  { value: "sharing", label: "Share links" },
+  { value: "watched", label: "Watched repos" },
+  { value: "outreach", label: "Outreach" },
+  { value: "slack", label: "Slack" },
+  { value: "other", label: "Other" },
+]
+
+const AUDIT_OUTCOME_OPTIONS: Array<{ value: AuditOutcomeFilter; label: string }> = [
+  { value: "all", label: "All outcomes" },
+  { value: "success", label: "Success" },
+  { value: "failure", label: "Failure" },
+  { value: "blocked", label: "Blocked" },
+]
 
 const DEPLOYMENT_CHECKLIST_STORAGE_KEY = "talon:deployment-checklist:v1"
 
@@ -131,6 +153,8 @@ export default function SettingsPage() {
   const [auditEventsLoading, setAuditEventsLoading] = useState(false)
   const [auditEventsError, setAuditEventsError] = useState("")
   const [auditExporting, setAuditExporting] = useState(false)
+  const [auditCategory, setAuditCategory] = useState<AuditCategory>("all")
+  const [auditOutcome, setAuditOutcome] = useState<AuditOutcomeFilter>("all")
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -468,6 +492,21 @@ export default function SettingsPage() {
       .join(" ")
   }
 
+  function getAuditCategory(action: string): AuditCategory {
+    if (action.startsWith("auth.")) return "auth"
+    if (action.startsWith("scrape.")) return "scrape"
+    if (action.startsWith("team.")) return "team"
+    if (action.startsWith("share.")) return "sharing"
+    if (action.startsWith("watched_repo.")) return "watched"
+    if (action.startsWith("outreach.")) return "outreach"
+    if (action.startsWith("slack.")) return "slack"
+    return "other"
+  }
+
+  function formatCategory(category: AuditCategory) {
+    return AUDIT_CATEGORY_OPTIONS.find((option) => option.value === category)?.label ?? "Other"
+  }
+
   function formatAuditMetadata(metadata: Record<string, unknown>) {
     const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined)
     if (!entries.length) return "No details"
@@ -508,6 +547,14 @@ export default function SettingsPage() {
   const recentScrapeFailures = recentEvents.filter(
     (event) => event.action === "scrape.failure" && event.outcome === "failure"
   ).length
+  const filteredAuditEvents = useMemo(
+    () => auditEvents.filter((event) => {
+      const matchesCategory = auditCategory === "all" || getAuditCategory(event.action) === auditCategory
+      const matchesOutcome = auditOutcome === "all" || event.outcome === auditOutcome
+      return matchesCategory && matchesOutcome
+    }),
+    [auditCategory, auditEvents, auditOutcome]
+  )
   const ownerCount = teamMembers.filter((member) => member.role === "owner").length
   const selectedRoleDescription = ROLE_OPTIONS.find((role) => role.value === memberRole)?.description
   const completedDeploymentChecks = DEPLOYMENT_CHECKLIST_ITEMS.filter((item) => deploymentChecklist[item.id]).length
@@ -1150,6 +1197,53 @@ export default function SettingsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <div className="space-y-2">
+                  <Label htmlFor="audit-category">Event type</Label>
+                  <Select value={auditCategory} onValueChange={(value) => setAuditCategory(value as AuditCategory)}>
+                    <SelectTrigger id="audit-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AUDIT_CATEGORY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="audit-outcome">Outcome</Label>
+                  <Select value={auditOutcome} onValueChange={(value) => setAuditOutcome(value as AuditOutcomeFilter)}>
+                    <SelectTrigger id="audit-outcome">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AUDIT_OUTCOME_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setAuditCategory("all")
+                      setAuditOutcome("all")
+                    }}
+                    disabled={auditCategory === "all" && auditOutcome === "all"}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
               {auditEventsError && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -1167,23 +1261,42 @@ export default function SettingsPage() {
 
               {auditEvents.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Showing {auditEvents.length} events. Scroll inside this panel to review older activity.
+                  Showing {filteredAuditEvents.length} of {auditEvents.length} events. Scroll inside this panel to review older activity.
                 </p>
               )}
 
-              {auditEvents.length > 0 && (
+              {auditEvents.length > 0 && filteredAuditEvents.length === 0 && (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                  No security events match the current filters.
+                </div>
+              )}
+
+              {filteredAuditEvents.length > 0 && (
                 <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
-                  {auditEvents.map((event) => (
+                  {filteredAuditEvents.map((event) => (
                     <div key={event.id} className="rounded-lg border border-border p-3">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
+                            <Badge variant="outline" className="text-xs">
+                              {formatCategory(getAuditCategory(event.action))}
+                            </Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {formatAuditMetadata(event.metadata)}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                          <span
+                            className={`text-xs uppercase tracking-wide ${
+                              event.outcome === "failure"
+                                ? "text-destructive"
+                                : event.outcome === "blocked"
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
                             {event.outcome}
                           </span>
                           <p className="text-xs text-muted-foreground">{formatAuditTime(event.createdAt)}</p>
