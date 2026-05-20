@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { type AuthRole } from "@/lib/auth-token"
 
-type AuthMe =
+export type AuthMe =
   | {
       authenticated: true
       actor: "admin"
@@ -32,7 +32,7 @@ const DEFAULT_PERMISSIONS = {
   canAdmin: false,
 }
 
-export function useAuthPermissions() {
+export function useAuthMe() {
   const [me, setMe] = useState<AuthMe | null>(null)
 
   useEffect(() => {
@@ -49,6 +49,12 @@ export function useAuthPermissions() {
       canceled = true
     }
   }, [])
+
+  return me
+}
+
+export function useAuthPermissions() {
+  const me = useAuthMe()
 
   return useMemo(() => me?.permissions ?? DEFAULT_PERMISSIONS, [me])
 }
