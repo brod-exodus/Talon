@@ -48,7 +48,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Talon</CardTitle>
-          <CardDescription>Sign in with your team account, or leave email blank for admin access.</CardDescription>
+          <CardDescription>
+            Sign in with your team email and password. For break-glass admin access, leave email blank and use the
+            admin password.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

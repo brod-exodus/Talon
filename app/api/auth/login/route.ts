@@ -50,14 +50,21 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password })
     if (error || !data.user?.email) {
       await recordLoginFailure(request)
+      const reason = error?.message?.toLowerCase().includes("email not confirmed")
+        ? "email_not_confirmed"
+        : "invalid_user_credentials"
       await recordAuditEvent({
         request,
         action: "auth.login",
         outcome: "failure",
         actor: "user",
-        metadata: { reason: "invalid_user_credentials", emailHash: hashAuditValue(email) },
+        metadata: { reason, emailHash: hashAuditValue(email) },
       })
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+      return NextResponse.json({
+        error: reason === "email_not_confirmed"
+          ? "This account is not confirmed yet. Ask an admin to open Settings > Team Access and save the teammate with a temporary password."
+          : "Invalid email or password",
+      }, { status: 401 })
     }
 
     const membership = await getPrimaryTeamMembershipForEmail(data.user.email)

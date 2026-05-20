@@ -17,11 +17,24 @@ type TeamMemberRow = {
   created_at: string
 }
 
+type AuthUserSummary = {
+  email?: string | null
+  email_confirmed_at?: string | null
+  confirmed_at?: string | null
+}
+
+type AuthStatus = "active" | "unconfirmed" | "missing"
+
 function normalizeRole(value: unknown): AuthRole | null {
   return typeof value === "string" && ROLES.includes(value as AuthRole) ? (value as AuthRole) : null
 }
 
-function mapTeamMember(row: TeamMemberRow) {
+function getAuthStatus(user: AuthUserSummary | null): AuthStatus {
+  if (!user) return "missing"
+  return user.email_confirmed_at || user.confirmed_at ? "active" : "unconfirmed"
+}
+
+function mapTeamMember(row: TeamMemberRow, authUser: AuthUserSummary | null = null) {
   return {
     id: row.id,
     teamId: row.team_id,
@@ -29,7 +42,21 @@ function mapTeamMember(row: TeamMemberRow) {
     role: row.role,
     invitedBy: row.invited_by,
     createdAt: row.created_at,
+    authStatus: getAuthStatus(authUser),
   }
+}
+
+async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | null> {
+  let page = 1
+  while (page <= 10) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+    if (error) throw error
+    const user = (data.users ?? []).find((item) => item.email?.toLowerCase() === email.toLowerCase())
+    if (user) return user as AuthUserSummary
+    if ((data.users ?? []).length < 1000) return null
+    page += 1
+  }
+  return null
 }
 
 async function getTeamMembers(teamId: string): Promise<TeamMemberRow[]> {
@@ -85,7 +112,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       metadata: { teamSlug: team.teamSlug, role, emailHash: hashAuditValue(target.email) },
     })
 
-    return NextResponse.json({ member: mapTeamMember(data as TeamMemberRow) })
+    const authUser = await findAuthUserByEmail(target.email)
+    return NextResponse.json({ member: mapTeamMember(data as TeamMemberRow, authUser) })
   } catch (error) {
     console.error("[team-members] PATCH error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
