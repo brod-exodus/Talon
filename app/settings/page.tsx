@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole, ClipboardCheck } from "lucide-react"
 import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 import { useAuthMe } from "@/lib/client-permissions"
 import { type AuthRole } from "@/lib/auth-token"
@@ -55,6 +55,56 @@ const AUTH_STATUS_COPY: Record<TeamMember["authStatus"], { label: string; descri
   },
 }
 
+const DEPLOYMENT_CHECKLIST_STORAGE_KEY = "talon:deployment-checklist:v1"
+
+const DEPLOYMENT_CHECKLIST_ITEMS = [
+  {
+    id: "owner-login",
+    label: "Owner/admin login works",
+    detail: "Sign in as an owner or admin and confirm Settings loads admin-only sections.",
+  },
+  {
+    id: "recruiter-login",
+    label: "Recruiter login works",
+    detail: "Sign in as a recruiter and confirm scrapes and watched repos are available.",
+  },
+  {
+    id: "viewer-readonly",
+    label: "Viewer remains read-only",
+    detail: "Sign in as a viewer and confirm create, edit, scrape, and delete actions are hidden or blocked.",
+  },
+  {
+    id: "successful-scrape",
+    label: "Small scrape completes",
+    detail: "Run a small repository scrape and confirm it moves from queued/running to completed.",
+  },
+  {
+    id: "failed-retry",
+    label: "Failed scrape retry is clear",
+    detail: "Force a bad scrape target, click Retry once, and confirm visible retry feedback.",
+  },
+  {
+    id: "watched-repo",
+    label: "Watched repo check finishes",
+    detail: "Add or use a watched repo, run Check Now, and confirm the last-checked time updates.",
+  },
+  {
+    id: "share-link",
+    label: "Share link opens read-only",
+    detail: "Create a share link and open it in a private window with no edit actions exposed.",
+  },
+  {
+    id: "slack-test",
+    label: "Slack notification path works",
+    detail: "Send a Slack test or trigger a watched-repo notification and confirm delivery.",
+  },
+  {
+    id: "security-events",
+    label: "Security events are logging",
+    detail: "Confirm recent login, password, scrape, or lockout events appear in Settings.",
+  },
+] as const
+
 export default function SettingsPage() {
   const me = useAuthMe()
   const canWrite = me?.permissions.canWrite ?? false
@@ -87,6 +137,7 @@ export default function SettingsPage() {
   const [passwordChanging, setPasswordChanging] = useState(false)
   const [passwordError, setPasswordError] = useState("")
   const [passwordSaved, setPasswordSaved] = useState(false)
+  const [deploymentChecklist, setDeploymentChecklist] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const stored = getStoredGithubToken()
@@ -100,6 +151,22 @@ export default function SettingsPage() {
       void loadAuditEvents()
     }
   }, [canAdmin, canWrite])
+
+  useEffect(() => {
+    if (!canAdmin) return
+    try {
+      const stored = window.localStorage.getItem(DEPLOYMENT_CHECKLIST_STORAGE_KEY)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Record<string, unknown>
+      setDeploymentChecklist(
+        Object.fromEntries(
+          DEPLOYMENT_CHECKLIST_ITEMS.map((item) => [item.id, parsed[item.id] === true])
+        )
+      )
+    } catch {
+      setDeploymentChecklist({})
+    }
+  }, [canAdmin])
 
   async function loadTeamMembers() {
     setTeamMembersLoading(true)
@@ -196,6 +263,19 @@ export default function SettingsPage() {
     setRateLimit(null)
     setSaved(false)
     setError("")
+  }
+
+  function updateDeploymentChecklist(itemId: string, checked: boolean) {
+    setDeploymentChecklist((prev) => {
+      const next = { ...prev, [itemId]: checked }
+      window.localStorage.setItem(DEPLOYMENT_CHECKLIST_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
+  function resetDeploymentChecklist() {
+    window.localStorage.removeItem(DEPLOYMENT_CHECKLIST_STORAGE_KEY)
+    setDeploymentChecklist({})
   }
 
   async function handlePasswordChange() {
@@ -430,6 +510,7 @@ export default function SettingsPage() {
   ).length
   const ownerCount = teamMembers.filter((member) => member.role === "owner").length
   const selectedRoleDescription = ROLE_OPTIONS.find((role) => role.value === memberRole)?.description
+  const completedDeploymentChecks = DEPLOYMENT_CHECKLIST_ITEMS.filter((item) => deploymentChecklist[item.id]).length
 
   return (
     <div className="min-h-screen bg-background">
@@ -518,6 +599,58 @@ export default function SettingsPage() {
                 >
                   {passwordChanging ? "Updating..." : "Update Password"}
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {canAdmin && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <ClipboardCheck className="w-5 h-5" />
+                      Deployment Checklist
+                    </CardTitle>
+                    <CardDescription>
+                      Admin-only smoke checks for validating a fresh production deploy.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0">
+                    {completedDeploymentChecks}/{DEPLOYMENT_CHECKLIST_ITEMS.length}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  {DEPLOYMENT_CHECKLIST_ITEMS.map((item) => (
+                    <label
+                      key={item.id}
+                      htmlFor={`deployment-check-${item.id}`}
+                      className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/40"
+                    >
+                      <input
+                        id={`deployment-check-${item.id}`}
+                        type="checkbox"
+                        checked={deploymentChecklist[item.id] ?? false}
+                        onChange={(event) => updateDeploymentChecklist(item.id, event.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-border accent-primary"
+                      />
+                      <span className="min-w-0 space-y-1">
+                        <span className="block text-sm font-medium text-foreground">{item.label}</span>
+                        <span className="block text-xs text-muted-foreground">{item.detail}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Progress is saved in this browser only, so each admin can run their own checklist during deploy verification.
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={resetDeploymentChecklist}>
+                    Reset
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
