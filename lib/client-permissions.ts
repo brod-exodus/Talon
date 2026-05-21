@@ -17,6 +17,8 @@ export type AuthMe =
       authenticated: true
       actor: "user"
       email: string
+      displayName: string | null
+      avatarUrl: string | null
       teamSlug: string
       role: AuthRole
       permissions: {
@@ -25,6 +27,8 @@ export type AuthMe =
         canAdmin: boolean
       }
     }
+
+export const AUTH_ME_REFRESH_EVENT = "talon-auth-me-refresh"
 
 const DEFAULT_PERMISSIONS = {
   canRead: true,
@@ -37,16 +41,23 @@ export function useAuthMe() {
 
   useEffect(() => {
     let canceled = false
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (!canceled && data?.authenticated) setMe(data as AuthMe)
-      })
-      .catch(() => {
-        if (!canceled) setMe(null)
-      })
+
+    function loadAuthMe() {
+      fetch("/api/auth/me", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (!canceled && data?.authenticated) setMe(data as AuthMe)
+        })
+        .catch(() => {
+          if (!canceled) setMe(null)
+        })
+    }
+
+    loadAuthMe()
+    window.addEventListener(AUTH_ME_REFRESH_EVENT, loadAuthMe)
     return () => {
       canceled = true
+      window.removeEventListener(AUTH_ME_REFRESH_EVENT, loadAuthMe)
     }
   }, [])
 
