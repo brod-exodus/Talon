@@ -50,7 +50,7 @@ export default function LoginPage() {
         <CardHeader>
           <div className="mb-2 flex items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-lg shadow-indigo-500/10 ring-1 ring-white/80">
-              <Image src="/logos/talon-logo-header.png" alt="" width={30} height={30} className="h-8 w-8 object-contain" />
+              <Image src="/logos/talon-prism-mark.svg" alt="" width={34} height={34} className="h-9 w-9 object-contain" />
             </span>
             <div>
               <CardTitle className="text-2xl font-extrabold prism-text-gradient">Talon</CardTitle>
