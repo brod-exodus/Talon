@@ -14,6 +14,7 @@ type TeamMemberRow = {
   id: string
   team_id: string
   email: string
+  display_name: string | null
   role: AuthRole
   invited_by: string | null
   created_at: string
@@ -32,6 +33,12 @@ function normalizeEmail(value: unknown): string | null {
   if (typeof value !== "string") return null
   const email = value.trim().toLowerCase()
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : null
+}
+
+function normalizeDisplayName(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const displayName = value.trim().replace(/\s+/g, " ")
+  return displayName.length >= 1 && displayName.length <= 120 ? displayName : null
 }
 
 function normalizeRole(value: unknown): AuthRole | null {
@@ -54,6 +61,7 @@ function mapTeamMember(row: TeamMemberRow, authUser: AuthUserSummary | null = nu
     id: row.id,
     teamId: row.team_id,
     email: row.email,
+    displayName: row.display_name,
     role: row.role,
     invitedBy: row.invited_by,
     createdAt: row.created_at,
@@ -89,7 +97,7 @@ export async function GET(request: NextRequest) {
     const team = await resolveTeamContext(request)
     const { data, error } = await supabaseAdmin
       .from("team_memberships")
-      .select("id, team_id, email, role, invited_by, created_at")
+      .select("id, team_id, email, display_name, role, invited_by, created_at")
       .eq("team_id", team.teamId)
       .order("created_at", { ascending: true })
     if (error) throw error
@@ -113,10 +121,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await readJsonObject(request)
     const email = normalizeEmail(body?.email)
+    const displayName = normalizeDisplayName(body?.displayName)
     const role = normalizeRole(body?.role)
     const password = normalizePassword(body?.password)
 
     if (!email) return NextResponse.json({ error: "Invalid email" }, { status: 400 })
+    if (!displayName) return NextResponse.json({ error: "Display name is required" }, { status: 400 })
     if (!role) return NextResponse.json({ error: "Invalid role" }, { status: 400 })
 
     const team = await resolveTeamContext(request)
@@ -156,12 +166,13 @@ export async function POST(request: NextRequest) {
         {
           team_id: team.teamId,
           email,
+          display_name: displayName,
           role,
           invited_by: actorEmail,
         },
         { onConflict: "team_id,email" }
       )
-      .select("id, team_id, email, role, invited_by, created_at")
+      .select("id, team_id, email, display_name, role, invited_by, created_at")
       .single()
     if (error) throw error
 

@@ -14,6 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,7 +57,11 @@ function TalonMark() {
 function getIdentityLabel(me: AuthMe | null) {
   if (!me) return "Checking session..."
   if (me.actor === "admin") return "Admin access"
-  return me.displayName || me.email
+  return me.displayName || getEmailFallback(me.email)
+}
+
+function getEmailFallback(email: string) {
+  return email.split("@")[0] || email
 }
 
 function getInitials(me: AuthMe | null, identityLabel: string) {
@@ -108,6 +114,8 @@ export function Header() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileBusy, setProfileBusy] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSaved, setProfileSaved] = useState(false)
+  const [displayNameInput, setDisplayNameInput] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canAdmin = me?.permissions.canAdmin ?? false
@@ -143,6 +151,12 @@ export function Header() {
     }
   }, [canAdmin])
 
+  useEffect(() => {
+    if (me?.actor === "user") {
+      setDisplayNameInput(me.displayName || getEmailFallback(me.email))
+    }
+  }, [me])
+
   async function handleSignOut() {
     setSigningOut(true)
     try {
@@ -160,6 +174,7 @@ export function Header() {
 
     setProfileBusy(true)
     setProfileError(null)
+    setProfileSaved(false)
     try {
       const formData = new FormData()
       formData.append("photo", file)
@@ -170,6 +185,8 @@ export function Header() {
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Failed to upload profile photo")
       window.dispatchEvent(new Event(AUTH_ME_REFRESH_EVENT))
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 3000)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : "Failed to upload profile photo")
     } finally {
@@ -180,13 +197,46 @@ export function Header() {
   async function handleRemovePhoto() {
     setProfileBusy(true)
     setProfileError(null)
+    setProfileSaved(false)
     try {
       const response = await fetch("/api/profile/photo", { method: "DELETE" })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Failed to remove profile photo")
       window.dispatchEvent(new Event(AUTH_ME_REFRESH_EVENT))
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 3000)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : "Failed to remove profile photo")
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
+  async function handleDisplayNameSave() {
+    if (me?.actor !== "user") return
+    const nextDisplayName = displayNameInput.trim().replace(/\s+/g, " ")
+    if (!nextDisplayName) {
+      setProfileError("Display name is required.")
+      return
+    }
+
+    setProfileBusy(true)
+    setProfileError(null)
+    setProfileSaved(false)
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: nextDisplayName }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to update display name")
+      setDisplayNameInput(data?.displayName || nextDisplayName)
+      window.dispatchEvent(new Event(AUTH_ME_REFRESH_EVENT))
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 3000)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Failed to update display name")
     } finally {
       setProfileBusy(false)
     }
@@ -197,9 +247,12 @@ export function Header() {
   const secondaryIdentityLabel = !me
     ? "Loading current access"
     : me.actor === "user"
-      ? `${me.email} · Team ${me.teamSlug}`
+      ? me.email
       : "Full emergency access"
   const canEditProfilePhoto = me?.actor === "user"
+  const displayNameChanged =
+    me?.actor === "user" &&
+    displayNameInput.trim().replace(/\s+/g, " ") !== (me.displayName || getEmailFallback(me.email))
 
   function renderAccountMenu(trigger: ReactNode, align: "start" | "end" = "end") {
     return (
@@ -358,34 +411,62 @@ export function Header() {
               </div>
             )}
 
+            {profileSaved && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Profile saved.
+              </div>
+            )}
+
             {canEditProfilePhoto ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={handlePhotoChange}
-                />
-                <Button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={profileBusy}
-                  className="w-full"
-                >
-                  <Camera className="h-4 w-4" />
-                  {profileBusy ? "Working..." : "Upload photo"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={profileBusy || me?.actor !== "user" || !me.avatarUrl}
-                  onClick={handleRemovePhoto}
-                  className="w-full bg-white/80 text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remove photo
-                </Button>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="profile-display-name">Display name</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="profile-display-name"
+                      value={displayNameInput}
+                      onChange={(event) => setDisplayNameInput(event.target.value)}
+                      maxLength={120}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={profileBusy || !displayNameInput.trim() || !displayNameChanged}
+                      onClick={handleDisplayNameSave}
+                      className="bg-white/80"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={profileBusy}
+                    className="w-full"
+                  >
+                    <Camera className="h-4 w-4" />
+                    {profileBusy ? "Working..." : "Upload photo"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={profileBusy || me?.actor !== "user" || !me.avatarUrl}
+                    onClick={handleRemovePhoto}
+                    className="w-full bg-white/80 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove photo
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm font-semibold text-muted-foreground">
@@ -449,9 +530,6 @@ export function Header() {
                     <Badge variant="secondary" className="text-[10px]">
                       {roleLabel}
                     </Badge>
-                  )}
-                  {me?.actor === "user" && (
-                    <span className="truncate text-xs font-semibold text-muted-foreground">Team {me.teamSlug}</span>
                   )}
                 </span>
               </span>
