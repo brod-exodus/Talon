@@ -12,6 +12,7 @@ type TeamMemberRow = {
   id: string
   team_id: string
   email: string
+  display_name: string | null
   role: AuthRole
   invited_by: string | null
   created_at: string
@@ -39,6 +40,7 @@ function mapTeamMember(row: TeamMemberRow, authUser: AuthUserSummary | null = nu
     id: row.id,
     teamId: row.team_id,
     email: row.email,
+    displayName: row.display_name,
     role: row.role,
     invitedBy: row.invited_by,
     createdAt: row.created_at,
@@ -62,7 +64,7 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
 async function getTeamMembers(teamId: string): Promise<TeamMemberRow[]> {
   const { data, error } = await supabaseAdmin
     .from("team_memberships")
-    .select("id, team_id, email, role, invited_by, created_at")
+    .select("id, team_id, email, display_name, role, invited_by, created_at")
     .eq("team_id", teamId)
   if (error) throw error
   return (data ?? []) as TeamMemberRow[]
@@ -100,7 +102,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .update({ role })
       .eq("id", memberId)
       .eq("team_id", team.teamId)
-      .select("id, team_id, email, role, invited_by, created_at")
+      .select("id, team_id, email, display_name, role, invited_by, created_at")
       .single()
     if (error) throw error
 

@@ -28,6 +28,7 @@ type AuditEvent = {
 type TeamMember = {
   id: string
   email: string
+  displayName: string | null
   role: AuthRole
   invitedBy: string | null
   createdAt: string
@@ -144,6 +145,7 @@ export default function SettingsPage() {
   const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   const [teamMembersError, setTeamMembersError] = useState("")
   const [teamMembersSaved, setTeamMembersSaved] = useState("")
+  const [memberDisplayName, setMemberDisplayName] = useState("")
   const [memberEmail, setMemberEmail] = useState("")
   const [memberPassword, setMemberPassword] = useState("")
   const [memberRole, setMemberRole] = useState<AuthRole>("recruiter")
@@ -393,7 +395,7 @@ export default function SettingsPage() {
       const response = await fetch("/api/team-members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: memberEmail, password: memberPassword, role: memberRole }),
+        body: JSON.stringify({ displayName: memberDisplayName, email: memberEmail, password: memberPassword, role: memberRole }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || "Failed to save team member")
@@ -405,6 +407,7 @@ export default function SettingsPage() {
         copy[existing] = nextMember
         return copy
       })
+      setMemberDisplayName("")
       setMemberEmail("")
       setMemberPassword("")
       setMemberRole("recruiter")
@@ -421,6 +424,10 @@ export default function SettingsPage() {
     } finally {
       setSavingMember(false)
     }
+  }
+
+  function getMemberDisplayName(member: TeamMember) {
+    return member.displayName || member.email.split("@")[0] || member.email
   }
 
   async function handleRoleChange(member: TeamMember, role: AuthRole) {
@@ -902,7 +909,18 @@ export default function SettingsPage() {
                   </AlertDescription>
                 </Alert>
 
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_9rem_auto]">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_9rem_auto]">
+                  <div className="space-y-2">
+                    <Label htmlFor="team-member-display-name">Display name</Label>
+                    <Input
+                      id="team-member-display-name"
+                      value={memberDisplayName}
+                      onChange={(event) => setMemberDisplayName(event.target.value)}
+                      placeholder="Brody"
+                      autoComplete="off"
+                      maxLength={120}
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="team-member-email">Email</Label>
                     <Input
@@ -950,7 +968,7 @@ export default function SettingsPage() {
                     <Button
                       type="button"
                       onClick={handleAddMember}
-                      disabled={savingMember || !memberEmail.trim()}
+                      disabled={savingMember || !memberDisplayName.trim() || !memberEmail.trim()}
                       className="w-full gap-2"
                     >
                       <UserPlus className="w-4 h-4" />
@@ -987,7 +1005,10 @@ export default function SettingsPage() {
                           <div key={member.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0 space-y-1">
                               <div className="flex min-w-0 items-center gap-2">
-                                <p className="truncate text-sm font-medium text-foreground">{member.email}</p>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-foreground">{getMemberDisplayName(member)}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+                                </div>
                                 <Badge
                                   variant={member.authStatus === "active" ? "secondary" : "outline"}
                                   className="shrink-0 text-xs"
