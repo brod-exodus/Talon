@@ -81,7 +81,14 @@ export async function POST(request: NextRequest) {
 
     console.log(`[watched-repos/check] ${dueRepos.length} repo(s) due for check out of ${(allWatched ?? []).length}`)
 
-    const results: Array<{ repo: string; newContributors: number; baselinedContributors?: number; notified?: boolean; error?: string }> = []
+    const results: Array<{
+      watchedRepoId: string
+      repo: string
+      newContributors: number
+      baselinedContributors?: number
+      notified?: boolean
+      error?: string
+    }> = []
 
     for (const watched of dueRepos) {
       try {
@@ -95,7 +102,13 @@ export async function POST(request: NextRequest) {
             .update({ last_checked_at: now.toISOString() })
             .eq("id", watched.id)
             .eq("team_id", watched.team_id)
-          results.push({ repo: watched.repo, newContributors: 0, baselinedContributors: isInitialBaseline ? 0 : undefined, notified: false })
+          results.push({
+            watchedRepoId: watched.id,
+            repo: watched.repo,
+            newContributors: 0,
+            baselinedContributors: isInitialBaseline ? 0 : undefined,
+            notified: false,
+          })
           continue
         }
 
@@ -179,6 +192,7 @@ export async function POST(request: NextRequest) {
           .eq("team_id", watched.team_id)
 
         results.push({
+          watchedRepoId: watched.id,
           repo: watched.repo,
           newContributors: newContributors.length,
           baselinedContributors: isInitialBaseline ? contributors.length : undefined,
@@ -187,6 +201,7 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error(`[watched-repos/check] Failed to check ${watched.repo}:`, err)
         results.push({
+          watchedRepoId: watched.id,
           repo: watched.repo,
           newContributors: 0,
           error: err instanceof Error ? err.message : "Unknown error",

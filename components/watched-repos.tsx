@@ -23,6 +23,16 @@ type WatchedRepo = {
   created_at: string
 }
 
+type WatchedRepoCheckResult = {
+  watchedRepoId: string
+  repo: string
+  newContributors: number
+  baselinedContributors?: number
+  notified?: boolean
+  error?: string
+  checkedAt: string
+}
+
 const INTERVAL_OPTIONS = [
   { label: "Every 1 hour", value: 1 },
   { label: "Every 6 hours", value: 6 },
@@ -30,6 +40,8 @@ const INTERVAL_OPTIONS = [
   { label: "Every 24 hours", value: 24 },
   { label: "Every 48 hours", value: 48 },
 ]
+
+const CHECK_RESULTS_STORAGE_KEY = "talon:watched-repo-check-results:v1"
 
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return "Never checked"
@@ -47,6 +59,17 @@ function getMonitoringLabel(repo: WatchedRepo): string {
   return repo.last_checked_at ? "Monitoring new contributors" : "Baseline pending"
 }
 
+function getCheckResultSummary(result: WatchedRepoCheckResult): string {
+  if (result.error) return result.error
+  if ((result.baselinedContributors ?? 0) > 0) {
+    return `Baselined ${result.baselinedContributors} existing contributor(s).`
+  }
+  if (result.newContributors > 0) {
+    return `${result.newContributors} new contributor(s) found${result.notified ? " and notified" : ""}.`
+  }
+  return "No new contributors found."
+}
+
 export function WatchedRepos() {
   const { canWrite } = useAuthPermissions()
   const [repos, setRepos] = useState<WatchedRepo[]>([])
@@ -55,6 +78,7 @@ export function WatchedRepos() {
   const [isChecking, setIsChecking] = useState(false)
   const [repo, setRepo] = useState("")
   const [intervalHours, setIntervalHours] = useState("24")
+  const [lastCheckResults, setLastCheckResults] = useState<Record<string, WatchedRepoCheckResult>>({})
   const { toast } = useToast()
 
   const fetchRepos = useCallback(async () => {
@@ -73,6 +97,17 @@ export function WatchedRepos() {
   useEffect(() => {
     fetchRepos()
   }, [fetchRepos])
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(CHECK_RESULTS_STORAGE_KEY)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Record<string, WatchedRepoCheckResult>
+      setLastCheckResults(parsed)
+    } catch {
+      setLastCheckResults({})
+    }
+  }, [])
 
   const handleAdd = useCallback(
     async (e: React.FormEvent) => {
@@ -121,6 +156,12 @@ export function WatchedRepos() {
         const res = await fetch(`/api/watched-repos/${id}`, { method: "DELETE" })
         if (!res.ok) throw new Error("Failed to delete")
         setRepos((prev) => prev.filter((r) => r.id !== id))
+        setLastCheckResults((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          window.localStorage.setItem(CHECK_RESULTS_STORAGE_KEY, JSON.stringify(next))
+          return next
+        })
         toast({ title: "Removed", description: `No longer watching ${repoName}` })
       } catch (err) {
         toast({
@@ -151,11 +192,27 @@ export function WatchedRepos() {
         (sum: number, r: { baselinedContributors?: number }) => sum + (r.baselinedContributors ?? 0),
         0
       )
+      const errors = (data.results ?? []).filter((r: { error?: string }) => r.error).length
+      const checkedAt = new Date().toISOString()
+      const nextResults = Object.fromEntries(
+        (data.results ?? []).map((result: Omit<WatchedRepoCheckResult, "checkedAt">) => [
+          result.watchedRepoId,
+          { ...result, checkedAt },
+        ])
+      )
+      setLastCheckResults((prev) => {
+        const next = { ...prev, ...nextResults }
+        window.localStorage.setItem(CHECK_RESULTS_STORAGE_KEY, JSON.stringify(next))
+        return next
+      })
       toast({
-        title: "Check complete",
-        description: totalBaselined > 0
+        title: errors > 0 ? "Check completed with errors" : "Check complete",
+        description: errors > 0
+          ? `Checked ${data.checked} repo(s). ${errors} repo(s) need attention.`
+          : totalBaselined > 0
           ? `Checked ${data.checked} repo(s). Baselined ${totalBaselined} existing contributor(s); no baseline notifications sent.`
           : `Checked ${data.checked} repo(s). ${totalNew} new contributor(s) found.`,
+        variant: errors > 0 ? "destructive" : undefined,
       })
       await fetchRepos()
     } catch (err) {
@@ -293,59 +350,78 @@ export function WatchedRepos() {
       ) : (
         <div className="space-y-2">
           <AnimatePresence>
-            {repos.map((r, index) => (
-              <motion.div
-                key={r.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.2, delay: index * 0.04 }}
-              >
-                <Card className="border-border bg-card hover:border-primary/40 transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-mono text-sm font-medium text-foreground truncate">
-                          {r.repo}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <Badge
-                            variant="secondary"
-                            className="bg-primary/10 text-primary border-primary/20 text-xs"
-                          >
-                            Every {r.interval_hours}h
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${
-                              r.last_checked_at
-                                ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-                                : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                            }`}
-                          >
-                            {getMonitoringLabel(r)}
-                          </Badge>
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            {formatTimeAgo(r.last_checked_at)}
-                          </span>
+            {repos.map((r, index) => {
+              const lastResult = lastCheckResults[r.id]
+
+              return (
+                <motion.div
+                  key={r.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, delay: index * 0.04 }}
+                >
+                  <Card className="border-border bg-card hover:border-primary/40 transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-mono text-sm font-medium text-foreground truncate">
+                            {r.repo}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            <Badge
+                              variant="secondary"
+                              className="bg-primary/10 text-primary border-primary/20 text-xs"
+                            >
+                              Every {r.interval_hours}h
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${
+                                r.last_checked_at
+                                  ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
+                                  : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              }`}
+                            >
+                              {getMonitoringLabel(r)}
+                            </Badge>
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="w-3 h-3" />
+                              {formatTimeAgo(r.last_checked_at)}
+                            </span>
+                          </div>
+                          {lastResult && (
+                            <div
+                              className={`mt-3 rounded-md border p-2 text-xs ${
+                                lastResult.error
+                                  ? "border-destructive/20 bg-destructive/10 text-destructive"
+                                  : "border-border bg-muted/20 text-muted-foreground"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-foreground">Last manual check</span>
+                                <span>{formatTimeAgo(lastResult.checkedAt)}</span>
+                              </div>
+                              <p className="mt-1">{getCheckResultSummary(lastResult)}</p>
+                            </div>
+                          )}
                         </div>
+                        {canWrite && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                            onClick={() => handleDelete(r.id, r.repo)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
-                      {canWrite && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-                          onClick={() => handleDelete(r.id, r.repo)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )
+            })}
           </AnimatePresence>
         </div>
       )}
