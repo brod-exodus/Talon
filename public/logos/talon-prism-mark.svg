@@ -1,0 +1,29 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Talon Prism Mark</title>
+  <desc id="desc">A circular modern startup logo formed from six stylized bird talons.</desc>
+  <defs>
+    <linearGradient id="talonGradient" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="0.52" stop-color="#A855F7"/>
+      <stop offset="1" stop-color="#F43F5E"/>
+    </linearGradient>
+    <linearGradient id="talonHighlight" x1="34" y1="24" x2="88" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.68"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softShadow" x="5" y="5" width="118" height="118" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#6366F1" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path fill="url(#talonGradient)" d="M64 13c9.86 0 18.98 2.8 26.72 7.67-8.06-.62-15.17 1.6-21.12 6.86-5.94 5.24-9.25 12.1-9.8 20.24-.19 2.84-3.38 4.4-5.74 2.8-10.4-7.04-12.87-21.26-5.32-31.37A50.84 50.84 0 0 1 64 13Z"/>
+    <path fill="url(#talonGradient)" d="M107.85 38.03a50.73 50.73 0 0 1 6.54 27.03c-4.54-6.7-10.5-11.16-18.28-12.76-7.75-1.6-15.16-.08-21.85 4.6-2.34 1.63-5.28-.36-5.3-3.21-.1-12.56 10.99-21.79 23.55-19.83 5.75.9 10.9 2.3 15.34 4.17Z"/>
+    <path fill="url(#talonGradient)" d="M108.79 88.17a50.84 50.84 0 0 1-20.8 18.39c3.52-7.28 4.13-14.7 1.64-22.23-2.48-7.52-7.33-13.33-14.33-17.5-2.45-1.46-2.2-5 .46-6.02 11.73-4.49 24.67 1.9 28.03 14.16 1.54 5.6 3.05 10.72 5 13.2Z"/>
+    <path fill="url(#talonGradient)" d="M63.58 115a50.75 50.75 0 0 1-26.7-7.68c8.06.62 15.17-1.6 21.12-6.86 5.94-5.24 9.25-12.1 9.8-20.24.19-2.84 3.38-4.4 5.74-2.8 10.4 7.04 12.87 21.26 5.32 31.37A50.84 50.84 0 0 1 63.58 115Z"/>
+    <path fill="url(#talonGradient)" d="M19.74 89.5a50.74 50.74 0 0 1-6.14-26.64c4.54 6.7 10.5 11.16 18.28 12.76 7.75 1.6 15.16.08 21.85-4.6 2.34-1.63 5.28.36 5.3 3.21.1 12.56-10.99 21.79-23.55 19.83-5.87-.92-11.17-2.47-15.74-4.56Z"/>
+    <path fill="url(#talonGradient)" d="M19.2 39.83a50.84 50.84 0 0 1 20.8-18.39c-3.52 7.28-4.13 14.7-1.64 22.23 2.48 7.52 7.33 13.33 14.33 17.5 2.45 1.46 2.2 5-.46 6.02-11.73 4.49-24.67-1.9-28.03-14.16-1.54-5.6-3.05-10.72-5-13.2Z"/>
+    <circle cx="64" cy="64" r="13.5" fill="#F8FAFC"/>
+    <circle cx="64" cy="64" r="9" fill="url(#talonGradient)" opacity="0.16"/>
+    <path fill="url(#talonHighlight)" d="M64 13c9.86 0 18.98 2.8 26.72 7.67-8.06-.62-15.17 1.6-21.12 6.86-5.94 5.24-9.25 12.1-9.8 20.24-.19 2.84-3.38 4.4-5.74 2.8-10.4-7.04-12.87-21.26-5.32-31.37A50.84 50.84 0 0 1 64 13Z"/>
+  </g>
+</svg>
