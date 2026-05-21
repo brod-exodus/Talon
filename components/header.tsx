@@ -253,9 +253,46 @@ export function Header() {
             )
           })}
         </nav>
-        <div className="mt-auto rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-xs text-muted-foreground">
-          <p className="font-extrabold text-primary">Prism Glass</p>
-          <p className="mt-1 leading-relaxed">Lightweight surfaces for focused contributor discovery.</p>
+        <div className="mt-auto rounded-2xl border border-white/70 bg-white/70 p-4 shadow-md shadow-indigo-500/10">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-primary ring-1 ring-indigo-100">
+              {me?.actor === "admin" ? <Shield className="h-4 w-4" /> : <UserCircle className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold text-foreground">{identityLabel}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {roleLabel && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {roleLabel}
+                  </Badge>
+                )}
+                {me?.actor === "user" && (
+                  <span className="truncate text-xs font-semibold text-muted-foreground">Team {me.teamSlug}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          {me && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button asChild variant="outline" size="sm" className="h-8 bg-white/80 text-xs">
+                <Link href="/settings">
+                  <Settings className="h-3.5 w-3.5" />
+                  Settings
+                </Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 bg-white/80 text-xs text-destructive hover:text-destructive"
+                disabled={signingOut}
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                {signingOut ? "Signing out" : "Sign out"}
+              </Button>
+            </div>
+          )}
         </div>
       </aside>
     </>
