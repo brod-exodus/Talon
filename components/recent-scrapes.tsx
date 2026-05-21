@@ -598,29 +598,45 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   }, [defaultCardSettings])
 
   // ── Share modal state ─────────────────────────────────────────────────────
-  const [shareModal, setShareModal] = useState<{ open: boolean; url: string; loading: boolean }>({
+  const [shareModal, setShareModal] = useState<{
+    open: boolean
+    url: string
+    loading: boolean
+    scrapeId: string
+    token: string
+    created: boolean | null
+    revoking: boolean
+    opened: boolean
+  }>({
     open: false,
     url: "",
     loading: false,
+    scrapeId: "",
+    token: "",
+    created: null,
+    revoking: false,
+    opened: false,
   })
   const [copied, setCopied] = useState(false)
 
   const handleShare = useCallback(async (scrapeId: string) => {
     if (!canWrite) return
-    setShareModal({ open: true, url: "", loading: true })
+    setCopied(false)
+    setShareModal({ open: true, url: "", loading: true, scrapeId, token: "", created: null, revoking: false, opened: false })
     try {
       const res = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scrapeId }),
       })
-      if (!res.ok) throw new Error("Failed to create share link")
-      const { token } = await res.json()
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to create share link")
+      const { token, created } = data as { token: string; created?: boolean }
       const url = `${window.location.origin}/share/${token}`
-      setShareModal({ open: true, url, loading: false })
+      setShareModal({ open: true, url, loading: false, scrapeId, token, created: created ?? null, revoking: false, opened: false })
     } catch (err) {
       console.error("[share]", err)
-      setShareModal({ open: false, url: "", loading: false })
+      setShareModal({ open: false, url: "", loading: false, scrapeId: "", token: "", created: null, revoking: false, opened: false })
       toast({ title: "Error", description: "Failed to create share link", variant: "destructive" })
     }
   }, [canWrite, toast])
@@ -630,6 +646,38 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     await navigator.clipboard.writeText(shareModal.url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }, [shareModal.url])
+
+  const revokeShareUrl = useCallback(async () => {
+    if (!canWrite || !shareModal.scrapeId || !shareModal.token) return
+    if (!window.confirm("Revoke this share link? Anyone with this URL will lose access.")) return
+
+    setShareModal((prev) => ({ ...prev, revoking: true }))
+    try {
+      const res = await fetch("/api/share", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scrapeId: shareModal.scrapeId, token: shareModal.token }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to revoke share link")
+      setShareModal({ open: false, url: "", loading: false, scrapeId: "", token: "", created: null, revoking: false, opened: false })
+      toast({ title: "Share link revoked", description: "The shared read-only page is no longer available." })
+    } catch (error) {
+      setShareModal((prev) => ({ ...prev, revoking: false }))
+      toast({
+        title: "Revoke failed",
+        description: error instanceof Error ? error.message : "Unable to revoke share link",
+        variant: "destructive",
+      })
+    }
+  }, [canWrite, shareModal.scrapeId, shareModal.token, toast])
+
+  const openShareUrl = useCallback(() => {
+    if (!shareModal.url) return
+    window.open(shareModal.url, "_blank", "noopener,noreferrer")
+    setShareModal((prev) => ({ ...prev, opened: true }))
+    setTimeout(() => setShareModal((prev) => ({ ...prev, opened: false })), 2000)
   }, [shareModal.url])
 
   // ── Render a single scrape card ───────────────────────────────────────────
@@ -1152,6 +1200,13 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             </div>
           ) : (
             <div className="space-y-3">
+              {shareModal.created !== null && (
+                <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  {shareModal.created
+                    ? "New read-only share link created."
+                    : "An existing read-only share link was found for this scrape."}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input
                   readOnly
@@ -1172,8 +1227,33 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   )}
                 </Button>
               </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 bg-transparent"
+                  onClick={openShareUrl}
+                  disabled={!shareModal.url || shareModal.revoking}
+                >
+                  {shareModal.opened ? (
+                    <><CheckCheck className="w-4 h-4 mr-1.5 text-green-500" />Opened</>
+                  ) : (
+                    <><ExternalLink className="w-4 h-4 mr-1.5" />Open</>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={revokeShareUrl}
+                  disabled={!shareModal.url || shareModal.revoking}
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  {shareModal.revoking ? "Revoking..." : "Revoke"}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
-                The link shows only contributors with contact information, sorted by contributions.
+                The link shows only contributors with contact information, sorted by contributions. Revoke it when external access is no longer needed.
               </p>
             </div>
           )}

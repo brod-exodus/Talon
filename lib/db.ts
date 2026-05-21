@@ -1173,6 +1173,34 @@ export async function createSharedScrape(scrapeId: string, token: string, teamId
   if (error) throw error
 }
 
+export async function getSharedScrapeTokenForScrape(scrapeId: string, teamId?: string): Promise<string | null> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("shared_scrapes")
+    .select("id")
+    .eq("scrape_id", scrapeId)
+    .eq("team_id", resolvedTeamId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data?.id ?? null
+}
+
+export async function deleteSharedScrape(token: string, scrapeId: string, teamId?: string): Promise<boolean> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("shared_scrapes")
+    .delete()
+    .eq("id", token)
+    .eq("scrape_id", scrapeId)
+    .eq("team_id", resolvedTeamId)
+    .select("id")
+    .maybeSingle()
+  if (error) throw error
+  return Boolean(data)
+}
+
 // ─── Ecosystems ───────────────────────────────────────────────────────────────
 // Requires the migrations in the user's instructions.
 
