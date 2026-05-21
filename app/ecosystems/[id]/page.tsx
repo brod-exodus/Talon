@@ -257,9 +257,9 @@ export default function EcosystemDetailPage() {
   const scrapeRows = ecosystem?.scrapes ?? []
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="prism-app">
       <Header />
-      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-6xl">
+      <main className="prism-main">
 
         {/* ── Breadcrumb / back ─────────────────────────────────────────── */}
         <Link

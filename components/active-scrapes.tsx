@@ -175,7 +175,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Activity className="w-5 h-5 text-primary" />
-        <h2 className="text-2xl font-semibold tracking-tight">Active Scrapes</h2>
+        <h2 className="text-2xl font-extrabold tracking-tight">Active Scrapes</h2>
       </div>
 
       <div className="space-y-4">
@@ -186,11 +186,11 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: index * 0.1 }}
           >
-            <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+            <Card className="hover:border-primary/30 transition-all duration-300">
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-xl font-mono">{scrape.target}</CardTitle>
+                    <CardTitle className="text-xl font-extrabold tracking-tight">{scrape.target}</CardTitle>
                     <CardDescription className="flex items-center gap-2">
                       <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
                         {scrape.type}
@@ -223,9 +223,9 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
                       {Math.round(scrape.progress)}%
                     </motion.span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+                  <div className="h-2 w-full rounded-full bg-indigo-100 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-primary"
+                      className="h-full rounded-full prism-gradient"
                       style={{
                         width: `${Math.min(100, Math.max(0, scrape.progress))}%`,
                         transition: "width 0.5s ease-in-out",

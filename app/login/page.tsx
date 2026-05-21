@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -44,10 +45,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background flex items-center justify-center px-6">
-      <Card className="w-full max-w-sm">
+    <main className="relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
+      <Card className="w-full max-w-md overflow-hidden">
         <CardHeader>
-          <CardTitle>Talon</CardTitle>
+          <div className="mb-2 flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-lg shadow-indigo-500/10 ring-1 ring-white/80">
+              <Image src="/logos/talon-logo-header.png" alt="" width={30} height={30} className="h-8 w-8 object-contain" />
+            </span>
+            <div>
+              <CardTitle className="text-2xl font-extrabold prism-text-gradient">Talon</CardTitle>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
+            </div>
+          </div>
           <CardDescription>
             Sign in with your team email and password. For break-glass admin access, leave email blank and use the
             admin password.

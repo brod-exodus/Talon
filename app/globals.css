@@ -1,88 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Cyber Trust palette */
-  --background: 222 84% 5%;       /* #020617 */
-  --foreground: 210 20% 98%;      /* #F9FAFB */
-  --card: 217 33% 17%;            /* #1E293B */
-  --card-foreground: 210 20% 98%;
-  --popover: 217 33% 17%;
-  --popover-foreground: 210 20% 98%;
-  --primary: 217 91% 60%;         /* #3B82F6 */
+  --background: 210 33% 97%;
+  --foreground: 220 22% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 22% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 22% 18%;
+  --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 221 39% 11%;       /* #111827 — dark well for secondary button */
-  --secondary-foreground: 210 20% 98%;
-  --muted: 221 39% 11%;
-  --muted-foreground: 215 20% 65%; /* #94A3B8 */
-  --accent: 239 84% 67%;           /* #6366F1 */
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 63% 31%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 215 25% 27%;           /* #334155 */
-  --input: 221 39% 11%;            /* #111827 */
-  --ring: 217 91% 60%;
-  --chart-1: 217 91% 60%;
-  --chart-2: 172 66% 50%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 239 84% 67%;
-  --chart-5: 200 70% 50%;
-  --radius: 0.75rem;
-  --success: 158 64% 52%;          /* #34D399 */
-  --success-foreground: 222 84% 5%;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --font-inter: "Inter", sans-serif;
-}
-
-.dark {
-  --background: 222 84% 5%;
-  --foreground: 210 20% 98%;
-  --card: 217 33% 17%;
-  --card-foreground: 210 20% 98%;
-  --popover: 217 33% 17%;
-  --popover-foreground: 210 20% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 221 39% 11%;
-  --secondary-foreground: 210 20% 98%;
-  --muted: 221 39% 11%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 239 84% 67%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 63% 31%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 215 25% 27%;
-  --input: 221 39% 11%;
-  --ring: 217 91% 60%;
-  --chart-1: 217 91% 60%;
-  --chart-2: 172 66% 50%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 239 84% 67%;
-  --chart-5: 200 70% 50%;
-  --success: 158 64% 52%;
-  --success-foreground: 222 84% 5%;
-  --sidebar: oklch(0.145 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --secondary: 276 70% 48%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 20% 94%;
+  --muted-foreground: 220 8% 38%;
+  --accent: 240 100% 96%;
+  --accent-foreground: 239 58% 48%;
+  --destructive: 345 88% 44%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 16% 86%;
+  --input: 220 20% 92%;
+  --ring: 239 84% 67%;
+  --chart-1: 239 84% 67%;
+  --chart-2: 346 89% 60%;
+  --chart-3: 158 64% 42%;
+  --chart-4: 38 92% 50%;
+  --chart-5: 199 89% 48%;
+  --success: 158 64% 42%;
+  --success-foreground: 0 0% 100%;
+  --radius: 1.25rem;
+  --font-manrope: "Manrope", sans-serif;
 }
 
 @theme inline {
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-manrope);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -109,100 +64,95 @@
   --color-chart-5: hsl(var(--chart-5));
   --color-success: hsl(var(--success));
   --color-success-foreground: hsl(var(--success-foreground));
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 10px);
+  --radius-md: calc(var(--radius) - 6px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
-}
-
-/* ─── Cyber Trust Brand Variables ───────────────────────────────────────────
-   Registered in @theme so Tailwind generates utilities:
-   bg-bg-deep, bg-bg-card, bg-bg-input, text-text-bright, text-text-subtle, etc.
-   These extend (and where named the same, override) the inline token set above.
-────────────────────────────────────────────────────────────────────────────── */
-@theme {
-  /* BACKGROUNDS */
-  --color-bg-deep:  #020617; /* outermost background  */
-  --color-bg-card:  #1E293B; /* surface for cards/lists */
-  --color-bg-input: #111827; /* dark wells for inputs  */
-
-  /* ACTIONS */
-  --color-primary:            #3B82F6;
-  --color-primary-foreground: #FFFFFF;
-  --color-secondary:          #6366F1; /* accent indigo */
-
-  /* SUCCESS */
-  --color-success: #34D399;
-
-  /* BORDERS */
-  --color-border: #334155;
-
-  /* TEXT */
-  --color-text-bright: #F9FAFB;
-  --color-text-subtle: #94A3B8;
-}
-
-/* ─── Galaxy Card — grain noise overlay ────────────────────────────────────── */
-/* Stars are now rendered on a <canvas> in StarfieldCanvas (scrape-form.tsx).   */
-/* This class is the only CSS remnant — an SVG feTurbulence film-grain texture. */
-.galaxy-noise {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
-  background-repeat: repeat;
-  opacity: 0.055;
-  mix-blend-mode: overlay;
+  --radius-xl: calc(var(--radius) + 8px);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
+
+  html {
+    background: #f5f7f9;
   }
 
-  /* Add subtle grid pattern background */
+  body {
+    @apply min-h-screen bg-background text-foreground font-sans antialiased;
+    background:
+      linear-gradient(120deg, rgba(99, 102, 241, 0.08), transparent 32%),
+      linear-gradient(240deg, rgba(244, 63, 94, 0.08), transparent 34%),
+      #f5f7f9;
+  }
+
   body::before {
     content: "";
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: linear-gradient(to right, hsl(var(--border) / 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--border) / 0.1) 1px, transparent 1px);
-    background-size: 80px 80px;
+    inset: 0;
     pointer-events: none;
     z-index: 0;
+    background-image:
+      linear-gradient(to right, rgba(99, 102, 241, 0.07) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent 70%);
   }
 
-  /* Add glow effect for primary elements */
-  .glow-primary {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .prism-gradient {
+    background-image: linear-gradient(135deg, #6366f1 0%, #8b5cf6 48%, #f43f5e 100%);
   }
 
-  .glow-success {
-    box-shadow: 0 0 20px hsl(var(--success) / 0.3);
+  .prism-text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 48%, #e11d48 100%);
   }
 
-  /* Improved mobile responsiveness */
-  @media (max-width: 1024px) {
-    .container {
-      @apply px-4;
+  .glass-panel {
+    @apply border border-white/70 bg-white/75 shadow-xl shadow-indigo-500/5 backdrop-blur-xl;
+  }
+
+  .glass-panel-subtle {
+    @apply border border-white/60 bg-white/55 shadow-lg shadow-indigo-500/5 backdrop-blur-lg;
+  }
+
+  .prism-app {
+    @apply min-h-screen bg-transparent;
+  }
+
+  .prism-main {
+    @apply relative z-10 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8;
+  }
+
+  .prism-main-narrow {
+    @apply relative z-10 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8;
+  }
+
+  .prism-section-title {
+    @apply text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .prism-table-shell {
+    @apply overflow-hidden rounded-2xl border border-white/70 bg-white/75 shadow-xl shadow-indigo-500/5 backdrop-blur-xl;
+  }
+
+  @media (min-width: 1024px) {
+    .prism-main {
+      max-width: min(1280px, calc(100vw - 18rem));
     }
-  }
 
-  @media (max-width: 768px) {
-    body::before {
-      background-size: 40px 40px;
+    .prism-main-narrow {
+      max-width: min(1024px, calc(100vw - 18rem));
     }
   }
 }

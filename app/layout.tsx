@@ -14,13 +14,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className="font-sans antialiased min-h-screen flex flex-col">
         <Suspense fallback={null}>
           <div className="flex-1">{children}</div>
         </Suspense>
-        <footer className="border-t border-border bg-card/50 backdrop-blur-sm">
-          <div className="container mx-auto px-4 sm:px-6 py-4 max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-1 text-xs text-muted-foreground">
+        <footer className="relative z-10 border-t border-white/60 bg-white/55 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:px-6 lg:px-8">
             <span>© {new Date().getFullYear()} Talon</span>
             <span>Developed by Brodan White</span>
           </div>

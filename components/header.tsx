@@ -4,7 +4,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { LogOut, Shield, UserCircle } from "lucide-react"
+import { Eye, Home, Layers, LogOut, Menu, Settings, Shield, Sparkles, UserCircle, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuthMe } from "@/lib/client-permissions"
+import { cn } from "@/lib/utils"
 
 const ROLE_LABELS = {
   owner: "Owner",
@@ -24,11 +25,35 @@ const ROLE_LABELS = {
   viewer: "Viewer",
 } as const
 
+const NAV_ITEMS = [
+  { href: "/", label: "Dashboard", icon: Home, isActive: (path: string) => path === "/" },
+  { href: "/watched", label: "Watched Repos", icon: Eye, isActive: (path: string) => path === "/watched" },
+  { href: "/ecosystems", label: "Ecosystems", icon: Layers, isActive: (path: string) => path.startsWith("/ecosystems") },
+  { href: "/settings", label: "Settings", icon: Settings, isActive: (path: string) => path === "/settings" },
+] as const
+
+function TalonMark() {
+  return (
+    <Link href="/" className="flex min-w-0 items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white shadow-lg shadow-indigo-500/10 ring-1 ring-white/80">
+        <Image src="/logos/talon-logo-header.png" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xl font-extrabold tracking-tight prism-text-gradient">Talon</span>
+        <span className="hidden text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground sm:block">
+          Contributor intelligence
+        </span>
+      </span>
+    </Link>
+  )
+}
+
 export function Header() {
   const pathname = usePathname()
   const router = useRouter()
   const me = useAuthMe()
   const [signingOut, setSigningOut] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -43,93 +68,144 @@ export function Header() {
   const roleLabel = me ? (me.actor === "user" ? ROLE_LABELS[me.role] : "Break-glass admin") : null
   const identityLabel = me ? (me.actor === "user" ? me.email : "Admin access") : "Checking session..."
 
+  const accountMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2 bg-white/75">
+          {me?.actor === "admin" ? (
+            <Shield className="h-4 w-4 shrink-0 text-primary" />
+          ) : (
+            <UserCircle className="h-4 w-4 shrink-0 text-primary" />
+          )}
+          <span className="min-w-0 truncate text-left">{identityLabel}</span>
+          {roleLabel && (
+            <Badge variant="secondary" className="ml-1 hidden shrink-0 text-[10px] sm:inline-flex">
+              {roleLabel}
+            </Badge>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72 rounded-2xl border-white/70 bg-white/95 shadow-xl shadow-indigo-500/10 backdrop-blur-xl">
+        <DropdownMenuLabel className="space-y-1">
+          <span className="block truncate text-sm font-bold">{identityLabel}</span>
+          <span className="block text-xs font-normal text-muted-foreground">
+            {!me
+              ? "Loading current access"
+              : me.actor === "user"
+                ? `Team ${me.teamSlug} · ${roleLabel}`
+                : "Full emergency access"}
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleSignOut} disabled={signingOut} className="text-destructive focus:text-destructive">
+          <LogOut className="mr-2 h-4 w-4" />
+          {signingOut ? "Signing out..." : "Sign out"}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   return (
-    <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-50">
-      <div className="container mx-auto px-6 max-w-7xl">
-        <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center">
-            <Image src="/logos/talon-header-full.png" alt="Talon" width={216} height={64} className="h-8 w-auto" />
-          </Link>
-
-          <nav className="flex items-center gap-1">
-            <Link
-              href="/"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                pathname === "/"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
+    <>
+      <header className="sticky top-0 z-50 border-b border-white/70 bg-white/80 shadow-lg shadow-indigo-500/5 backdrop-blur-xl">
+        <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="lg:hidden"
+              onClick={() => setMobileOpen((open) => !open)}
+              aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
             >
-              Home
-            </Link>
-            <Link
-              href="/watched"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                pathname === "/watched"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              Watched Repos
-            </Link>
-            <Link
-              href="/ecosystems"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                pathname.startsWith("/ecosystems")
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              Ecosystems
-            </Link>
-            <Link
-              href="/settings"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                pathname === "/settings"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              Settings
-            </Link>
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+            <TalonMark />
+          </div>
+          <nav className="hidden items-center gap-1 lg:flex">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon
+              const active = item.isActive(pathname)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all",
+                    active
+                      ? "bg-indigo-50 text-primary shadow-sm shadow-indigo-500/10"
+                      : "text-muted-foreground hover:bg-white/70 hover:text-primary"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="ml-3 max-w-64 justify-start gap-2 bg-background">
-                {me?.actor === "admin" ? (
-                  <Shield className="h-4 w-4 shrink-0 text-primary" />
-                ) : (
-                  <UserCircle className="h-4 w-4 shrink-0 text-primary" />
-                )}
-                <span className="min-w-0 truncate text-left">{identityLabel}</span>
-                {roleLabel && (
-                  <Badge variant="secondary" className="ml-1 shrink-0 text-xs">
-                    {roleLabel}
-                  </Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="space-y-1">
-                <span className="block truncate text-sm font-medium">{identityLabel}</span>
-                <span className="block text-xs font-normal text-muted-foreground">
-                  {!me
-                    ? "Loading current access"
-                    : me.actor === "user"
-                      ? `Team ${me.teamSlug} · ${roleLabel}`
-                      : "Full emergency access"}
-                </span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} disabled={signingOut} className="text-destructive focus:text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                {signingOut ? "Signing out..." : "Sign out"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">{accountMenu}</div>
         </div>
-      </div>
-    </header>
+        {mobileOpen && (
+          <nav className="grid gap-1 border-t border-white/70 bg-white/90 p-3 shadow-xl shadow-indigo-500/5 backdrop-blur-xl lg:hidden">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon
+              const active = item.isActive(pathname)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all",
+                    active ? "prism-gradient text-white shadow-lg shadow-indigo-500/20" : "text-muted-foreground hover:bg-white hover:text-primary"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              )
+            })}
+          </nav>
+        )}
+      </header>
+
+      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-white/70 bg-white/55 p-4 shadow-xl shadow-indigo-500/5 backdrop-blur-xl lg:flex lg:flex-col">
+        <div className="mb-5 rounded-2xl border border-white/70 bg-white/65 p-4 shadow-sm shadow-indigo-500/5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full prism-gradient text-white shadow-lg shadow-indigo-500/20">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-extrabold text-foreground">Default workspace</p>
+              <p className="text-xs font-semibold text-muted-foreground">Recruiting operations</p>
+            </div>
+          </div>
+        </div>
+        <nav className="space-y-1">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon
+            const active = item.isActive(pathname)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all duration-200",
+                  active
+                    ? "bg-white text-primary shadow-md shadow-indigo-500/10 ring-1 ring-white/80"
+                    : "text-muted-foreground hover:translate-x-1 hover:bg-white/65 hover:text-primary"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="mt-auto rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-xs text-muted-foreground">
+          <p className="font-extrabold text-primary">Prism Glass</p>
+          <p className="mt-1 leading-relaxed">Lightweight surfaces for focused contributor discovery.</p>
+        </div>
+      </aside>
+    </>
   )
 }
