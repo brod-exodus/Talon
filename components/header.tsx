@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { Eye, Home, Layers, LogOut, Menu, Settings, Shield, Sparkles, UserCircle, X } from "lucide-react"
+import { AlertTriangle, Eye, Home, Layers, LogOut, Menu, Settings, Shield, Sparkles, UserCircle, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +32,8 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings, isActive: (path: string) => path === "/settings" },
 ] as const
 
+type HealthStatus = "ok" | "warn" | "error" | null
+
 function TalonMark() {
   return (
     <Link href="/" className="flex min-w-0 items-center gap-3">
@@ -51,6 +53,40 @@ export function Header() {
   const me = useAuthMe()
   const [signingOut, setSigningOut] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [healthStatus, setHealthStatus] = useState<HealthStatus>(null)
+
+  const canAdmin = me?.permissions.canAdmin ?? false
+
+  useEffect(() => {
+    if (!canAdmin) {
+      setHealthStatus(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadHealthStatus() {
+      try {
+        const response = await fetch("/api/health", { cache: "no-store" })
+        const data = await response.json().catch(() => null)
+        if (cancelled) return
+        if (!response.ok) {
+          setHealthStatus("warn")
+          return
+        }
+        setHealthStatus(data?.status === "warn" || data?.status === "error" ? data.status : "ok")
+      } catch {
+        if (!cancelled) setHealthStatus("error")
+      }
+    }
+
+    loadHealthStatus()
+    const interval = window.setInterval(loadHealthStatus, 60000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [canAdmin])
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -139,10 +175,31 @@ export function Header() {
               )
             })}
           </nav>
-          <div className="flex items-center gap-2">{accountMenu}</div>
+          <div className="flex items-center gap-2">
+            {canAdmin && healthStatus && healthStatus !== "ok" && (
+              <Link
+                href="/settings"
+                className="hidden items-center gap-2 rounded-full border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs font-bold text-amber-700 shadow-sm shadow-amber-500/10 transition-colors hover:bg-amber-100 sm:inline-flex"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Ops attention
+              </Link>
+            )}
+            {accountMenu}
+          </div>
         </div>
         {mobileOpen && (
           <nav className="grid gap-1 border-t border-white/70 bg-white/90 p-3 shadow-xl shadow-indigo-500/5 backdrop-blur-xl lg:hidden">
+            {canAdmin && healthStatus && healthStatus !== "ok" && (
+              <Link
+                href="/settings"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm font-bold text-amber-700"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Ops attention
+              </Link>
+            )}
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon
               const active = item.isActive(pathname)

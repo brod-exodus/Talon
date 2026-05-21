@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { Header } from "@/components/header"
+import { HealthPanel } from "@/components/health-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -580,6 +581,8 @@ export default function SettingsPage() {
               </AlertDescription>
             </Alert>
           )}
+
+          {canAdmin && <HealthPanel showHealthy />}
 
           {me?.actor === "user" && (
             <Card>
