@@ -121,7 +121,7 @@ export default function SharePage() {
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="relative z-10 flex min-h-screen items-center justify-center">
         <div className="flex items-center gap-3 text-muted-foreground">
           <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           <span className="text-sm">Loading…</span>
@@ -133,7 +133,7 @@ export default function SharePage() {
   // ── Not found ──────────────────────────────────────────────────────────────
   if (notFound || !scrape) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="relative z-10 flex min-h-screen items-center justify-center">
         <div className="text-center space-y-2">
           <p className="text-2xl font-bold">404</p>
           <p className="text-muted-foreground text-sm">This shared list does not exist or has been deleted.</p>
@@ -144,15 +144,15 @@ export default function SharePage() {
 
   // ── Main render ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="relative z-10 min-h-screen text-foreground">
       {/* ── Sticky header ──────────────────────────────────────────────── */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 sm:px-6 py-4 max-w-5xl flex items-center justify-between">
+      <header className="sticky top-0 z-10 border-b border-white/70 bg-white/80 shadow-lg shadow-indigo-500/5 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-mono mb-0.5">
+            <p className="mb-0.5 text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">
               Talon · Shared List
             </p>
-            <h1 className="text-xl font-bold font-mono">{scrape.target}</h1>
+            <h1 className="text-xl font-extrabold tracking-tight">{scrape.target}</h1>
           </div>
           <div className="text-right text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5 justify-end">
@@ -168,7 +168,7 @@ export default function SharePage() {
       </header>
 
       {/* ── Main content ───────────────────────────────────────────────── */}
-      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
 
         {/* ── Filter / sort controls ──────────────────────────────────── */}
         <div className="flex flex-col gap-2 mb-5 pb-4 border-b border-border">
@@ -231,7 +231,7 @@ export default function SharePage() {
               return (
                 <div
                   key={contributor.username}
-                  className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-colors"
+                  className="glass-panel-subtle flex flex-col gap-3 rounded-2xl p-4 transition-colors hover:border-primary/30"
                 >
                   {/* Row 1: avatar + name + GitHub */}
                   <div className="flex items-center justify-between">

@@ -15,18 +15,28 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="prism-app">
       <Header />
 
-      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-7xl relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Left sidebar - Scrape Form */}
-          <div className="lg:col-span-1">
+      <main className="prism-main">
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="prism-section-title">Dashboard</p>
+            <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+              Contributor discovery workspace
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
+              Start targeted GitHub scrapes, monitor active work, and turn completed contributor lists into recruiter-ready outreach.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-3">
+          <div className="xl:col-span-1">
             <ScrapeForm />
           </div>
 
-          {/* Main content area */}
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          <div className="space-y-4 sm:space-y-6 xl:col-span-2">
             <HealthPanel />
             <ActiveScrapes onScrapeCompleted={handleScrapeCompleted} />
             <RecentScrapes ref={recentScrapesRef} />

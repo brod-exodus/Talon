@@ -560,12 +560,13 @@ export default function SettingsPage() {
   const completedDeploymentChecks = DEPLOYMENT_CHECKLIST_ITEMS.filter((item) => deploymentChecklist[item.id]).length
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="prism-app">
       <Header />
-      <main className="container mx-auto px-6 py-12 max-w-4xl">
+      <main className="prism-main-narrow">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-2">Settings</h2>
-          <p className="text-muted-foreground">
+          <p className="prism-section-title">Admin</p>
+          <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Settings</h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
             Configure Talon&apos;s GitHub access, verify rate limits, and test notification plumbing.
           </p>
         </div>

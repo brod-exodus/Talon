@@ -94,15 +94,16 @@ export default function EcosystemsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="prism-app">
       <Header />
-      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-5xl">
+      <main className="prism-main-narrow">
 
         {/* ── Page header ──────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Ecosystems</h1>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <p className="prism-section-title">Library</p>
+            <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Ecosystems</h1>
+            <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
               Group scrapes together to find contributors active across multiple repos.
             </p>
           </div>

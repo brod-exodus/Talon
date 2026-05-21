@@ -2,196 +2,18 @@
 
 import type React from "react"
 
-import { useState, useCallback, useMemo, useEffect, useRef } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Settings, AlertCircle } from "lucide-react"
+import { Settings, AlertCircle, Rocket } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { cn } from "@/lib/utils"
 import { getStoredGithubToken } from "@/lib/client-secrets"
 import { useAuthPermissions } from "@/lib/client-permissions"
-
-
-// ─── Starfield Canvas ─────────────────────────────────────────────────────────
-
-function StarfieldCanvas() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    // ── Size canvas to its parent ───────────────────────────────────────────
-    const setSize = () => {
-      const p = canvas.parentElement
-      if (!p) return
-      canvas.width  = p.offsetWidth
-      canvas.height = p.offsetHeight
-    }
-    setSize()
-
-    // ── Star type ───────────────────────────────────────────────────────────
-    type Star = {
-      angle:  number   // current polar angle (radians)
-      radius: number   // distance from canvas center (px)
-      speed:  number   // radians per frame
-      size:   number   // dot radius (px)
-      index:  number   // stable index for flicker formula
-    }
-
-    // ── Shooting star type ──────────────────────────────────────────────────
-    type Shooter = {
-      x:  number
-      y:  number
-      vx: number
-      vy: number
-    }
-
-    // ── Build 360 polar stars distributed across the full canvas diagonal ──
-    const initStars = (): Star[] =>
-      Array.from({ length: 80 }, (_, i) => ({
-        angle:  Math.random() * Math.PI * 2,
-        // radius spread well beyond the card so stars are spaced across a wide area
-        radius: Math.random() * Math.hypot(canvas.width, canvas.height) * 1.1,
-        speed:  0.00015 + Math.random() * 0.00030,
-        size:   0.5  + Math.random() * 1.2,
-        index:  i,
-      }))
-
-    let stars: Star[] = initStars()
-
-    // ── Shooting stars (at most one at a time per spec) ─────────────────────
-    let shooter: Shooter | null = null
-
-    const spawnShooter = (): Shooter => ({
-      x:  Math.random() * canvas.width,
-      y:  0,
-      vx: 2   + Math.random() * 1.5,
-      vy: 0.8 + Math.random() * 1,
-    })
-
-    // ── Render loop ─────────────────────────────────────────────────────────
-    let rafId: number
-
-    const tick = () => {
-      const w  = canvas.width
-      const h  = canvas.height
-      const cx = w / 2
-      const cy = h / 2
-      const now = Date.now()
-
-      ctx.clearRect(0, 0, w, h)
-
-      // — rotating polar stars —
-      for (const s of stars) {
-        s.angle += s.speed
-
-        const x  = cx + s.radius * Math.cos(s.angle)
-        const y  = cy + s.radius * Math.sin(s.angle)
-        const op = 0.2 + Math.abs(Math.sin(now * 0.0015 + s.index)) * 0.3
-
-        ctx.beginPath()
-        ctx.arc(x, y, s.size, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255,255,255,${op.toFixed(3)})`
-        ctx.fill()
-      }
-
-      // — maybe spawn a shooter —
-      if (!shooter && Math.random() < 0.0008) {
-        shooter = spawnShooter()
-      }
-
-      // — draw & advance shooter —
-      if (shooter) {
-        const tailX = shooter.x - shooter.vx * 35 / Math.hypot(shooter.vx, shooter.vy)
-        const tailY = shooter.y - shooter.vy * 35 / Math.hypot(shooter.vx, shooter.vy)
-
-        const grad = ctx.createLinearGradient(shooter.x, shooter.y, tailX, tailY)
-        grad.addColorStop(0, "rgba(255,255,255,0.8)")
-        grad.addColorStop(1, "rgba(255,255,255,0)")
-
-        ctx.beginPath()
-        ctx.moveTo(shooter.x, shooter.y)
-        ctx.lineTo(tailX, tailY)
-        ctx.strokeStyle = grad
-        ctx.lineWidth   = 1.5
-        ctx.lineCap     = "round"
-        ctx.stroke()
-
-        // Head dot
-        ctx.beginPath()
-        ctx.arc(shooter.x, shooter.y, 1, 0, Math.PI * 2)
-        ctx.fillStyle = "rgba(255,255,255,0.9)"
-        ctx.fill()
-
-        shooter.x += shooter.vx
-        shooter.y += shooter.vy
-
-        // Remove once fully off-canvas
-        if (shooter.x > w + 40 || shooter.y > h + 40) {
-          shooter = null
-        }
-      }
-
-      rafId = requestAnimationFrame(tick)
-    }
-
-    rafId = requestAnimationFrame(tick)
-
-    // ── Reinitialize stars on resize ────────────────────────────────────────
-    const ro = new ResizeObserver(() => {
-      setSize()
-      stars = initStars()
-    })
-    if (canvas.parentElement) ro.observe(canvas.parentElement)
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      ro.disconnect()
-    }
-  }, [])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 pointer-events-none"
-      style={{ borderRadius: "inherit" }}
-    />
-  )
-}
-
-// ─── Galaxy Glass Card ────────────────────────────────────────────────────────
-
-interface GalaxyCardProps {
-  children: React.ReactNode
-  className?: string
-}
-
-function GalaxyGlassCard({ children, className }: GalaxyCardProps) {
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-3xl border border-white/10 p-6 shadow-2xl",
-        className
-      )}
-      style={{ background: "#0F172A" }}
-    >
-      {/* Canvas starfield — 250 tiny pinpoint stars, nearly imperceptible drift */}
-      <StarfieldCanvas />
-
-      {/* Content — above the canvas */}
-      <div className="relative z-10">
-        {children}
-      </div>
-    </div>
-  )
-}
 
 export function ScrapeForm() {
   const { canWrite } = useAuthPermissions()
@@ -313,32 +135,36 @@ export function ScrapeForm() {
   }
 
   return (
-    <GalaxyGlassCard className="sticky top-24">
-      {/* Header */}
-      <div className="mb-5">
-        <h3 className="text-lg font-bold text-white">New Scrape</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Discover contributors with contact information</p>
-      </div>
+    <Card className="sticky top-24 overflow-hidden">
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full prism-gradient text-white shadow-lg shadow-indigo-500/20">
+            <Rocket className="h-5 w-5" />
+          </div>
+          <div>
+            <CardTitle className="text-xl font-extrabold">Start New Scrape</CardTitle>
+            <CardDescription>Discover contributors with contact information.</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
 
+      <CardContent>
       <form onSubmit={handleSubmit} className="space-y-4">
         {!canWrite && (
-          <Alert className="border-slate-600/60 bg-slate-900/70">
-            <AlertCircle className="h-4 w-4 text-slate-300" />
-            <AlertDescription className="text-xs text-slate-300">
+          <Alert>
+            <AlertCircle className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-xs">
               Viewer access is read-only. Ask an admin to upgrade your role to start scrapes.
             </AlertDescription>
           </Alert>
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="type" className="text-sm font-medium text-slate-400">
+          <Label htmlFor="type" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
             Source Type
           </Label>
           <Select value={type} onValueChange={setType} disabled={!canWrite}>
-            <SelectTrigger
-              id="type"
-              className="bg-slate-950/60 border-white/5 text-white focus:border-blue-500/50 transition-colors"
-            >
+            <SelectTrigger id="type" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -349,7 +175,7 @@ export function ScrapeForm() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="target" className="text-sm font-medium text-slate-400">
+          <Label htmlFor="target" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
             {getLabel()}
           </Label>
           <Input
@@ -358,12 +184,11 @@ export function ScrapeForm() {
             value={target}
             onChange={(e) => setTarget(e.target.value)}
             disabled={!canWrite}
-            className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
           />
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="minContributions" className="text-sm font-medium text-slate-400">
+          <Label htmlFor="minContributions" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
             Minimum Contributions
           </Label>
           <Input
@@ -373,9 +198,8 @@ export function ScrapeForm() {
             value={minContributions}
             onChange={(e) => setMinContributions(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
             disabled={!canWrite}
-            className="bg-slate-950/60 border-white/5 text-white placeholder:text-slate-600 focus:border-blue-500/50 transition-colors"
           />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs font-medium text-muted-foreground">
             Only include contributors with at least this many contributions
           </p>
         </div>
@@ -389,7 +213,7 @@ export function ScrapeForm() {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                className="self-start h-7 px-3 text-xs"
                 onClick={() => setType("repository")}
               >
                 Switch to Repository
@@ -407,7 +231,7 @@ export function ScrapeForm() {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="self-start h-6 px-2 text-xs border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-colors"
+                className="self-start h-7 px-3 text-xs"
                 onClick={() => setType("organization")}
               >
                 Switch to Organization
@@ -427,21 +251,9 @@ export function ScrapeForm() {
 
         <Button
           type="submit"
-          className="w-full font-semibold relative overflow-hidden group transition-all duration-200"
-          style={{
-            backgroundColor: "#3B82F6",
-            color: "#ffffff",
-            boxShadow: "0 0 15px rgba(59, 130, 246, 0.4)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = "0 0 25px rgba(59, 130, 246, 0.65)"
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = "0 0 15px rgba(59, 130, 246, 0.4)"
-          }}
+          className="w-full"
           disabled={!canWrite || !target || isLoading}
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
           {isLoading ? "Starting..." : "Start Scrape"}
         </Button>
 
@@ -449,7 +261,7 @@ export function ScrapeForm() {
           <Button
             type="button"
             variant="ghost"
-            className="w-full text-xs text-slate-400 hover:text-white bg-transparent hover:bg-white/5"
+            className="w-full text-xs"
             size="sm"
           >
             <Settings className="w-3 h-3 mr-2" />
@@ -457,6 +269,7 @@ export function ScrapeForm() {
           </Button>
         </Link>
       </form>
-    </GalaxyGlassCard>
+      </CardContent>
+    </Card>
   )
 }
