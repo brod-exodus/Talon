@@ -186,7 +186,7 @@ export default function EcosystemsPage() {
                     {canWrite && (
                       <button
                         onClick={(e) => { e.preventDefault(); handleDelete(eco.id, eco.name) }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        className="cursor-pointer opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

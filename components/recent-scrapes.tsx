@@ -230,7 +230,7 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
                 <button
                   type="button"
                   onClick={() => dateInputRef.current?.showPicker()}
-                  className="h-8 flex-1 rounded-md border border-input bg-background px-3 text-left text-sm text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  className="h-8 flex-1 cursor-pointer rounded-md border border-input bg-background px-3 text-left text-sm text-foreground transition-all hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   {localDate ? (
                     <span>{formatDisplayDate(localDate)}</span>
@@ -243,7 +243,7 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
                   <button
                     type="button"
                     onClick={clearDate}
-                    className="h-8 w-8 flex items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-all hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     aria-label="Clear date"
                   >
                     ×

@@ -438,7 +438,7 @@ export function Header() {
             <button
               type="button"
               disabled={!me}
-              className="group flex w-full min-w-0 items-center gap-3 rounded-2xl border border-white/70 bg-white/70 p-4 text-left shadow-md shadow-indigo-500/10 transition-all hover:bg-white hover:shadow-lg hover:shadow-indigo-500/15 disabled:pointer-events-none disabled:opacity-70"
+              className="group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-white/70 bg-white/70 p-4 text-left shadow-md shadow-indigo-500/10 transition-all hover:bg-white hover:shadow-lg hover:shadow-indigo-500/15 disabled:pointer-events-none disabled:opacity-70"
               aria-label="Open account menu"
             >
               <AccountAvatar me={me} identityLabel={identityLabel} className="h-11 w-11" />
