@@ -36,10 +36,8 @@ type HealthStatus = "ok" | "warn" | "error" | null
 
 function TalonMark() {
   return (
-    <Link href="/" className="flex min-w-0 items-center gap-3">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white shadow-lg shadow-indigo-500/10 ring-1 ring-white/80">
-        <Image src="/logos/talon-prism-mark.svg" alt="" width={30} height={30} className="h-8 w-8 object-contain" />
-      </span>
+    <Link href="/" className="flex min-w-0 items-center gap-2.5">
+      <Image src="/logos/talon-prism-mark.svg" alt="" width={34} height={34} className="h-9 w-9 shrink-0 object-contain" />
       <span className="min-w-0">
         <span className="block text-xl font-extrabold tracking-tight prism-text-gradient">Talon</span>
       </span>

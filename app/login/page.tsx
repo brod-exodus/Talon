@@ -49,9 +49,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md overflow-hidden">
         <CardHeader>
           <div className="mb-2 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-lg shadow-indigo-500/10 ring-1 ring-white/80">
-              <Image src="/logos/talon-prism-mark.svg" alt="" width={34} height={34} className="h-9 w-9 object-contain" />
-            </span>
+            <Image src="/logos/talon-prism-mark.svg" alt="" width={40} height={40} className="h-10 w-10 shrink-0 object-contain" />
             <div>
               <CardTitle className="text-2xl font-extrabold prism-text-gradient">Talon</CardTitle>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
