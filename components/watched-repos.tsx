@@ -43,6 +43,10 @@ function formatTimeAgo(dateStr: string | null): string {
   return `${days}d ago`
 }
 
+function getMonitoringLabel(repo: WatchedRepo): string {
+  return repo.last_checked_at ? "Monitoring new contributors" : "Baseline pending"
+}
+
 export function WatchedRepos() {
   const { canWrite } = useAuthPermissions()
   const [repos, setRepos] = useState<WatchedRepo[]>([])
@@ -90,7 +94,10 @@ export function WatchedRepos() {
         const added: WatchedRepo = await res.json()
         setRepos((prev) => [added, ...prev])
         setRepo("")
-        toast({ title: "Watching repo", description: `Now watching ${added.repo}` })
+        toast({
+          title: "Watching repo",
+          description: `Baseline ${added.repo} with Check Now before notifications are sent.`,
+        })
       } catch (err) {
         toast({
           title: "Error",
@@ -140,9 +147,15 @@ export function WatchedRepos() {
         (sum: number, r: { newContributors: number }) => sum + r.newContributors,
         0
       )
+      const totalBaselined = (data.results ?? []).reduce(
+        (sum: number, r: { baselinedContributors?: number }) => sum + (r.baselinedContributors ?? 0),
+        0
+      )
       toast({
         title: "Check complete",
-        description: `Checked ${data.checked} repo(s). ${totalNew} new contributor(s) found.`,
+        description: totalBaselined > 0
+          ? `Checked ${data.checked} repo(s). Baselined ${totalBaselined} existing contributor(s); no baseline notifications sent.`
+          : `Checked ${data.checked} repo(s). ${totalNew} new contributor(s) found.`,
       })
       await fetchRepos()
     } catch (err) {
@@ -194,7 +207,7 @@ export function WatchedRepos() {
               Watch a Repository
             </CardTitle>
             <CardDescription className="text-xs">
-              Get notified when new contributors appear
+              Baseline existing contributors first, then get notified when new contributors appear.
             </CardDescription>
           </CardHeader>
           <CardContent className="relative">
@@ -301,6 +314,16 @@ export function WatchedRepos() {
                             className="bg-primary/10 text-primary border-primary/20 text-xs"
                           >
                             Every {r.interval_hours}h
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              r.last_checked_at
+                                ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
+                                : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            {getMonitoringLabel(r)}
                           </Badge>
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="w-3 h-3" />
