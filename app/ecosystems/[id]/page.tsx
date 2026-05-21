@@ -351,7 +351,7 @@ export default function EcosystemDetailPage() {
                 {canWrite && (
                   <button
                     onClick={() => handleRemoveScrape(s.id)}
-                    className="ml-1 rounded-full p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    className="ml-1 cursor-pointer rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                     title="Remove from ecosystem"
                   >
                     <X className="w-3 h-3" />
