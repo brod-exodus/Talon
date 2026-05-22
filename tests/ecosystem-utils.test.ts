@@ -1,6 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { aggregateEcosystemContributors } from "../lib/ecosystem-utils.ts"
+import {
+  aggregateEcosystemContributors,
+  shouldRecomputeEcosystemContributorCache,
+} from "../lib/ecosystem-utils.ts"
 
 test("aggregateEcosystemContributors merges scrape overlap and sorts by impact", () => {
   const result = aggregateEcosystemContributors(
@@ -67,4 +70,49 @@ test("aggregateEcosystemContributors merges scrape overlap and sorts by impact",
   assert.equal(result[1]?.username, "bob")
   assert.equal(result[1]?.scrapeCount, 1)
   assert.equal(result[1]?.totalContributions, 20)
+})
+
+test("shouldRecomputeEcosystemContributorCache detects stale scrape membership", () => {
+  assert.equal(
+    shouldRecomputeEcosystemContributorCache({
+      cachedScrapeIds: ["s1"],
+      currentScrapeIds: ["s1", "s2"],
+      cachedContributorCount: 1,
+      totalScrapeContributors: 100,
+      recomputedAt: "2026-05-22T12:00:00.000Z",
+      latestScrapeCompletedAt: "2026-05-22T12:00:00.000Z",
+      nowMs: Date.parse("2026-05-22T12:00:30.000Z"),
+    }),
+    true
+  )
+})
+
+test("shouldRecomputeEcosystemContributorCache repairs suspicious empty caches", () => {
+  assert.equal(
+    shouldRecomputeEcosystemContributorCache({
+      cachedScrapeIds: ["s1", "s2"],
+      currentScrapeIds: ["s2", "s1"],
+      cachedContributorCount: 0,
+      totalScrapeContributors: 100,
+      recomputedAt: "2026-05-22T12:00:00.000Z",
+      latestScrapeCompletedAt: "2026-05-22T12:02:00.000Z",
+      nowMs: Date.parse("2026-05-22T12:02:30.000Z"),
+    }),
+    true
+  )
+})
+
+test("shouldRecomputeEcosystemContributorCache trusts a fresh empty cache", () => {
+  assert.equal(
+    shouldRecomputeEcosystemContributorCache({
+      cachedScrapeIds: ["s1"],
+      currentScrapeIds: ["s1"],
+      cachedContributorCount: 0,
+      totalScrapeContributors: 100,
+      recomputedAt: "2026-05-22T12:02:00.000Z",
+      latestScrapeCompletedAt: "2026-05-22T12:00:00.000Z",
+      nowMs: Date.parse("2026-05-22T12:02:30.000Z"),
+    }),
+    false
+  )
 })

@@ -26,8 +26,48 @@ export type EcosystemAggregateOutput = {
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
 }
 
+export type EcosystemContributorCacheFreshnessInput = {
+  cachedScrapeIds: string[]
+  currentScrapeIds: string[]
+  cachedContributorCount: number
+  totalScrapeContributors: number
+  recomputedAt: string | null
+  latestScrapeCompletedAt: string | null
+  nowMs?: number
+}
+
+const EMPTY_CACHE_REPAIR_COOLDOWN_MS = 60_000
+
 function hasContactValue(value: string | null | undefined): boolean {
   return value != null && value.trim() !== ""
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const rightSet = new Set(right)
+  return left.every((item) => rightSet.has(item))
+}
+
+export function shouldRecomputeEcosystemContributorCache({
+  cachedScrapeIds,
+  currentScrapeIds,
+  cachedContributorCount,
+  totalScrapeContributors,
+  recomputedAt,
+  latestScrapeCompletedAt,
+  nowMs = Date.now(),
+}: EcosystemContributorCacheFreshnessInput): boolean {
+  if (!sameStringSet(cachedScrapeIds, currentScrapeIds)) return true
+
+  if (cachedContributorCount > 0 || totalScrapeContributors <= 0 || currentScrapeIds.length === 0) return false
+
+  const recomputedMs = recomputedAt ? Date.parse(recomputedAt) : Number.NaN
+  if (!Number.isFinite(recomputedMs)) return true
+
+  const latestCompletedMs = latestScrapeCompletedAt ? Date.parse(latestScrapeCompletedAt) : Number.NaN
+  if (Number.isFinite(latestCompletedMs) && recomputedMs < latestCompletedMs) return true
+
+  return nowMs - recomputedMs > EMPTY_CACHE_REPAIR_COOLDOWN_MS
 }
 
 export function aggregateEcosystemContributors(

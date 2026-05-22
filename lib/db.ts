@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase"
-import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
+import { aggregateEcosystemContributors, shouldRecomputeEcosystemContributorCache } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
@@ -1283,6 +1283,12 @@ export type EcosystemContributorCache = {
   recomputedAt: string | null
 }
 
+type EcosystemContributorCacheSource = {
+  scrapeIds: string[]
+  totalScrapeContributors: number
+  latestScrapeCompletedAt: string | null
+}
+
 export async function createEcosystem(name: string, teamId?: string): Promise<EcosystemSummary> {
   const resolvedTeamId = await resolveTeamId(teamId)
   const { data, error } = await supabaseAdmin
@@ -1510,9 +1516,25 @@ export async function getOrRecomputeEcosystemContributors(
   ecosystemId: string,
   teamId?: string
 ): Promise<EcosystemContributorCache> {
-  const cached = await getCachedEcosystemContributors(ecosystemId, teamId)
-  if (cached) return cached
-  return recomputeEcosystemContributorsCache(ecosystemId, teamId)
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const [cached, source] = await Promise.all([
+    getCachedEcosystemContributors(ecosystemId, resolvedTeamId),
+    getEcosystemContributorCacheSource(ecosystemId, resolvedTeamId),
+  ])
+  if (
+    cached &&
+    !shouldRecomputeEcosystemContributorCache({
+      cachedScrapeIds: cached.scrapeIds,
+      currentScrapeIds: source.scrapeIds,
+      cachedContributorCount: cached.contributorCount,
+      totalScrapeContributors: source.totalScrapeContributors,
+      recomputedAt: cached.recomputedAt,
+      latestScrapeCompletedAt: source.latestScrapeCompletedAt,
+    })
+  ) {
+    return cached
+  }
+  return recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId)
 }
 
 export async function recomputeEcosystemContributorsCache(
@@ -1556,6 +1578,38 @@ async function getEcosystemScrapeIds(ecosystemId: string, teamId: string): Promi
     .eq("team_id", teamId)
   if (error) throw error
   return (ecoLinks ?? []).map((link) => link.scrape_id)
+}
+
+async function getEcosystemContributorCacheSource(
+  ecosystemId: string,
+  teamId: string
+): Promise<EcosystemContributorCacheSource> {
+  const scrapeIds = await getEcosystemScrapeIds(ecosystemId, teamId)
+  if (scrapeIds.length === 0) {
+    return { scrapeIds, totalScrapeContributors: 0, latestScrapeCompletedAt: null }
+  }
+
+  let totalScrapeContributors = 0
+  let latestScrapeCompletedAt: string | null = null
+  for (let i = 0; i < scrapeIds.length; i += 50) {
+    const batch = scrapeIds.slice(i, i + 50)
+    const { data: scrapeRows, error } = await supabaseAdmin
+      .from("scrapes")
+      .select("id, total_contributors, completed_at")
+      .eq("team_id", teamId)
+      .in("id", batch)
+    if (error) throw error
+
+    for (const scrape of scrapeRows ?? []) {
+      totalScrapeContributors += scrape.total_contributors ?? 0
+      const completedAt = scrape.completed_at ?? null
+      if (completedAt && (!latestScrapeCompletedAt || new Date(completedAt) > new Date(latestScrapeCompletedAt))) {
+        latestScrapeCompletedAt = completedAt
+      }
+    }
+  }
+
+  return { scrapeIds, totalScrapeContributors, latestScrapeCompletedAt }
 }
 
 async function computeEcosystemContributors(

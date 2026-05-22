@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download
+  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download, AlertCircle
 } from "lucide-react"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
@@ -158,6 +158,7 @@ export default function EcosystemDetailPage() {
   const [ecosystemLoading, setEcosystemLoading] = useState(true)
   const [contributors, setContributors] = useState<EcosystemContributor[]>([])
   const [contributorsLoading, setContributorsLoading] = useState(true)
+  const [contributorsError, setContributorsError] = useState<string | null>(null)
   const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
   const [selectedScrape, setSelectedScrape] = useState("")
   const [adding, setAdding] = useState(false)
@@ -167,6 +168,7 @@ export default function EcosystemDetailPage() {
 
   const load = useCallback(async () => {
     setContributorsLoading(true)
+    setContributorsError(null)
     const [ecoRes, scrapesRes, contribRes] = await Promise.all([
       fetch(`/api/ecosystems/${id}`),
       fetch("/api/scrapes"),
@@ -184,6 +186,8 @@ export default function EcosystemDetailPage() {
     if (contribRes.ok) {
       const body = await contribRes.json()
       contribs = body.contributors ?? []
+    } else {
+      setContributorsError("Contributor cache could not load. Please retry in a moment.")
     }
     setEcosystem(eco)
     setAllScrapes(completed ?? [])
@@ -198,6 +202,7 @@ export default function EcosystemDetailPage() {
     setContributorsLoading(true)
 
     const run = async () => {
+      setContributorsError(null)
       fetch("/api/scrapes")
         .then((r) => r.json())
         .then((j) => {
@@ -221,15 +226,23 @@ export default function EcosystemDetailPage() {
       setEcosystem(eco)
       setEcosystemLoading(false)
 
-      const contribRes = await fetch(`/api/ecosystems/${id}/contributors`)
-      if (cancelled) return
-      let contribs: EcosystemContributor[] = []
-      if (contribRes.ok) {
+      try {
+        const contribRes = await fetch(`/api/ecosystems/${id}/contributors`)
+        if (cancelled) return
+        if (!contribRes.ok) {
+          throw new Error("Contributor cache request failed")
+        }
         const body = await contribRes.json()
-        contribs = body.contributors ?? []
+        setContributors(body.contributors ?? [])
+        setContributorsError(null)
+      } catch {
+        if (!cancelled) {
+          setContributors([])
+          setContributorsError("Contributor cache could not load. Please retry in a moment.")
+        }
+      } finally {
+        if (!cancelled) setContributorsLoading(false)
       }
-      setContributors(contribs)
-      setContributorsLoading(false)
     }
 
     void run()
@@ -506,9 +519,29 @@ export default function EcosystemDetailPage() {
 
           {contributorsLoading ? (
             <ContributorTableSkeleton />
+          ) : contributorsError ? (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div>
+                    <p className="font-semibold text-foreground">Contributor cache could not load</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Talon could not load the cached contributor intelligence for this Project. If you just
+                      applied a migration, retry once the deployment has settled.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0 bg-transparent" onClick={load}>
+                  Retry
+                </Button>
+              </div>
+            </div>
           ) : contributors.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
-              Add scrapes to see contributor intelligence.
+              {scrapeRows.length === 0
+                ? "Add scrapes to see contributor intelligence."
+                : "No contactable contributors found for this Project yet."}
             </div>
           ) : (
             <div className="space-y-3">
