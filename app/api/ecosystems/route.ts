@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch ecosystems" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch projects" }, { status: 500 })
   }
 }
 
@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems] POST error:", error)
     if (error && typeof error === "object" && "code" in error && error.code === "23505") {
-      return NextResponse.json({ error: "Ecosystem already exists" }, { status: 409 })
+      return NextResponse.json({ error: "Project already exists" }, { status: 409 })
     }
-    return NextResponse.json({ error: "Failed to create ecosystem" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to create project" }, { status: 500 })
   }
 }

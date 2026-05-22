@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { recordAuditEvent } from "@/lib/audit"
 import { createGitHubClient } from "@/lib/github"
-import { createScrape, createScrapeJob } from "@/lib/db"
+import { addScrapeToEcosystem, createScrape, createScrapeJob, ecosystemExists } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubToken,
   normalizeScrapeTarget,
+  normalizeUuid,
   parseMinContributions,
   parseScrapeType,
   readJsonObject,
@@ -28,13 +29,26 @@ export async function POST(request: NextRequest) {
     const target = type ? normalizeScrapeTarget(type, body.target) : null
     const token = normalizeGithubToken(body.token)
     const minContributions = parseMinContributions(body.minContributions)
+    const rawProjectId = typeof body.projectId === "string" ? body.projectId.trim() : ""
+    const projectId = rawProjectId ? normalizeUuid(rawProjectId) : null
 
     if (!type || !target) {
       return NextResponse.json({ error: "Missing or invalid type or target" }, { status: 400 })
     }
 
+    if (rawProjectId && !projectId) {
+      return NextResponse.json({ error: "Missing or invalid projectId" }, { status: 400 })
+    }
+
     if (!token) {
       return NextResponse.json({ error: "Missing GitHub token" }, { status: 400 })
+    }
+
+    if (projectId) {
+      const projectFound = await ecosystemExists(projectId, teamId)
+      if (!projectFound) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 })
+      }
     }
 
     const githubClient = createGitHubClient(token)
@@ -50,6 +64,9 @@ export async function POST(request: NextRequest) {
 
     const scrapeId = `scrape-${randomUUID()}`
     await createScrape(scrapeId, type, target, minContributions, teamId)
+    if (projectId) {
+      await addScrapeToEcosystem(projectId, scrapeId, teamId)
+    }
     await createScrapeJob(scrapeId, type, target, minContributions, teamId)
     const workerRun = await runScrapeWorker(1, teamId)
     const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
@@ -57,7 +74,7 @@ export async function POST(request: NextRequest) {
       request,
       action: "scrape.start",
       outcome: "success",
-      metadata: { scrapeId, teamSlug, type, target, minContributions, workerTriggered: triggered },
+      metadata: { scrapeId, teamSlug, type, target, minContributions, projectId, workerTriggered: triggered },
     })
 
     return NextResponse.json({

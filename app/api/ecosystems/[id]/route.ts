@@ -17,17 +17,17 @@ export async function GET(
     const { id } = await params
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) {
-      return NextResponse.json({ error: "Invalid ecosystem id" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
     }
     const ecosystem = await getEcosystem(ecosystemId, teamId)
     if (!ecosystem) {
-      return NextResponse.json({ error: "Ecosystem not found" }, { status: 404 })
+      return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
     return NextResponse.json({ ecosystem })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems/[id]] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch ecosystem" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch project" }, { status: 500 })
   }
 }
 
@@ -43,13 +43,13 @@ export async function DELETE(
     const { id } = await params
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) {
-      return NextResponse.json({ error: "Invalid ecosystem id" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
     }
     await deleteEcosystem(ecosystemId, teamId)
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems/[id]] DELETE error:", error)
-    return NextResponse.json({ error: "Failed to delete ecosystem" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to delete project" }, { status: 500 })
   }
 }

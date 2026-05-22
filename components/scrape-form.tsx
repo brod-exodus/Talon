@@ -8,18 +8,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Settings, AlertCircle, Rocket } from "lucide-react"
+import { Settings, AlertCircle, Rocket, Plus } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getStoredGithubToken } from "@/lib/client-secrets"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
+type ProjectOption = {
+  id: string
+  name: string
+}
+
 export function ScrapeForm() {
   const { canWrite } = useAuthPermissions()
   const [type, setType] = useState("repository")
   const [target, setTarget] = useState("")
   const [minContributions, setMinContributions] = useState(1)
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState("none")
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState("")
+  const [projectSaving, setProjectSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
   const { toast } = useToast()
@@ -39,6 +49,24 @@ export function ScrapeForm() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/ecosystems")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        setProjects(
+          Array.isArray(data)
+            ? data.map((project: ProjectOption) => ({ id: project.id, name: project.name }))
+            : []
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const isDuplicate = useMemo(() => {
     if (!target) return false
     return existingTargets.has(`${type}:${target}`)
@@ -50,6 +78,41 @@ export function ScrapeForm() {
     if (type === "repository" && !target.includes("/")) return "looks-like-org"
     return null
   }, [target, type])
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  )
+
+  const handleCreateProject = useCallback(async () => {
+    if (!canWrite || !newProjectName.trim()) return
+    setProjectSaving(true)
+    try {
+      const response = await fetch("/api/ecosystems", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newProjectName.trim() }),
+      })
+      const project = await response.json()
+      if (!response.ok) {
+        throw new Error(project?.error || "Failed to create project")
+      }
+      const nextProject = { id: project.id, name: project.name }
+      setProjects((prev) => [nextProject, ...prev])
+      setSelectedProjectId(nextProject.id)
+      setNewProjectName("")
+      setCreatingProject(false)
+      toast({ title: "Project created", description: `${nextProject.name} is ready for scrapes.` })
+    } catch (error) {
+      toast({
+        title: "Could not create project",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+        variant: "destructive",
+      })
+    } finally {
+      setProjectSaving(false)
+    }
+  }, [canWrite, newProjectName, toast])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -81,7 +144,13 @@ export function ScrapeForm() {
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, target: target.trim(), token, minContributions }),
+          body: JSON.stringify({
+            type,
+            target: target.trim(),
+            token,
+            minContributions,
+            projectId: selectedProjectId === "none" ? undefined : selectedProjectId,
+          }),
         })
 
         if (!response.ok) {
@@ -92,9 +161,10 @@ export function ScrapeForm() {
         const data = await response.json()
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
+        const projectMsg = selectedProject ? ` Added to ${selectedProject.name}.` : ""
         toast({
           title: "Scrape queued",
-          description: `Queued ${target} for processing.${rateLimitMsg}`,
+          description: `Queued ${target} for processing.${projectMsg}${rateLimitMsg}`,
         })
 
         setTarget("")
@@ -109,7 +179,7 @@ export function ScrapeForm() {
         setIsLoading(false)
       }
     },
-    [canWrite, type, target, minContributions, toast],
+    [canWrite, type, target, minContributions, selectedProjectId, selectedProject, toast],
   )
 
   const getPlaceholder = () => {
@@ -202,6 +272,62 @@ export function ScrapeForm() {
           <p className="text-xs font-medium text-muted-foreground">
             Only include contributors with at least this many contributions
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="project" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+            Project
+          </Label>
+          <Select
+            value={selectedProjectId}
+            onValueChange={(value) => {
+              if (value === "__create__") {
+                setCreatingProject(true)
+                return
+              }
+              setSelectedProjectId(value)
+            }}
+            disabled={!canWrite}
+          >
+            <SelectTrigger id="project" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No project</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+              <SelectItem value="__create__">
+                <span className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5" />
+                  Create project
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs font-medium text-muted-foreground">
+            Optional. Use projects to keep role-based searches organized.
+          </p>
+          {creatingProject && (
+            <div className="flex gap-2">
+              <Input
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                placeholder="e.g. Staff Solana Engineer"
+                disabled={!canWrite || projectSaving}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!newProjectName.trim() || projectSaving}
+                onClick={handleCreateProject}
+              >
+                {projectSaving ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {typeMismatch === "looks-like-repo" && (

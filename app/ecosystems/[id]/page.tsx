@@ -214,7 +214,7 @@ export default function EcosystemDetailPage() {
     }
   }, [id, router])
 
-  // scrapes not yet in this ecosystem
+  // Scrapes not yet in this project.
   const availableScrapes = allScrapes.filter(
     (s) => !(ecosystem?.scrapes ?? []).some((es) => es.id === s.id)
   )
@@ -245,7 +245,7 @@ export default function EcosystemDetailPage() {
 
   async function handleDeleteEcosystem() {
     if (!canWrite) return
-    if (!confirm(`Delete ecosystem "${ecosystem?.name}"? This cannot be undone.`)) return
+    if (!confirm(`Delete project "${ecosystem?.name}"? This cannot be undone.`)) return
     await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
     router.push("/ecosystems")
   }
@@ -267,7 +267,7 @@ export default function EcosystemDetailPage() {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Ecosystems
+          Projects
         </Link>
 
         {/* ── Header row ───────────────────────────────────────────────── */}
@@ -325,7 +325,7 @@ export default function EcosystemDetailPage() {
         {/* ── Scrapes panel ────────────────────────────────────────────── */}
         <section className="mb-10">
           <h2 className="text-base font-semibold mb-3 text-muted-foreground uppercase tracking-wide text-xs">
-            Scrapes in this Ecosystem
+            Scrapes in this Project
           </h2>
 
           {/* Scrape chips */}
@@ -352,7 +352,7 @@ export default function EcosystemDetailPage() {
                   <button
                     onClick={() => handleRemoveScrape(s.id)}
                     className="ml-1 cursor-pointer rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                    title="Remove from ecosystem"
+                    title="Remove from project"
                   >
                     <X className="w-3 h-3" />
                   </button>

@@ -16,13 +16,13 @@ export async function GET(
     const { id } = await params
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) {
-      return NextResponse.json({ error: "Invalid ecosystem id" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
     }
     const contributors = await getEcosystemContributors(ecosystemId, teamId)
     return NextResponse.json({ contributors })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems/[id]/contributors] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch ecosystem contributors" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch project contributors" }, { status: 500 })
   }
 }

@@ -18,7 +18,7 @@ export async function POST(
     const normalizedEcosystemId = normalizeUuid(ecosystemId)
     const scrapeId = normalizeScrapeId(body?.scrapeId)
     if (!body || !normalizedEcosystemId || !scrapeId) {
-      return NextResponse.json({ error: "Missing or invalid ecosystem id or scrapeId" }, { status: 400 })
+      return NextResponse.json({ error: "Missing or invalid project id or scrapeId" }, { status: 400 })
     }
     await addScrapeToEcosystem(normalizedEcosystemId, scrapeId, teamId)
     return NextResponse.json({ success: true })
@@ -26,7 +26,7 @@ export async function POST(
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems/[id]/scrapes] POST error:", error)
     if (error && typeof error === "object" && "code" in error && error.code === "23505") {
-      return NextResponse.json({ error: "Scrape is already in this ecosystem" }, { status: 409 })
+      return NextResponse.json({ error: "Scrape is already in this project" }, { status: 409 })
     }
     return NextResponse.json({ error: "Failed to add scrape" }, { status: 500 })
   }
@@ -46,7 +46,7 @@ export async function DELETE(
     const normalizedEcosystemId = normalizeUuid(ecosystemId)
     const scrapeId = normalizeScrapeId(body?.scrapeId)
     if (!body || !normalizedEcosystemId || !scrapeId) {
-      return NextResponse.json({ error: "Missing or invalid ecosystem id or scrapeId" }, { status: 400 })
+      return NextResponse.json({ error: "Missing or invalid project id or scrapeId" }, { status: 400 })
     }
     await removeScrapeFromEcosystem(normalizedEcosystemId, scrapeId, teamId)
     return NextResponse.json({ success: true })

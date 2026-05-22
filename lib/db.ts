@@ -950,6 +950,7 @@ export type ScrapeSummary = {
   contactInfoCount: number  // requires: ALTER TABLE scrapes ADD COLUMN contact_info_count INTEGER DEFAULT 0;
   error?: string
   job?: ScrapeJobSummary
+  projects?: Array<{ id: string; name: string }>
 }
 
 /**
@@ -966,6 +967,7 @@ export async function getScrapes(teamId?: string): Promise<{
     currentUser?: string
     startedAt: string
     job?: ScrapeJobSummary
+    projects?: Array<{ id: string; name: string }>
   }>
   failed: ScrapeSummary[]
   completed: ScrapeSummary[]
@@ -986,6 +988,7 @@ export async function getScrapes(teamId?: string): Promise<{
     : { data: [], error: null }
   if (jobError) throw jobError
   const jobMap = new Map(((jobRows ?? []) as ScrapeJobRow[]).map((job) => [job.scrape_id, toScrapeJobSummary(job)]))
+  const projectMap = await getScrapeProjectMap(scrapeIds, resolvedTeamId)
 
   const completedRows = (rows ?? []).filter((r) => r.status === "completed")
   const failedRows = (rows ?? []).filter((r) => r.status === "failed" || r.status === "canceled")
@@ -1002,6 +1005,7 @@ export async function getScrapes(teamId?: string): Promise<{
       currentUser: r.current_user_login ?? undefined,
       startedAt: r.started_at,
       job: jobMap.get(r.id),
+      projects: projectMap.get(r.id) ?? [],
     }))
 
   const completed: ScrapeSummary[] = completedRows.map((r) => ({
@@ -1012,6 +1016,7 @@ export async function getScrapes(teamId?: string): Promise<{
     contributorCount: r.total_contributors ?? 0,
     contactInfoCount: r.contact_info_count ?? 0,
     job: jobMap.get(r.id),
+    projects: projectMap.get(r.id) ?? [],
   }))
 
   const failed: ScrapeSummary[] = failedRows.map((r) => ({
@@ -1023,9 +1028,45 @@ export async function getScrapes(teamId?: string): Promise<{
     contactInfoCount: r.contact_info_count ?? 0,
     error: r.error ?? undefined,
     job: jobMap.get(r.id),
+    projects: projectMap.get(r.id) ?? [],
   }))
 
   return { active, failed, completed }
+}
+
+async function getScrapeProjectMap(
+  scrapeIds: string[],
+  teamId: string
+): Promise<Map<string, Array<{ id: string; name: string }>>> {
+  const projectMap = new Map<string, Array<{ id: string; name: string }>>()
+  if (scrapeIds.length === 0) return projectMap
+
+  const { data: links, error: linkError } = await supabaseAdmin
+    .from("ecosystem_scrapes")
+    .select("scrape_id, ecosystem_id")
+    .eq("team_id", teamId)
+    .in("scrape_id", scrapeIds)
+  if (linkError) throw linkError
+  if (!links?.length) return projectMap
+
+  const projectIds = Array.from(new Set(links.map((link) => link.ecosystem_id)))
+  const { data: projects, error: projectError } = await supabaseAdmin
+    .from("ecosystems")
+    .select("id, name")
+    .eq("team_id", teamId)
+    .in("id", projectIds)
+  if (projectError) throw projectError
+
+  const projectsById = new Map((projects ?? []).map((project) => [project.id, { id: project.id, name: project.name }]))
+  for (const link of links) {
+    const project = projectsById.get(link.ecosystem_id)
+    if (!project) continue
+    const current = projectMap.get(link.scrape_id) ?? []
+    current.push(project)
+    projectMap.set(link.scrape_id, current)
+  }
+
+  return projectMap
 }
 
 const PAGE_SIZE = 100
@@ -1181,6 +1222,8 @@ export type EcosystemSummary = {
   name: string
   createdAt: string
   scrapeCount: number
+  contributorCount: number
+  lastActivityAt: string | null
 }
 
 export type EcosystemDetail = {
@@ -1209,7 +1252,7 @@ export async function createEcosystem(name: string, teamId?: string): Promise<Ec
     .select("*")
     .single()
   if (error) throw error
-  return { id: data.id, name: data.name, createdAt: data.created_at, scrapeCount: 0 }
+  return { id: data.id, name: data.name, createdAt: data.created_at, scrapeCount: 0, contributorCount: 0, lastActivityAt: null }
 }
 
 export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]> {
@@ -1222,15 +1265,37 @@ export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]
   if (error) throw error
   if (!ecosystems?.length) return []
 
-  const { data: links } = await supabaseAdmin
+  const { data: links, error: linkError } = await supabaseAdmin
     .from("ecosystem_scrapes")
-    .select("ecosystem_id")
+    .select("ecosystem_id, scrape_id")
     .eq("team_id", resolvedTeamId)
     .in("ecosystem_id", ecosystems.map((e) => e.id))
+  if (linkError) throw linkError
 
   const countMap = new Map<string, number>()
+  const scrapeIdsByEcosystem = new Map<string, string[]>()
   for (const l of links ?? []) {
     countMap.set(l.ecosystem_id, (countMap.get(l.ecosystem_id) ?? 0) + 1)
+    const scrapeIds = scrapeIdsByEcosystem.get(l.ecosystem_id) ?? []
+    scrapeIds.push(l.scrape_id)
+    scrapeIdsByEcosystem.set(l.ecosystem_id, scrapeIds)
+  }
+
+  const scrapeIds = Array.from(new Set((links ?? []).map((l) => l.scrape_id)))
+  const scrapeMetaById = new Map<string, { totalContributors: number; activityAt: string | null }>()
+  if (scrapeIds.length > 0) {
+    const { data: scrapeRows, error: scrapeError } = await supabaseAdmin
+      .from("scrapes")
+      .select("id, total_contributors, completed_at, started_at")
+      .eq("team_id", resolvedTeamId)
+      .in("id", scrapeIds)
+    if (scrapeError) throw scrapeError
+    for (const scrape of scrapeRows ?? []) {
+      scrapeMetaById.set(scrape.id, {
+        totalContributors: scrape.total_contributors ?? 0,
+        activityAt: scrape.completed_at ?? scrape.started_at ?? null,
+      })
+    }
   }
 
   return ecosystems.map((e) => ({
@@ -1238,6 +1303,15 @@ export async function getEcosystems(teamId?: string): Promise<EcosystemSummary[]
     name: e.name,
     createdAt: e.created_at,
     scrapeCount: countMap.get(e.id) ?? 0,
+    contributorCount: (scrapeIdsByEcosystem.get(e.id) ?? []).reduce(
+      (sum, scrapeId) => sum + (scrapeMetaById.get(scrapeId)?.totalContributors ?? 0),
+      0
+    ),
+    lastActivityAt: (scrapeIdsByEcosystem.get(e.id) ?? []).reduce<string | null>((latest, scrapeId) => {
+      const activityAt = scrapeMetaById.get(scrapeId)?.activityAt ?? null
+      if (!activityAt) return latest
+      return !latest || new Date(activityAt).getTime() > new Date(latest).getTime() ? activityAt : latest
+    }, null),
   }))
 }
 
@@ -1295,6 +1369,18 @@ export async function getEcosystem(id: string, teamId?: string): Promise<Ecosyst
       contributorCount: s.total_contributors ?? 0,
     })),
   }
+}
+
+export async function ecosystemExists(id: string, teamId?: string): Promise<boolean> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("ecosystems")
+    .select("id")
+    .eq("id", id)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (error) throw error
+  return Boolean(data)
 }
 
 export async function addScrapeToEcosystem(
