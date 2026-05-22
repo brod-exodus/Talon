@@ -2,13 +2,21 @@
 
 import type React from "react"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Settings, AlertCircle, Rocket, Plus } from "lucide-react"
+import { Settings, AlertCircle, Rocket, Plus, Search, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -20,9 +28,17 @@ type ProjectOption = {
   name: string
 }
 
+type InvalidTargetError = {
+  type: "organization" | "repository"
+  target: string
+  message: string
+}
+
+type ScrapeSourceType = "organization" | "repository"
+
 export function ScrapeForm() {
   const { canWrite } = useAuthPermissions()
-  const [type, setType] = useState("repository")
+  const [type, setType] = useState<ScrapeSourceType>("repository")
   const [target, setTarget] = useState("")
   const [minContributions, setMinContributions] = useState(1)
   const [projects, setProjects] = useState<ProjectOption[]>([])
@@ -31,7 +47,9 @@ export function ScrapeForm() {
   const [newProjectName, setNewProjectName] = useState("")
   const [projectSaving, setProjectSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [invalidTargetError, setInvalidTargetError] = useState<InvalidTargetError | null>(null)
   const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
+  const targetInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -154,8 +172,18 @@ export function ScrapeForm() {
         })
 
         if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || "Failed to start scrape")
+          const error = await response.json().catch(() => null)
+          if (error?.code === "github_target_not_found") {
+            setInvalidTargetError({
+              type,
+              target: target.trim(),
+              message: typeof error.message === "string"
+                ? error.message
+                : `We couldn't find "${target.trim()}" on GitHub. Check the spelling and try again.`,
+            })
+            return
+          }
+          throw new Error(error?.error || "Failed to start scrape")
         }
 
         const data = await response.json()
@@ -204,7 +232,20 @@ export function ScrapeForm() {
     }
   }
 
+  const openGitHubSearch = useCallback(() => {
+    if (!invalidTargetError) return
+    const searchType = invalidTargetError.type === "repository" ? "repositories" : "users"
+    const url = `https://github.com/search?q=${encodeURIComponent(invalidTargetError.target)}&type=${searchType}`
+    window.open(url, "_blank", "noopener,noreferrer")
+  }, [invalidTargetError])
+
+  const editInvalidTarget = useCallback(() => {
+    setInvalidTargetError(null)
+    window.setTimeout(() => targetInputRef.current?.focus(), 0)
+  }, [])
+
   return (
+    <>
     <Card className="sticky top-24 overflow-hidden">
       <CardHeader>
         <div className="flex items-center gap-3">
@@ -233,7 +274,7 @@ export function ScrapeForm() {
           <Label htmlFor="type" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
             Source Type
           </Label>
-          <Select value={type} onValueChange={setType} disabled={!canWrite}>
+          <Select value={type} onValueChange={(value) => setType(value as ScrapeSourceType)} disabled={!canWrite}>
             <SelectTrigger id="type" className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -249,6 +290,7 @@ export function ScrapeForm() {
             {getLabel()}
           </Label>
           <Input
+            ref={targetInputRef}
             id="target"
             placeholder={getPlaceholder()}
             value={target}
@@ -397,5 +439,33 @@ export function ScrapeForm() {
       </form>
       </CardContent>
     </Card>
+    <Dialog open={Boolean(invalidTargetError)} onOpenChange={(open) => !open && setInvalidTargetError(null)}>
+      <DialogContent className="overflow-hidden border-primary/20 bg-card sm:max-w-md">
+        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full prism-gradient opacity-10 blur-3xl" />
+        <DialogHeader className="relative gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <Search className="h-5 w-5" />
+          </div>
+          <div>
+            <DialogTitle className="text-xl font-extrabold">
+              {invalidTargetError?.type === "repository" ? "Repository not found" : "Organization not found"}
+            </DialogTitle>
+            <DialogDescription className="mt-2 leading-relaxed">
+              {invalidTargetError?.message}
+            </DialogDescription>
+          </div>
+        </DialogHeader>
+        <DialogFooter className="relative gap-2 sm:gap-2">
+          <Button type="button" variant="outline" onClick={openGitHubSearch} className="gap-2">
+            <ExternalLink className="h-4 w-4" />
+            Open GitHub search
+          </Button>
+          <Button type="button" onClick={editInvalidTarget}>
+            Edit target
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

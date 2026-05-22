@@ -15,6 +15,25 @@ import {
   readJsonObject,
 } from "@/lib/validation"
 
+function githubTargetNotFoundResponse(type: "organization" | "repository", target: string) {
+  const label = type === "repository" ? "Repository" : "Organization"
+  const guidance =
+    type === "repository"
+      ? `We couldn't find "${target}" on GitHub. Check the spelling and make sure the format is owner/repo. If this is private, make sure your GitHub token has access.`
+      : `We couldn't find "${target}" on GitHub. Check the organization spelling. If this is private, make sure your GitHub token has access.`
+
+  return NextResponse.json(
+    {
+      code: "github_target_not_found",
+      type,
+      target,
+      message: guidance,
+      error: `${label} not found`,
+    },
+    { status: 404 }
+  )
+}
+
 export async function POST(request: NextRequest) {
   const authError = requirePermission(request, "write")
   if (authError) return authError
@@ -60,6 +79,15 @@ export async function POST(request: NextRequest) {
         { error: "Rate limit too low. Please wait before starting a new scrape." },
         { status: 429 },
       )
+    }
+
+    const targetExists =
+      type === "repository"
+        ? await githubClient.repositoryExists(target)
+        : await githubClient.organizationExists(target)
+
+    if (!targetExists) {
+      return githubTargetNotFoundResponse(type, target)
     }
 
     const scrapeId = `scrape-${randomUUID()}`
