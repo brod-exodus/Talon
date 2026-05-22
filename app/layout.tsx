@@ -5,7 +5,7 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   title: "Talon",
-  description: "Discover, monitor, and organize GitHub contributors across repositories and ecosystems.",
+  description: "Discover, monitor, and organize GitHub contributors across recruiting projects.",
 }
 
 export default function RootLayout({

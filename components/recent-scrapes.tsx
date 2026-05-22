@@ -33,6 +33,7 @@ import {
   Search,
   AlertTriangle,
   RotateCw,
+  FolderPlus,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
@@ -70,6 +71,7 @@ type CompletedScrapeSummary = {
   completedAt: string
   contributorCount: number
   contactInfoCount: number
+  projects?: ProjectSummary[]
   error?: string
   job?: {
     id: string
@@ -78,6 +80,11 @@ type CompletedScrapeSummary = {
     maxAttempts: number
     lastError: string | null
   }
+}
+
+type ProjectSummary = {
+  id: string
+  name: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -331,6 +338,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
   const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
   const [retryingJobs, setRetryingJobs] = useState<Set<string>>(new Set())
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
+  const [projectFilter, setProjectFilter] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
@@ -352,15 +362,30 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     }
   }, [])
 
+  const fetchProjects = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ecosystems")
+      const data = await res.json()
+      setProjects(
+        Array.isArray(data)
+          ? data.map((project: ProjectSummary) => ({ id: project.id, name: project.name }))
+          : []
+      )
+    } catch (err) {
+      console.error("[projects] Failed to fetch projects:", err)
+    }
+  }, [])
+
   // Expose refresh() so parent components (e.g. page.tsx) can trigger an
   // immediate reload when a scrape completes instead of waiting 30 s.
   useImperativeHandle(ref, () => ({ refresh: fetchScrapes }), [fetchScrapes])
 
   useEffect(() => {
     fetchScrapes()
+    fetchProjects()
     const interval = setInterval(fetchScrapes, 30000)
     return () => clearInterval(interval)
-  }, [fetchScrapes])
+  }, [fetchProjects, fetchScrapes])
 
   // ── Silent background prefetch (no skeleton, no error toast) ────────────
   const prefetchContributors = useCallback(async (scrapeId: string) => {
@@ -513,8 +538,46 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   )
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const orgScrapes = useMemo(() => scrapes.filter((s) => s.type === "organization"), [scrapes])
-  const repoScrapes = useMemo(() => scrapes.filter((s) => s.type === "repository"), [scrapes])
+  const filteredScrapes = useMemo(() => {
+    if (projectFilter === "all") return scrapes
+    if (projectFilter === "ungrouped") return scrapes.filter((s) => !s.projects?.length)
+    return scrapes.filter((s) => s.projects?.some((project) => project.id === projectFilter))
+  }, [projectFilter, scrapes])
+  const orgScrapes = useMemo(() => filteredScrapes.filter((s) => s.type === "organization"), [filteredScrapes])
+  const repoScrapes = useMemo(() => filteredScrapes.filter((s) => s.type === "repository"), [filteredScrapes])
+
+  const addScrapeToProject = useCallback(async (scrape: CompletedScrapeSummary, project: ProjectSummary) => {
+    if (!canWrite) return
+    setAssigningScrapeIds((prev) => new Set(prev).add(scrape.id))
+    try {
+      const res = await fetch(`/api/ecosystems/${project.id}/scrapes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scrapeId: scrape.id }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to add scrape to project")
+      const addProject = (item: CompletedScrapeSummary) =>
+        item.id === scrape.id
+          ? { ...item, projects: [...(item.projects ?? []), project] }
+          : item
+      setScrapes((prev) => prev.map(addProject))
+      setFailedScrapes((prev) => prev.map(addProject))
+      toast({ title: "Added to project", description: `${scrape.target} is now in ${project.name}.` })
+    } catch (error) {
+      toast({
+        title: "Could not add project",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+        variant: "destructive",
+      })
+    } finally {
+      setAssigningScrapeIds((prev) => {
+        const next = new Set(prev)
+        next.delete(scrape.id)
+        return next
+      })
+    }
+  }, [canWrite, toast])
 
   const retryJob = useCallback(async (jobId: string) => {
     if (!canWrite) return
@@ -639,6 +702,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const isLoadingContributors = loadingExpansions.has(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
+      const assignedProjectIds = new Set((scrape.projects ?? []).map((project) => project.id))
+      const availableProjects = projects.filter((project) => !assignedProjectIds.has(project.id))
+      const isAssigning = assigningScrapeIds.has(scrape.id)
 
       const { filters: activeFilters, sort: sortOrder, contributorSearch } =
         cardSettings.get(scrape.id) ?? defaultCardSettings()
@@ -676,6 +742,22 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   </div>
                   <CardDescription className="text-xs">{formatTimeAgo(scrape.completedAt)}</CardDescription>
                   <CardTitle className="text-base font-mono mt-2">{scrape.target}</CardTitle>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {scrape.projects?.length ? (
+                      scrape.projects.map((project) => (
+                        <span
+                          key={project.id}
+                          className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary"
+                        >
+                          {project.name}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                        Ungrouped
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {canWrite && (
                   <Button
@@ -761,14 +843,46 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   </DropdownMenu>
 
                   {canWrite && (
-                    <Button
-                      variant="outline"
-                      className="bg-transparent hover:bg-primary/10 transition-all duration-300"
-                      onClick={() => handleShare(scrape.id)}
-                    >
-                      <Share2 className="w-4 h-4 mr-2" />
-                      Share
-                    </Button>
+                    <>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            disabled={isAssigning}
+                            className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                          >
+                            <FolderPlus className="w-4 h-4 mr-2" />
+                            Project
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          {projects.length === 0 ? (
+                            <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
+                          ) : availableProjects.length === 0 ? (
+                            <DropdownMenuItem disabled>Already in all projects</DropdownMenuItem>
+                          ) : (
+                            availableProjects.map((project) => (
+                              <DropdownMenuItem
+                                key={project.id}
+                                onClick={() => addScrapeToProject(scrape, project)}
+                                className="cursor-pointer"
+                              >
+                                {project.name}
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <Button
+                        variant="outline"
+                        className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                        onClick={() => handleShare(scrape.id)}
+                      >
+                        <Share2 className="w-4 h-4 mr-2" />
+                        Share
+                      </Button>
+                    </>
                   )}
                 </div>
 
@@ -986,6 +1100,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       updateContributorOutreach,
       defaultCardSettings,
       setContributorSearch,
+      projects,
+      assigningScrapeIds,
+      addScrapeToProject,
       canWrite,
     ]
   )
@@ -1109,7 +1226,23 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     <TooltipProvider>
       <div className="space-y-4">
         <FailedScrapes />
-        <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
+          <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <SelectTrigger className="h-9 w-full bg-transparent sm:w-64">
+              <SelectValue placeholder="Filter by project" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              <SelectItem value="ungrouped">Ungrouped</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Tabs defaultValue="repositories" className="w-full">
           <TabsList className="bg-muted">
             <TabsTrigger value="repositories">Repositories</TabsTrigger>

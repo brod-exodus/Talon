@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Layers, ChevronRight, Trash2 } from "lucide-react"
+import { Plus, Layers, ChevronRight, Trash2, Users, Clock } from "lucide-react"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
 type EcosystemSummary = {
@@ -15,9 +15,11 @@ type EcosystemSummary = {
   name: string
   createdAt: string
   scrapeCount: number
+  contributorCount: number
+  lastActivityAt: string | null
 }
 
-/** Matches real ecosystem cards: title row, scrape + contributor stats, View button — `Skeleton` uses `bg-accent animate-pulse` for dark theme. */
+/** Matches real project cards: title row, scrape + contributor stats, View button. */
 function EcosystemCardSkeleton({ index }: { index: number }) {
   const titleClass = ["w-56", "w-44", "w-52", "w-40"][index % 4]
   const scrapeClass = ["w-24", "w-28", "w-20", "w-32"][index % 4]
@@ -40,6 +42,19 @@ function EcosystemCardSkeleton({ index }: { index: number }) {
       </CardContent>
     </Card>
   )
+}
+
+function formatTimeAgo(date: string | null) {
+  if (!date) return "No scrape activity yet"
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (seconds < 60) return "Just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(date))
 }
 
 export default function EcosystemsPage() {
@@ -88,7 +103,7 @@ export default function EcosystemsPage() {
 
   async function handleDelete(id: string, name: string) {
     if (!canWrite) return
-    if (!confirm(`Delete ecosystem "${name}"? This cannot be undone.`)) return
+    if (!confirm(`Delete project "${name}"? This cannot be undone.`)) return
     await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
     setEcosystems((prev) => prev.filter((e) => e.id !== id))
   }
@@ -102,15 +117,15 @@ export default function EcosystemsPage() {
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
             <p className="prism-section-title">Library</p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Ecosystems</h1>
+            <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Projects</h1>
             <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
-              Group scrapes together to find contributors active across multiple repos.
+              Group scrapes by role, search, or market map without cluttering the dashboard.
             </p>
           </div>
           {!creating && canWrite && (
             <Button onClick={() => setCreating(true)} className="gap-2">
               <Plus className="w-4 h-4" />
-              New Ecosystem
+              New Project
             </Button>
           )}
         </div>
@@ -122,7 +137,7 @@ export default function EcosystemsPage() {
               <form onSubmit={handleCreate} className="flex gap-3">
                 <Input
                   autoFocus
-                  placeholder="Ecosystem name (e.g. Rust OSS)"
+                  placeholder="Project name (e.g. Staff Solana Engineer)"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="flex-1"
@@ -147,7 +162,7 @@ export default function EcosystemsPage() {
           <div
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
             aria-busy="true"
-            aria-label="Loading ecosystems"
+            aria-label="Loading projects"
           >
             {[0, 1, 2, 3].map((i) => (
               <EcosystemCardSkeleton key={i} index={i} />
@@ -159,20 +174,20 @@ export default function EcosystemsPage() {
         {!loading && ecosystems.length === 0 && (
           <div className="text-center py-24">
             <Layers className="w-14 h-14 text-muted-foreground/40 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-1">No ecosystems yet</h3>
+            <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
             <p className="text-sm text-muted-foreground mb-6">
-              Create an ecosystem to group scrapes and surface cross-repo contributors.
+              Create a project for a role or search, then add scrapes as you work.
             </p>
             {canWrite && (
               <Button onClick={() => setCreating(true)} className="gap-2">
                 <Plus className="w-4 h-4" />
-                New Ecosystem
+                New Project
               </Button>
             )}
           </div>
         )}
 
-        {/* ── Ecosystem cards ───────────────────────────────────────────── */}
+        {/* ── Project cards ─────────────────────────────────────────────── */}
         {!loading && ecosystems.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {ecosystems.map((eco) => (
@@ -194,9 +209,20 @@ export default function EcosystemsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {eco.scrapeCount} scrape{eco.scrapeCount !== 1 ? "s" : ""}
-                  </p>
+                  <div className="mb-4 space-y-2 text-sm text-muted-foreground">
+                    <p className="flex items-center gap-2">
+                      <Layers className="h-3.5 w-3.5" />
+                      {eco.scrapeCount} scrape{eco.scrapeCount !== 1 ? "s" : ""}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <Users className="h-3.5 w-3.5" />
+                      {eco.contributorCount.toLocaleString()} contributor{eco.contributorCount !== 1 ? "s" : ""}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5" />
+                      {formatTimeAgo(eco.lastActivityAt)}
+                    </p>
+                  </div>
                   <Link href={`/ecosystems/${eco.id}`}>
                     <Button variant="outline" size="sm" className="w-full bg-transparent hover:bg-primary/10 gap-1">
                       View
