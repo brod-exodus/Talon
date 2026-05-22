@@ -17,7 +17,7 @@ import { useAuthPermissions } from "@/lib/client-permissions"
 
 export function ScrapeForm() {
   const { canWrite } = useAuthPermissions()
-  const [type, setType] = useState("organization")
+  const [type, setType] = useState("repository")
   const [target, setTarget] = useState("")
   const [minContributions, setMinContributions] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
@@ -168,8 +168,8 @@ export function ScrapeForm() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="organization">Organization</SelectItem>
               <SelectItem value="repository">Repository</SelectItem>
+              <SelectItem value="organization">Organization</SelectItem>
             </SelectContent>
           </Select>
         </div>
