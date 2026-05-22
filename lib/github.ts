@@ -357,6 +357,26 @@ class GitHubClient {
     return data
   }
 
+  async repositoryExists(repo: string): Promise<boolean> {
+    try {
+      await this.fetchJson(`${this.baseUrl}/repos/${this.repoPath(repo)}`)
+      return true
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.status === 404) return false
+      throw error
+    }
+  }
+
+  async organizationExists(org: string): Promise<boolean> {
+    try {
+      await this.fetchJson(`${this.baseUrl}/orgs/${encodeURIComponent(org)}`)
+      return true
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.status === 404) return false
+      throw error
+    }
+  }
+
   async getOrgRepos(org: string): Promise<Repository[]> {
     console.log("[v0] Getting repos for org:", org)
     const all: Repository[] = []

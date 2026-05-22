@@ -1,12 +1,39 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
+  createGitHubClient,
   extractContactsFromBio,
   extractSocialContacts,
   getGitHubRetryDecision,
   parseRateLimitResetMs,
   parseRetryAfterMs,
 } from "../lib/github.ts"
+
+test("repositoryExists returns true for an accessible repository", async () => {
+  const fetchImpl = async (url: string | URL | Request) => {
+    assert.equal(String(url), "https://api.github.com/repos/vercel/next.js")
+    return new Response(JSON.stringify({ full_name: "vercel/next.js" }), { status: 200 })
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  assert.equal(await client.repositoryExists("vercel/next.js"), true)
+})
+
+test("repositoryExists returns false for a missing repository", async () => {
+  const fetchImpl = async () =>
+    new Response(JSON.stringify({ message: "Not Found" }), { status: 404, statusText: "Not Found" })
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  assert.equal(await client.repositoryExists("missing/repo"), false)
+})
+
+test("organizationExists returns false for a missing organization", async () => {
+  const fetchImpl = async () =>
+    new Response(JSON.stringify({ message: "Not Found" }), { status: 404, statusText: "Not Found" })
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  assert.equal(await client.organizationExists("missing-org"), false)
+})
 
 test("extractContactsFromBio pulls email, twitter, linkedin, and website", () => {
   const result = extractContactsFromBio(
