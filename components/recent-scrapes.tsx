@@ -1110,23 +1110,23 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       <div className="space-y-4">
         <FailedScrapes />
         <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
-        <Tabs defaultValue="organizations" className="w-full">
+        <Tabs defaultValue="repositories" className="w-full">
           <TabsList className="bg-muted">
-            <TabsTrigger value="organizations">Organizations</TabsTrigger>
             <TabsTrigger value="repositories">Repositories</TabsTrigger>
+            <TabsTrigger value="organizations">Organizations</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="organizations" className="space-y-4 mt-6">
-            {orgScrapes.length === 0
-              ? <EmptyState type="organization" />
-              : <div className="grid grid-cols-1 gap-4">{orgScrapes.map(renderScrapeCard)}</div>
-            }
-          </TabsContent>
 
           <TabsContent value="repositories" className="space-y-4 mt-6">
             {repoScrapes.length === 0
               ? <EmptyState type="repository" />
               : <div className="grid grid-cols-1 gap-4">{repoScrapes.map(renderScrapeCard)}</div>
+            }
+          </TabsContent>
+
+          <TabsContent value="organizations" className="space-y-4 mt-6">
+            {orgScrapes.length === 0
+              ? <EmptyState type="organization" />
+              : <div className="grid grid-cols-1 gap-4">{orgScrapes.map(renderScrapeCard)}</div>
             }
           </TabsContent>
         </Tabs>
