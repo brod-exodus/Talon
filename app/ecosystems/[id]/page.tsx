@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail
+  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download
 } from "lucide-react"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
@@ -41,6 +42,7 @@ type EcosystemContributor = {
 }
 
 type ScrapeSummary = { id: string; target: string; type: string }
+type ContactFilter = "email" | "linkedin" | "twitter"
 
 // ─── X icon ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,25 @@ function XIcon({ className }: { className?: string }) {
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   )
+}
+
+function escapeCsvCell(value: unknown): string {
+  const text = String(value ?? "")
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function downloadCsv(filename: string, rows: unknown[][]) {
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = filename
+  anchor.style.visibility = "hidden"
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -140,6 +161,9 @@ export default function EcosystemDetailPage() {
   const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
   const [selectedScrape, setSelectedScrape] = useState("")
   const [adding, setAdding] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [minRepos, setMinRepos] = useState(1)
+  const [contactFilters, setContactFilters] = useState<Set<ContactFilter>>(new Set())
 
   const load = useCallback(async () => {
     setContributorsLoading(true)
@@ -250,11 +274,75 @@ export default function EcosystemDetailPage() {
     router.push("/ecosystems")
   }
 
-  if (!ecosystemLoading && !ecosystem) return null
-
   const uniqueContributors = contributors.length
   const multiScrapeCount = contributors.filter((c) => c.scrapeCount > 1).length
   const scrapeRows = ecosystem?.scrapes ?? []
+  const maxRepos = Math.max(1, scrapeRows.length)
+
+  useEffect(() => {
+    setMinRepos((current) => Math.min(maxRepos, Math.max(1, current)))
+  }, [maxRepos])
+
+  const filteredContributors = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return contributors
+      .filter((contributor) => {
+        if (contributor.scrapeCount < minRepos) return false
+        if (query && !`${contributor.name} ${contributor.username}`.toLowerCase().includes(query)) return false
+        if (contactFilters.has("email") && !contributor.contacts.email?.trim()) return false
+        if (contactFilters.has("linkedin") && !contributor.contacts.linkedin?.trim()) return false
+        if (contactFilters.has("twitter") && !contributor.contacts.twitter?.trim()) return false
+        return true
+      })
+      .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
+  }, [contactFilters, contributors, minRepos, searchQuery])
+
+  const toggleContactFilter = useCallback((filter: ContactFilter) => {
+    setContactFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(filter)) next.delete(filter)
+      else next.add(filter)
+      return next
+    })
+  }, [])
+
+  const handleMinReposChange = useCallback((value: string) => {
+    const next = Math.floor(Number(value) || 1)
+    setMinRepos(Math.min(maxRepos, Math.max(1, next)))
+  }, [maxRepos])
+
+  const handleExportCsv = useCallback(() => {
+    const headers = [
+      "Rank",
+      "Name",
+      "Username",
+      "GitHub Profile",
+      "Repo Count",
+      "Appears In",
+      "Total Contributions",
+      "Email",
+      "LinkedIn",
+      "X",
+      "Website",
+    ]
+    const rows = filteredContributors.map((contributor, index) => [
+      index + 1,
+      contributor.name,
+      contributor.username,
+      `https://github.com/${contributor.username}`,
+      contributor.scrapeCount,
+      contributor.scrapeTargets.join("; "),
+      contributor.totalContributions,
+      contributor.contacts.email ?? "",
+      contributor.contacts.linkedin ?? "",
+      contributor.contacts.twitter ?? "",
+      contributor.contacts.website ?? "",
+    ])
+    const name = ecosystem?.name?.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "project"
+    downloadCsv(`${name}-contributors.csv`, [headers, ...rows])
+  }, [ecosystem?.name, filteredContributors])
+
+  if (!ecosystemLoading && !ecosystem) return null
 
   return (
     <div className="prism-app">
@@ -391,9 +479,30 @@ export default function EcosystemDetailPage() {
 
         {/* ── Contributor intelligence table ───────────────────────────── */}
         <section>
-          <h2 className="text-base font-semibold mb-3 text-muted-foreground uppercase tracking-wide text-xs">
-            Contributor Intelligence
-          </h2>
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-muted-foreground uppercase tracking-wide text-xs">
+                Contributor Intelligence
+              </h2>
+              {!contributorsLoading && contributors.length > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Showing {filteredContributors.length} of {contributors.length} contributors
+                </p>
+              )}
+            </div>
+            {!contributorsLoading && contributors.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 bg-transparent"
+                onClick={handleExportCsv}
+                disabled={filteredContributors.length === 0}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+            )}
+          </div>
 
           {contributorsLoading ? (
             <ContributorTableSkeleton />
@@ -402,6 +511,66 @@ export default function EcosystemDetailPage() {
               Add scrapes to see contributor intelligence.
             </div>
           ) : (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+                  <div className="space-y-1">
+                    <label htmlFor="project-contributor-search" className="text-xs font-medium text-muted-foreground">
+                      Search
+                    </label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="project-contributor-search"
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder="Search name or username..."
+                        className="h-9 pl-8"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="project-min-repos" className="text-xs font-medium text-muted-foreground">
+                      Minimum repos
+                    </label>
+                    <Input
+                      id="project-min-repos"
+                      type="number"
+                      min={1}
+                      max={maxRepos}
+                      value={minRepos}
+                      onChange={(event) => handleMinReposChange(event.target.value)}
+                      className="h-9 w-full lg:w-32"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { key: "email", label: "Has Email" },
+                        { key: "linkedin", label: "Has LinkedIn" },
+                        { key: "twitter", label: "Has X" },
+                      ] as const
+                    ).map(({ key, label }) => (
+                      <Button
+                        key={key}
+                        type="button"
+                        size="sm"
+                        variant={contactFilters.has(key) ? "default" : "outline"}
+                        className={contactFilters.has(key) ? "" : "bg-transparent"}
+                        onClick={() => toggleContactFilter(key)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {filteredContributors.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
+                  No contributors match the current filters.
+                </div>
+              ) : (
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
@@ -415,7 +584,7 @@ export default function EcosystemDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {contributors.map((c, idx) => (
+                  {filteredContributors.map((c, idx) => (
                     <tr
                       key={c.id}
                       className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
@@ -534,6 +703,8 @@ export default function EcosystemDetailPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+              )}
             </div>
           )}
         </section>

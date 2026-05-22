@@ -820,6 +820,13 @@ export async function completeScrape(
 ): Promise<void> {
   await persistScrapeContributors(id, contributors)
   const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
+  const { data: scrape, error: scrapeFetchError } = await supabaseAdmin
+    .from("scrapes")
+    .select("team_id")
+    .eq("id", id)
+    .maybeSingle()
+  if (scrapeFetchError) throw scrapeFetchError
+  const resolvedTeamId = scrape?.team_id ?? (await getDefaultTeamId())
   const { error } = await supabaseAdmin
     .from("scrapes")
     .update({
@@ -832,6 +839,18 @@ export async function completeScrape(
     })
     .eq("id", id)
   if (error) throw error
+
+  const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
+    .from("ecosystem_scrapes")
+    .select("ecosystem_id")
+    .eq("scrape_id", id)
+    .eq("team_id", resolvedTeamId)
+  if (affectedProjectError) throw affectedProjectError
+
+  const affectedProjectIds = Array.from(new Set((affectedProjectLinks ?? []).map((link) => link.ecosystem_id)))
+  await Promise.all(
+    affectedProjectIds.map((ecosystemId) => recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId))
+  )
 }
 
 export type AppScrape = {
@@ -1183,10 +1202,22 @@ export async function deleteScrape(id: string, teamId?: string): Promise<void> {
   if (fetchError) throw fetchError
   if (!scrape) return
 
+  const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
+    .from("ecosystem_scrapes")
+    .select("ecosystem_id")
+    .eq("scrape_id", id)
+    .eq("team_id", resolvedTeamId)
+  if (affectedProjectError) throw affectedProjectError
+
   const { error: linkError } = await supabaseAdmin.from("scrape_contributors").delete().eq("scrape_id", id)
   if (linkError) throw linkError
   const { error: scrapeError } = await supabaseAdmin.from("scrapes").delete().eq("id", id).eq("team_id", resolvedTeamId)
   if (scrapeError) throw scrapeError
+
+  const affectedProjectIds = Array.from(new Set((affectedProjectLinks ?? []).map((link) => link.ecosystem_id)))
+  await Promise.all(
+    affectedProjectIds.map((ecosystemId) => recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId))
+  )
 }
 
 // ─── Shared scrapes ───────────────────────────────────────────────────────────
@@ -1242,6 +1273,14 @@ export type EcosystemContributor = {
   scrapeTargets: string[]
   totalContributions: number
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
+}
+
+export type EcosystemContributorCache = {
+  contributors: EcosystemContributor[]
+  contributorCount: number
+  multiRepoCount: number
+  scrapeIds: string[]
+  recomputedAt: string | null
 }
 
 export async function createEcosystem(name: string, teamId?: string): Promise<EcosystemSummary> {
@@ -1411,6 +1450,7 @@ export async function addScrapeToEcosystem(
     .from("ecosystem_scrapes")
     .insert({ ecosystem_id: ecosystemId, scrape_id: scrapeId, team_id: resolvedTeamId })
   if (error) throw error
+  await recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId)
 }
 
 export async function removeScrapeFromEcosystem(
@@ -1426,6 +1466,7 @@ export async function removeScrapeFromEcosystem(
     .eq("scrape_id", scrapeId)
     .eq("team_id", resolvedTeamId)
   if (error) throw error
+  await recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId)
 }
 
 export async function deleteEcosystem(id: string, teamId?: string): Promise<void> {
@@ -1438,7 +1479,89 @@ export async function getEcosystemContributors(
   ecosystemId: string,
   teamId?: string
 ): Promise<EcosystemContributor[]> {
+  const cache = await getOrRecomputeEcosystemContributors(ecosystemId, teamId)
+  return cache.contributors
+}
+
+export async function getCachedEcosystemContributors(
+  ecosystemId: string,
+  teamId?: string
+): Promise<EcosystemContributorCache | null> {
   const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("project_contributors_cache")
+    .select("scrape_ids, contributors, contributor_count, multi_repo_count, recomputed_at")
+    .eq("ecosystem_id", ecosystemId)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  return {
+    contributors: Array.isArray(data.contributors) ? (data.contributors as EcosystemContributor[]) : [],
+    contributorCount: data.contributor_count ?? 0,
+    multiRepoCount: data.multi_repo_count ?? 0,
+    scrapeIds: Array.isArray(data.scrape_ids) ? data.scrape_ids : [],
+    recomputedAt: data.recomputed_at ?? null,
+  }
+}
+
+export async function getOrRecomputeEcosystemContributors(
+  ecosystemId: string,
+  teamId?: string
+): Promise<EcosystemContributorCache> {
+  const cached = await getCachedEcosystemContributors(ecosystemId, teamId)
+  if (cached) return cached
+  return recomputeEcosystemContributorsCache(ecosystemId, teamId)
+}
+
+export async function recomputeEcosystemContributorsCache(
+  ecosystemId: string,
+  teamId?: string
+): Promise<EcosystemContributorCache> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const contributors = await computeEcosystemContributors(ecosystemId, resolvedTeamId)
+  const scrapeIds = await getEcosystemScrapeIds(ecosystemId, resolvedTeamId)
+  const contributorCount = contributors.length
+  const multiRepoCount = contributors.filter((contributor) => contributor.scrapeCount > 1).length
+  const recomputedAt = new Date().toISOString()
+
+  const { error } = await supabaseAdmin
+    .from("project_contributors_cache")
+    .upsert({
+      ecosystem_id: ecosystemId,
+      team_id: resolvedTeamId,
+      scrape_ids: scrapeIds,
+      contributors,
+      contributor_count: contributorCount,
+      multi_repo_count: multiRepoCount,
+      recomputed_at: recomputedAt,
+    })
+  if (error) throw error
+
+  return {
+    contributors,
+    contributorCount,
+    multiRepoCount,
+    scrapeIds,
+    recomputedAt,
+  }
+}
+
+async function getEcosystemScrapeIds(ecosystemId: string, teamId: string): Promise<string[]> {
+  const { data: ecoLinks, error } = await supabaseAdmin
+    .from("ecosystem_scrapes")
+    .select("scrape_id")
+    .eq("ecosystem_id", ecosystemId)
+    .eq("team_id", teamId)
+  if (error) throw error
+  return (ecoLinks ?? []).map((link) => link.scrape_id)
+}
+
+async function computeEcosystemContributors(
+  ecosystemId: string,
+  resolvedTeamId: string
+): Promise<EcosystemContributor[]> {
   const { data: ecoLinks, error: elErr } = await supabaseAdmin
     .from("ecosystem_scrapes")
     .select("scrape_id")

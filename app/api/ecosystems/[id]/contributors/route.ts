@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
-import { getEcosystemContributors } from "@/lib/db"
+import { getOrRecomputeEcosystemContributors } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 
@@ -18,8 +18,8 @@ export async function GET(
     if (!ecosystemId) {
       return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
     }
-    const contributors = await getEcosystemContributors(ecosystemId, teamId)
-    return NextResponse.json({ contributors })
+    const cache = await getOrRecomputeEcosystemContributors(ecosystemId, teamId)
+    return NextResponse.json(cache)
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[ecosystems/[id]/contributors] GET error:", error)
