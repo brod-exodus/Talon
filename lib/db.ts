@@ -1275,12 +1275,15 @@ export type EcosystemContributor = {
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
 }
 
+export type EcosystemContributorCacheStatus = "hit" | "rebuilt" | "bypassed"
+
 export type EcosystemContributorCache = {
   contributors: EcosystemContributor[]
   contributorCount: number
   multiRepoCount: number
   scrapeIds: string[]
   recomputedAt: string | null
+  cacheStatus: EcosystemContributorCacheStatus
 }
 
 type EcosystemContributorCacheSource = {
@@ -1509,6 +1512,7 @@ export async function getCachedEcosystemContributors(
     multiRepoCount: data.multi_repo_count ?? 0,
     scrapeIds: Array.isArray(data.scrape_ids) ? data.scrape_ids : [],
     recomputedAt: data.recomputed_at ?? null,
+    cacheStatus: "hit",
   }
 }
 
@@ -1517,10 +1521,15 @@ export async function getOrRecomputeEcosystemContributors(
   teamId?: string
 ): Promise<EcosystemContributorCache> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const [cached, source] = await Promise.all([
-    getCachedEcosystemContributors(ecosystemId, resolvedTeamId),
-    getEcosystemContributorCacheSource(ecosystemId, resolvedTeamId),
-  ])
+  const source = await getEcosystemContributorCacheSource(ecosystemId, resolvedTeamId)
+  let cached: EcosystemContributorCache | null = null
+  try {
+    cached = await getCachedEcosystemContributors(ecosystemId, resolvedTeamId)
+  } catch (error) {
+    console.warn("[project-contributors-cache] Cache read failed; computing directly.", error)
+    return computeEcosystemContributorsWithoutCache(ecosystemId, resolvedTeamId, source.scrapeIds)
+  }
+
   if (
     cached &&
     !shouldRecomputeEcosystemContributorCache({
@@ -1559,7 +1568,17 @@ export async function recomputeEcosystemContributorsCache(
       multi_repo_count: multiRepoCount,
       recomputed_at: recomputedAt,
     })
-  if (error) throw error
+  if (error) {
+    console.warn("[project-contributors-cache] Cache write failed; returning computed contributors.", error)
+    return {
+      contributors,
+      contributorCount,
+      multiRepoCount,
+      scrapeIds,
+      recomputedAt,
+      cacheStatus: "bypassed",
+    }
+  }
 
   return {
     contributors,
@@ -1567,6 +1586,26 @@ export async function recomputeEcosystemContributorsCache(
     multiRepoCount,
     scrapeIds,
     recomputedAt,
+    cacheStatus: "rebuilt",
+  }
+}
+
+async function computeEcosystemContributorsWithoutCache(
+  ecosystemId: string,
+  resolvedTeamId: string,
+  scrapeIds?: string[]
+): Promise<EcosystemContributorCache> {
+  const [contributors, resolvedScrapeIds] = await Promise.all([
+    computeEcosystemContributors(ecosystemId, resolvedTeamId),
+    scrapeIds ? Promise.resolve(scrapeIds) : getEcosystemScrapeIds(ecosystemId, resolvedTeamId),
+  ])
+  return {
+    contributors,
+    contributorCount: contributors.length,
+    multiRepoCount: contributors.filter((contributor) => contributor.scrapeCount > 1).length,
+    scrapeIds: resolvedScrapeIds,
+    recomputedAt: new Date().toISOString(),
+    cacheStatus: "bypassed",
   }
 }
 
