@@ -47,11 +47,12 @@ function TalonMark() {
   return (
     <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label="Talon home">
       <Image
-        src="/logos/talon-header-lockup.svg"
+        src="/branding/talon-logo.png"
         alt="Talon"
-        width={128}
-        height={36}
+        width={190}
+        height={42}
         priority
+        unoptimized
         className="h-9 w-auto shrink-0 object-contain"
       />
     </Link>
