@@ -53,7 +53,7 @@ function TalonMark() {
         height={42}
         priority
         unoptimized
-        className="h-10 w-auto shrink-0 object-contain md:h-11"
+        className="h-8 w-auto shrink-0 object-contain"
       />
     </Link>
   )
