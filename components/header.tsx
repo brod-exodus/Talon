@@ -45,15 +45,15 @@ type HealthStatus = "ok" | "warn" | "error" | null
 
 function TalonMark() {
   return (
-    <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label="Talon home">
+    <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center" aria-label="Talon home">
       <Image
-        src="/branding/talon-logo.png"
+        src="/branding/talon-header-logo.png"
         alt="Talon"
         width={190}
         height={42}
         priority
         unoptimized
-        className="h-9 w-auto shrink-0 object-contain"
+        className="h-10 w-auto shrink-0 object-contain md:h-11"
       />
     </Link>
   )
