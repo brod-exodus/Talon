@@ -47,7 +47,7 @@ function TalonMark() {
   return (
     <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center" aria-label="Talon home">
       <Image
-        src="/branding/talon-header-logo.png"
+        src="/branding/talon-header-logo-cropped.png"
         alt="Talon"
         width={190}
         height={42}
