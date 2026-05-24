@@ -120,7 +120,7 @@ const SEARCH_GROUP_META = [
 ] as const
 
 const HEADER_ICON_TRIGGER_CLASS =
-  "hidden rounded-full bg-white/75 focus:ring-0 focus-visible:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary/20 data-[state=open]:bg-indigo-50/70 data-[state=open]:text-primary data-[state=open]:ring-0 lg:inline-flex"
+  "hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
@@ -573,18 +573,18 @@ export function Header() {
     return (
       <DropdownMenu open={activityOpen} onOpenChange={setActivityOpen}>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon-sm"
+          <button
+            type="button"
             className={cn("relative", HEADER_ICON_TRIGGER_CLASS)}
             disabled={!me}
             aria-label="Open recent activity"
+            onMouseDown={(event) => event.preventDefault()}
           >
             <Bell className="h-4 w-4" />
             {activityEvents.length > 0 && (
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-white" />
             )}
-          </Button>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
@@ -646,15 +646,15 @@ export function Header() {
     return (
       <DropdownMenu open={recentOpen} onOpenChange={setRecentOpen}>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon-sm"
+          <button
+            type="button"
             className={HEADER_ICON_TRIGGER_CLASS}
             disabled={!me}
             aria-label="Open recently viewed"
+            onMouseDown={(event) => event.preventDefault()}
           >
             <Clock className="h-4 w-4" />
-          </Button>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
