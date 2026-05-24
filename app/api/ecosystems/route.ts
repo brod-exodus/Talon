@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { recordActivityEvent } from "@/lib/activity"
 import { getEcosystems, createEcosystem } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
-    const { teamId } = await resolveTeamContext(request)
+    const { teamId, email } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -35,6 +36,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing or invalid name" }, { status: 400 })
     }
     const ecosystem = await createEcosystem(normalizedName, teamId)
+    await recordActivityEvent({
+      teamId,
+      actorEmail: email,
+      type: "project.created",
+      title: "Project created",
+      description: normalizedName,
+      metadata: { projectId: ecosystem.id, name: ecosystem.name },
+    })
     return NextResponse.json(ecosystem)
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)

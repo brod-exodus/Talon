@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { Eye, Trash2, Plus, Clock, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -71,6 +72,7 @@ function getCheckResultSummary(result: WatchedRepoCheckResult): string {
 }
 
 export function WatchedRepos() {
+  const searchParams = useSearchParams()
   const { canWrite } = useAuthPermissions()
   const [repos, setRepos] = useState<WatchedRepo[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -79,6 +81,7 @@ export function WatchedRepos() {
   const [repo, setRepo] = useState("")
   const [intervalHours, setIntervalHours] = useState("24")
   const [lastCheckResults, setLastCheckResults] = useState<Record<string, WatchedRepoCheckResult>>({})
+  const repoInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   const fetchRepos = useCallback(async () => {
@@ -97,6 +100,11 @@ export function WatchedRepos() {
   useEffect(() => {
     fetchRepos()
   }, [fetchRepos])
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "add") return
+    window.setTimeout(() => repoInputRef.current?.focus(), 0)
+  }, [searchParams])
 
   useEffect(() => {
     try {
@@ -274,6 +282,7 @@ export function WatchedRepos() {
                   Repository (owner/repo)
                 </Label>
                 <Input
+                  ref={repoInputRef}
                   id="watch-repo"
                   placeholder="e.g. vercel/next.js"
                   value={repo}

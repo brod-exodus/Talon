@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { recordAuditEvent } from "@/lib/audit"
+import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
 import { addScrapeToEcosystem, createScrape, createScrapeJob, ecosystemExists } from "@/lib/db"
 import { runScrapeWorker } from "@/lib/scrape-worker"
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
-    const { teamId, teamSlug } = await resolveTeamContext(request)
+    const { teamId, teamSlug, email } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -96,6 +97,14 @@ export async function POST(request: NextRequest) {
       await addScrapeToEcosystem(projectId, scrapeId, teamId)
     }
     await createScrapeJob(scrapeId, type, target, minContributions, teamId)
+    await recordActivityEvent({
+      teamId,
+      actorEmail: email,
+      type: "scrape.started",
+      title: "Scrape started",
+      description: `${type === "repository" ? "Repository" : "Organization"} scrape for ${target}`,
+      metadata: { scrapeId, type, target, minContributions, projectId },
+    })
     const workerRun = await runScrapeWorker(1, teamId)
     const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
     await recordAuditEvent({
