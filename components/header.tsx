@@ -119,6 +119,9 @@ const SEARCH_GROUP_META = [
   { key: "watchedRepos", label: "Watched repos", icon: GitBranch },
 ] as const
 
+const HEADER_ICON_TRIGGER_CLASS =
+  "hidden rounded-full bg-white/75 focus:ring-0 focus-visible:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary/20 data-[state=open]:bg-indigo-50/70 data-[state=open]:text-primary data-[state=open]:ring-0 lg:inline-flex"
+
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
   if (seconds < 60) return "Just now"
@@ -573,7 +576,7 @@ export function Header() {
           <Button
             variant="outline"
             size="icon-sm"
-            className="relative hidden rounded-full bg-white/75 lg:inline-flex"
+            className={cn("relative", HEADER_ICON_TRIGGER_CLASS)}
             disabled={!me}
             aria-label="Open recent activity"
           >
@@ -646,7 +649,7 @@ export function Header() {
           <Button
             variant="outline"
             size="icon-sm"
-            className="hidden rounded-full bg-white/75 lg:inline-flex"
+            className={HEADER_ICON_TRIGGER_CLASS}
             disabled={!me}
             aria-label="Open recently viewed"
           >
