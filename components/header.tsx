@@ -120,7 +120,7 @@ const SEARCH_GROUP_META = [
 ] as const
 
 const HEADER_ICON_TRIGGER_CLASS =
-  "hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
+  "hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
@@ -233,6 +233,8 @@ export function Header() {
   const [recentItems, setRecentItems] = useState<RecentlyViewedItem[]>([])
   const searchRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const activityOpenedByPointerRef = useRef(false)
+  const recentOpenedByPointerRef = useRef(false)
 
   const canAdmin = me?.permissions.canAdmin ?? false
   const canWrite = me?.permissions.canWrite ?? false
@@ -578,7 +580,12 @@ export function Header() {
             className={cn("relative", HEADER_ICON_TRIGGER_CLASS)}
             disabled={!me}
             aria-label="Open recent activity"
-            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={() => {
+              activityOpenedByPointerRef.current = true
+            }}
+            onKeyDown={() => {
+              activityOpenedByPointerRef.current = false
+            }}
           >
             <Bell className="h-4 w-4" />
             {activityEvents.length > 0 && (
@@ -588,6 +595,11 @@ export function Header() {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          onCloseAutoFocus={(event) => {
+            if (!activityOpenedByPointerRef.current) return
+            event.preventDefault()
+            activityOpenedByPointerRef.current = false
+          }}
           className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
         >
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
@@ -651,13 +663,23 @@ export function Header() {
             className={HEADER_ICON_TRIGGER_CLASS}
             disabled={!me}
             aria-label="Open recently viewed"
-            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={() => {
+              recentOpenedByPointerRef.current = true
+            }}
+            onKeyDown={() => {
+              recentOpenedByPointerRef.current = false
+            }}
           >
             <Clock className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          onCloseAutoFocus={(event) => {
+            if (!recentOpenedByPointerRef.current) return
+            event.preventDefault()
+            recentOpenedByPointerRef.current = false
+          }}
           className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
         >
           <DropdownMenuLabel className="px-3 py-2 text-sm font-extrabold text-foreground">
