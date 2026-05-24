@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
+import { recordActivityEvent } from "@/lib/activity"
 import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
   const isCronRequest = hasCronSecret(request)
   let requestTeamId: string | null = null
   let requestTeamSlug: string | null = null
+  let requestActorEmail: string | null = null
   if (!isCronRequest) {
     const authError = requirePermission(request, "write")
     if (authError) return authError
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
       const team = await resolveTeamContext(request)
       requestTeamId = team.teamId
       requestTeamSlug = team.teamSlug
+      requestActorEmail = team.email ?? null
     } catch (error) {
       return teamContextError(error)
     }
@@ -182,6 +185,23 @@ export async function POST(request: NextRequest) {
         const shouldNotify = !isInitialBaseline && newContributors.length > 0 && Boolean(slackWebhookUrl)
         if (shouldNotify && slackWebhookUrl) {
           await sendSlackNotification(slackWebhookUrl, watched.repo, newContributors)
+        }
+
+        if (!isInitialBaseline && newContributors.length > 0) {
+          await recordActivityEvent({
+            teamId: watched.team_id,
+            actorEmail: isCronRequest ? null : requestActorEmail,
+            type: "watched_repo.contributors_found",
+            title: "Contributors found",
+            description: `${newContributors.length} new contributor${newContributors.length === 1 ? "" : "s"} in ${watched.repo}`,
+            metadata: {
+              watchedRepoId: watched.id,
+              repo: watched.repo,
+              newContributors: newContributors.length,
+              trigger: isCronRequest ? "cron" : "manual",
+              notified: shouldNotify,
+            },
+          })
         }
 
         // Update last_checked_at

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase"
+import { recordActivityEvent } from "@/lib/activity"
 import { aggregateEcosystemContributors, shouldRecomputeEcosystemContributorCache } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
 
@@ -828,7 +829,7 @@ export async function completeScrape(
   const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
   const { data: scrape, error: scrapeFetchError } = await supabaseAdmin
     .from("scrapes")
-    .select("team_id")
+    .select("team_id, type, target")
     .eq("id", id)
     .maybeSingle()
   if (scrapeFetchError) throw scrapeFetchError
@@ -857,6 +858,19 @@ export async function completeScrape(
   await Promise.all(
     affectedProjectIds.map((ecosystemId) => recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId))
   )
+  await recordActivityEvent({
+    teamId: resolvedTeamId,
+    type: "scrape.completed",
+    title: "Scrape completed",
+    description: `Found ${contributorTotal.toLocaleString()} contributor${contributorTotal === 1 ? "" : "s"} in ${scrape?.target ?? "this scrape"}.`,
+    metadata: {
+      scrapeId: id,
+      type: scrape?.type,
+      target: scrape?.target,
+      contributorTotal,
+      contactInfoCount,
+    },
+  })
 }
 
 export type AppScrape = {

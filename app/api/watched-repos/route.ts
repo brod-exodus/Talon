@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
+import { recordActivityEvent } from "@/lib/activity"
 import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
-    const { teamId, teamSlug } = await resolveTeamContext(request)
+    const { teamId, teamSlug, email } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
@@ -64,6 +65,14 @@ export async function POST(request: NextRequest) {
       action: "watched_repo.create",
       outcome: "success",
       metadata: { watchedRepoId: data.id, teamSlug, repo: normalizedRepo, intervalHours: normalizedInterval },
+    })
+    await recordActivityEvent({
+      teamId,
+      actorEmail: email,
+      type: "watched_repo.added",
+      title: "Watched repo added",
+      description: normalizedRepo,
+      metadata: { watchedRepoId: data.id, repo: normalizedRepo, intervalHours: normalizedInterval },
     })
     return NextResponse.json(data, { status: 201 })
   } catch (error) {

@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -58,12 +59,14 @@ function formatTimeAgo(date: string | null) {
 }
 
 export default function EcosystemsPage() {
+  const searchParams = useSearchParams()
   const { canWrite } = useAuthPermissions()
   const [ecosystems, setEcosystems] = useState<EcosystemSummary[]>([])
   const [loading, setLoading]       = useState(true)
   const [creating, setCreating]     = useState(false)
   const [newName, setNewName]       = useState("")
   const [saving, setSaving]         = useState(false)
+  const newNameInputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     try {
@@ -78,6 +81,12 @@ export default function EcosystemsPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (!canWrite || searchParams.get("action") !== "create") return
+    setCreating(true)
+    window.setTimeout(() => newNameInputRef.current?.focus(), 0)
+  }, [canWrite, searchParams])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -136,6 +145,7 @@ export default function EcosystemsPage() {
             <CardContent className="pt-5">
               <form onSubmit={handleCreate} className="flex gap-3">
                 <Input
+                  ref={newNameInputRef}
                   autoFocus
                   placeholder="Project name (e.g. Staff Solana Engineer)"
                   value={newName}

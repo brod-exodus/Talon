@@ -6,7 +6,10 @@ import { type ChangeEvent, type KeyboardEvent, type ReactNode, useEffect, useRef
 import { usePathname, useRouter } from "next/navigation"
 import {
   AlertTriangle,
+  Bell,
   Camera,
+  CheckCircle2,
+  CircleDot,
   Database,
   Eye,
   FolderKanban,
@@ -16,6 +19,8 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Plus,
+  Rocket,
   Search,
   Settings,
   Shield,
@@ -77,6 +82,15 @@ type SearchGroups = {
   watchedRepos: SearchResult[]
 }
 
+type ActivityEvent = {
+  id: string
+  type: string
+  title: string
+  description: string | null
+  href: string
+  createdAt: string
+}
+
 const EMPTY_SEARCH_GROUPS: SearchGroups = {
   contributors: [],
   scrapes: [],
@@ -90,6 +104,26 @@ const SEARCH_GROUP_META = [
   { key: "projects", label: "Projects", icon: FolderKanban },
   { key: "watchedRepos", label: "Watched repos", icon: GitBranch },
 ] as const
+
+function formatActivityTime(value: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
+  if (seconds < 60) return "Just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(value))
+}
+
+function getActivityIcon(type: string) {
+  if (type === "scrape.completed") return CheckCircle2
+  if (type === "project.created") return FolderKanban
+  if (type === "watched_repo.added" || type === "watched_repo.contributors_found") return Eye
+  if (type === "scrape.started") return Rocket
+  return CircleDot
+}
 
 function TalonMark() {
   return (
@@ -174,10 +208,15 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState<string | null>(null)
   const searchRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canAdmin = me?.permissions.canAdmin ?? false
+  const canWrite = me?.permissions.canWrite ?? false
 
   useEffect(() => {
     if (!canAdmin) {
@@ -267,6 +306,33 @@ export function Header() {
       window.clearTimeout(timeout)
     }
   }, [me, searchQuery])
+
+  useEffect(() => {
+    if (!activityOpen || !me) return
+    const controller = new AbortController()
+
+    async function loadActivity() {
+      setActivityLoading(true)
+      setActivityError(null)
+      try {
+        const response = await fetch("/api/activity-events?limit=10", {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(data?.error || "Activity could not load")
+        setActivityEvents(Array.isArray(data?.events) ? data.events : [])
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setActivityError("Activity is unavailable right now.")
+      } finally {
+        if (!controller.signal.aborted) setActivityLoading(false)
+      }
+    }
+
+    loadActivity()
+    return () => controller.abort()
+  }, [activityOpen, me])
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -425,6 +491,123 @@ export function Header() {
     )
   }
 
+  function renderQuickActions() {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            className="hidden gap-2 rounded-full shadow-lg shadow-indigo-500/15 lg:inline-flex"
+            disabled={!canWrite}
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-56 rounded-2xl border-white/70 bg-white/95 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+        >
+          <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+            Quick actions
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/?action=start-scrape">
+              <Rocket className="mr-2 h-4 w-4" />
+              Start Scrape
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/watched?action=add">
+              <Eye className="mr-2 h-4 w-4" />
+              Add Watched Repo
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/ecosystems?action=create">
+              <FolderKanban className="mr-2 h-4 w-4" />
+              Create Project
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  function renderActivityMenu() {
+    return (
+      <DropdownMenu open={activityOpen} onOpenChange={setActivityOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="relative hidden rounded-full bg-white/75 lg:inline-flex"
+            disabled={!me}
+            aria-label="Open recent activity"
+          >
+            <Bell className="h-4 w-4" />
+            {activityEvents.length > 0 && (
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-white" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
+        >
+          <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
+            <span className="text-sm font-extrabold text-foreground">Recent activity</span>
+            {activityLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {activityError ? (
+            <div className="px-3 py-5 text-sm font-semibold text-rose-600">{activityError}</div>
+          ) : activityLoading && activityEvents.length === 0 ? (
+            <div className="flex items-center gap-3 px-3 py-5 text-sm font-semibold text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              Loading activity...
+            </div>
+          ) : activityEvents.length === 0 ? (
+            <div className="px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
+              No recent activity yet.
+            </div>
+          ) : (
+            <div className="max-h-96 overflow-y-auto py-1">
+              {activityEvents.map((event) => {
+                const Icon = getActivityIcon(event.type)
+                return (
+                  <DropdownMenuItem
+                    key={event.id}
+                    onSelect={() => router.push(event.href)}
+                    className="cursor-pointer rounded-2xl p-3 focus:bg-indigo-50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate text-sm font-extrabold text-foreground">{event.title}</span>
+                        <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                          {formatActivityTime(event.createdAt)}
+                        </span>
+                      </span>
+                      {event.description && (
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                          {event.description}
+                        </span>
+                      )}
+                    </span>
+                  </DropdownMenuItem>
+                )
+              })}
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
   const headerAccountTrigger = (
     <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2 bg-white/75" disabled={!me}>
       <AccountAvatar me={me} identityLabel={identityLabel} className="h-5 w-5 text-[10px]" />
@@ -543,6 +726,8 @@ export function Header() {
                 Ops attention
               </Link>
             )}
+            {renderQuickActions()}
+            {renderActivityMenu()}
             {renderAccountMenu(headerAccountTrigger)}
           </div>
         </div>

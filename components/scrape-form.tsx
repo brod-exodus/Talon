@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Settings, AlertCircle, Rocket, Plus, Search, ExternalLink } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getStoredGithubToken } from "@/lib/client-secrets"
@@ -37,6 +38,7 @@ type InvalidTargetError = {
 type ScrapeSourceType = "organization" | "repository"
 
 export function ScrapeForm() {
+  const searchParams = useSearchParams()
   const { canWrite } = useAuthPermissions()
   const [type, setType] = useState<ScrapeSourceType>("repository")
   const [target, setTarget] = useState("")
@@ -66,6 +68,11 @@ export function ScrapeForm() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "start-scrape") return
+    window.setTimeout(() => targetInputRef.current?.focus(), 0)
+  }, [searchParams])
 
   useEffect(() => {
     let cancelled = false
