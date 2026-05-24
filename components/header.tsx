@@ -322,27 +322,7 @@ export function Header() {
             </Button>
             <TalonMark />
           </div>
-          <nav className="hidden items-center gap-1 lg:flex">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon
-              const active = item.isActive(pathname)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all",
-                    active
-                      ? "bg-indigo-50 text-primary shadow-sm shadow-indigo-500/10"
-                      : "text-muted-foreground hover:bg-white/70 hover:text-primary"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
+          <div className="hidden flex-1 lg:block" aria-hidden="true" />
           <div className="flex items-center gap-2">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
