@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
+import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -162,6 +163,7 @@ export default function EcosystemDetailPage() {
   const [contributors, setContributors] = useState<EcosystemContributor[]>([])
   const [contributorsLoading, setContributorsLoading] = useState(true)
   const [contributorsError, setContributorsError] = useState<string | null>(null)
+  const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
   const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
   const [selectedScrape, setSelectedScrape] = useState("")
   const [adding, setAdding] = useState(false)
@@ -634,7 +636,42 @@ export default function EcosystemDetailPage() {
                   {filteredContributors.map((c, idx) => (
                     <tr
                       key={c.id}
-                      className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                      tabIndex={0}
+                      className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/20 focus-visible:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      onClick={() =>
+                        setPreviewContributor({
+                          id: c.id,
+                          username: c.username,
+                          name: c.name,
+                          avatar: c.avatar,
+                          contacts: c.contacts,
+                          stats: [
+                            { label: "Repos", value: c.scrapeCount },
+                            { label: "Contributions", value: c.totalContributions.toLocaleString() },
+                            { label: "Project", value: ecosystem?.name ?? "Current" },
+                          ],
+                          repositories: c.scrapeTargets,
+                          projects: ecosystem ? [{ id: ecosystem.id, name: ecosystem.name }] : [],
+                        })
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        setPreviewContributor({
+                          id: c.id,
+                          username: c.username,
+                          name: c.name,
+                          avatar: c.avatar,
+                          contacts: c.contacts,
+                          stats: [
+                            { label: "Repos", value: c.scrapeCount },
+                            { label: "Contributions", value: c.totalContributions.toLocaleString() },
+                            { label: "Project", value: ecosystem?.name ?? "Current" },
+                          ],
+                          repositories: c.scrapeTargets,
+                          projects: ecosystem ? [{ id: ecosystem.id, name: ecosystem.name }] : [],
+                        })
+                      }}
                     >
                       {/* Rank */}
                       <td className="px-3 py-3 text-xs font-mono text-muted-foreground text-right">
@@ -647,6 +684,7 @@ export default function EcosystemDetailPage() {
                           <Link
                             href={`/contributors/${c.id}`}
                             className="flex min-w-0 items-center gap-2.5 rounded-xl transition-colors hover:text-primary"
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <img
                               src={c.avatar || "/placeholder.svg?height=32&width=32"}
@@ -663,6 +701,7 @@ export default function EcosystemDetailPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
@@ -709,6 +748,7 @@ export default function EcosystemDetailPage() {
                               href={`mailto:${c.contacts.email}`}
                               title={c.contacts.email}
                               className="text-muted-foreground hover:text-primary transition-colors"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <Mail className="w-3.5 h-3.5" />
                             </a>
@@ -720,6 +760,7 @@ export default function EcosystemDetailPage() {
                               rel="noopener noreferrer"
                               title={c.contacts.linkedin}
                               className="text-muted-foreground hover:text-primary transition-colors"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <Linkedin className="w-3.5 h-3.5" />
                             </a>
@@ -731,6 +772,7 @@ export default function EcosystemDetailPage() {
                               rel="noopener noreferrer"
                               title={`@${c.contacts.twitter}`}
                               className="text-muted-foreground hover:text-primary transition-colors"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <XIcon className="w-3.5 h-3.5" />
                             </a>
@@ -742,6 +784,7 @@ export default function EcosystemDetailPage() {
                               rel="noopener noreferrer"
                               title={c.contacts.website}
                               className="text-muted-foreground hover:text-primary transition-colors"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               <Globe className="w-3.5 h-3.5" />
                             </a>
@@ -761,6 +804,13 @@ export default function EcosystemDetailPage() {
           )}
         </section>
       </main>
+      <ContributorQuickPreview
+        open={Boolean(previewContributor)}
+        contributor={previewContributor}
+        onOpenChange={(open) => {
+          if (!open) setPreviewContributor(null)
+        }}
+      />
     </div>
   )
 }
