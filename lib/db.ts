@@ -40,7 +40,13 @@ export type ContributorRow = {
   contacted: boolean
   contacted_date: string | null
   outreach_notes: string | null
+  outreach_notes_updated_at?: string | null
   status: string | null
+  reminder_note?: string | null
+  reminder_date?: string | null
+  reminder_updated_at?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type ScrapeContributorRow = {
@@ -1179,15 +1185,222 @@ export async function updateContributorOutreach(
   const set: Record<string, unknown> = {}
   if (typeof updates.contacted === "boolean") set.contacted = updates.contacted
   if (updates.contacted_date !== undefined) set.contacted_date = updates.contacted_date
-  if (updates.outreach_notes !== undefined) set.outreach_notes = updates.outreach_notes
+  if (updates.outreach_notes !== undefined) {
+    set.outreach_notes = updates.outreach_notes
+    set.outreach_notes_updated_at = new Date().toISOString()
+  }
   if (updates.status !== undefined) set.status = updates.status
   if (Object.keys(set).length === 0) return
+  set.updated_at = new Date().toISOString()
 
   const { error } = await supabaseAdmin
     .from("contributors")
     .update(set)
     .eq("team_id", resolvedTeamId)
     .eq("github_username", githubUsername)
+  if (error) throw error
+}
+
+export type ContributorProfile = {
+  id: string
+  username: string
+  name: string
+  avatar: string
+  bio: string | null
+  location: string | null
+  company: string | null
+  contacts: {
+    email?: string
+    twitter?: string
+    linkedin?: string
+    website?: string
+    github: string
+  }
+  notes: string | null
+  notesUpdatedAt: string | null
+  reminder: {
+    note: string | null
+    date: string | null
+    updatedAt: string | null
+  }
+  createdAt: string | null
+  updatedAt: string | null
+  projects: Array<{ id: string; name: string }>
+  sources: Array<{
+    scrapeId: string
+    target: string
+    type: string
+    status: string
+    contributions: number
+    startedAt: string | null
+    completedAt: string | null
+    projects: Array<{ id: string; name: string }>
+  }>
+}
+
+type ContributorProfileScrapeLink = {
+  scrape_id: string
+  contributor_id: string
+  contributions: number
+}
+
+type ContributorProfileScrape = {
+  id: string
+  target: string
+  type: string
+  status: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+type ContributorProfileProjectLink = {
+  ecosystem_id: string
+  scrape_id: string
+}
+
+export async function getContributorProfile(id: string, teamId?: string): Promise<ContributorProfile | null> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data: contributor, error: contributorError } = await supabaseAdmin
+    .from("contributors")
+    .select(
+      "id, team_id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, outreach_notes, outreach_notes_updated_at, reminder_note, reminder_date, reminder_updated_at, created_at, updated_at"
+    )
+    .eq("id", id)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (contributorError) throw contributorError
+  if (!contributor) return null
+
+  const row = contributor as ContributorRow
+  const { data: links, error: linkError } = await supabaseAdmin
+    .from("scrape_contributors")
+    .select("scrape_id, contributor_id, contributions")
+    .eq("contributor_id", id)
+    .order("contributions", { ascending: false })
+  if (linkError) throw linkError
+
+  const scrapeLinks = (links ?? []) as ContributorProfileScrapeLink[]
+  const scrapeIds = Array.from(new Set(scrapeLinks.map((link) => link.scrape_id)))
+  const scrapesById = new Map<string, ContributorProfileScrape>()
+  if (scrapeIds.length > 0) {
+    const { data: scrapes, error: scrapeError } = await supabaseAdmin
+      .from("scrapes")
+      .select("id, target, type, status, started_at, completed_at")
+      .eq("team_id", resolvedTeamId)
+      .in("id", scrapeIds)
+    if (scrapeError) throw scrapeError
+    for (const scrape of (scrapes ?? []) as ContributorProfileScrape[]) {
+      scrapesById.set(scrape.id, scrape)
+    }
+  }
+
+  const validScrapeIds = scrapeIds.filter((scrapeId) => scrapesById.has(scrapeId))
+  const projectLinksByScrapeId = new Map<string, Array<{ id: string; name: string }>>()
+  const projectMap = new Map<string, { id: string; name: string }>()
+  if (validScrapeIds.length > 0) {
+    const { data: projectLinks, error: projectLinkError } = await supabaseAdmin
+      .from("ecosystem_scrapes")
+      .select("ecosystem_id, scrape_id")
+      .eq("team_id", resolvedTeamId)
+      .in("scrape_id", validScrapeIds)
+    if (projectLinkError) throw projectLinkError
+
+    const projectLinkRows = (projectLinks ?? []) as ContributorProfileProjectLink[]
+    const projectIds = Array.from(new Set(projectLinkRows.map((link) => link.ecosystem_id)))
+    if (projectIds.length > 0) {
+      const { data: projects, error: projectError } = await supabaseAdmin
+        .from("ecosystems")
+        .select("id, name")
+        .eq("team_id", resolvedTeamId)
+        .in("id", projectIds)
+      if (projectError) throw projectError
+      for (const project of projects ?? []) {
+        projectMap.set(project.id, { id: project.id, name: project.name })
+      }
+    }
+
+    for (const link of projectLinkRows) {
+      const project = projectMap.get(link.ecosystem_id)
+      if (!project) continue
+      const current = projectLinksByScrapeId.get(link.scrape_id) ?? []
+      current.push(project)
+      projectLinksByScrapeId.set(link.scrape_id, current)
+    }
+  }
+
+  const sources = scrapeLinks
+    .map((link) => {
+      const scrape = scrapesById.get(link.scrape_id)
+      if (!scrape) return null
+      return {
+        scrapeId: scrape.id,
+        target: scrape.target,
+        type: scrape.type,
+        status: scrape.status,
+        contributions: link.contributions,
+        startedAt: scrape.started_at,
+        completedAt: scrape.completed_at,
+        projects: projectLinksByScrapeId.get(scrape.id) ?? [],
+      }
+    })
+    .filter((source): source is ContributorProfile["sources"][number] => source !== null)
+
+  return {
+    id: row.id,
+    username: row.github_username,
+    name: row.name ?? row.github_username,
+    avatar: row.avatar_url ?? "",
+    bio: row.bio,
+    location: row.location,
+    company: row.company,
+    contacts: {
+      email: row.email ?? undefined,
+      twitter: row.twitter ?? undefined,
+      linkedin: row.linkedin ?? undefined,
+      website: row.website ?? undefined,
+      github: `https://github.com/${row.github_username}`,
+    },
+    notes: row.outreach_notes,
+    notesUpdatedAt: row.outreach_notes_updated_at ?? null,
+    reminder: {
+      note: row.reminder_note ?? null,
+      date: row.reminder_date ?? null,
+      updatedAt: row.reminder_updated_at ?? null,
+    },
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    projects: Array.from(projectMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    sources,
+  }
+}
+
+export async function updateContributorProfile(
+  id: string,
+  updates: {
+    notes?: string | null
+    linkedin?: string | null
+    reminderNote?: string | null
+    reminderDate?: string | null
+  },
+  teamId?: string
+): Promise<void> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const now = new Date().toISOString()
+  const set: Record<string, unknown> = {}
+  if (updates.notes !== undefined) {
+    set.outreach_notes = updates.notes
+    set.outreach_notes_updated_at = now
+  }
+  if (updates.linkedin !== undefined) set.linkedin = updates.linkedin
+  if (updates.reminderNote !== undefined || updates.reminderDate !== undefined) {
+    if (updates.reminderNote !== undefined) set.reminder_note = updates.reminderNote
+    if (updates.reminderDate !== undefined) set.reminder_date = updates.reminderDate
+    set.reminder_updated_at = now
+  }
+  if (Object.keys(set).length === 0) return
+  set.updated_at = now
+
+  const { error } = await supabaseAdmin.from("contributors").update(set).eq("id", id).eq("team_id", resolvedTeamId)
   if (error) throw error
 }
 

@@ -630,15 +630,20 @@ export default function EcosystemDetailPage() {
                       {/* Avatar + name */}
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2.5">
-                          <img
-                            src={c.avatar || "/placeholder.svg?height=32&width=32"}
-                            alt={c.name}
-                            className="w-8 h-8 rounded-full ring-1 ring-border shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{c.name}</p>
-                            <p className="text-xs text-muted-foreground font-mono truncate">@{c.username}</p>
-                          </div>
+                          <Link
+                            href={`/contributors/${c.id}`}
+                            className="flex min-w-0 items-center gap-2.5 rounded-xl transition-colors hover:text-primary"
+                          >
+                            <img
+                              src={c.avatar || "/placeholder.svg?height=32&width=32"}
+                              alt={c.name}
+                              className="w-8 h-8 rounded-full ring-1 ring-border shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">{c.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono truncate">@{c.username}</p>
+                            </div>
+                          </Link>
                           <a
                             href={`https://github.com/${c.username}`}
                             target="_blank"
