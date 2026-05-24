@@ -715,6 +715,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const isLoadingContributors = loadingExpansions.has(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
+      const contactInfoCount = withContacts !== null ? withContacts.length : scrape.contactInfoCount
       const assignedProjectIds = new Set((scrape.projects ?? []).map((project) => project.id))
       const availableProjects = projects.filter((project) => !assignedProjectIds.has(project.id))
       const isAssigning = assigningScrapeIds.has(scrape.id)
@@ -808,7 +809,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       transition={{ duration: 0.5, type: "spring", delay: 0.1 }}
                       className="font-mono text-green-500"
                     >
-                      {withContacts !== null ? withContacts.length : scrape.contactInfoCount}
+                      {contactInfoCount}
                     </motion.span>
                   </div>
                 </div>
@@ -816,14 +817,13 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    className="bg-transparent hover:bg-primary/10 transition-all duration-300 flex-1"
+                    className="flex-1 shadow-lg shadow-indigo-500/15 transition-all duration-300"
                     onClick={() => toggleExpanded(scrape)}
                   >
                     {isExpanded ? (
-                      <><ChevronUp className="w-4 h-4 mr-2" />Hide</>
+                      <><ChevronUp className="w-4 h-4 mr-2" />Hide Contributors</>
                     ) : (
-                      <><ChevronDown className="w-4 h-4 mr-2" />View All ({scrape.contributorCount})</>
+                      <><ChevronDown className="w-4 h-4 mr-2" />View Contributors ({contactInfoCount})</>
                     )}
                   </Button>
 
