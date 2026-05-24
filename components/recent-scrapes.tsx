@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from "react"
+import Link from "next/link"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ import { useAuthPermissions } from "@/lib/client-permissions"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Contributor = {
+  id: string
   username: string
   name: string
   avatar: string
@@ -985,19 +987,22 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
                         >
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
+                            <Link
+                              href={`/contributors/${contributor.id}`}
+                              className="flex min-w-0 items-center gap-4 rounded-2xl transition-colors hover:text-primary"
+                            >
                               <img
                                 src={contributor.avatar || "/placeholder.svg?height=40&width=40"}
                                 alt={contributor.name}
                                 className="w-10 h-10 rounded-full ring-2 ring-border hover:ring-primary transition-all duration-300"
                               />
-                              <div>
+                              <div className="min-w-0">
                                 <p className="font-semibold text-foreground">{contributor.name}</p>
                                 <p className="text-sm text-muted-foreground font-mono">
                                   @{contributor.username} · {contributor.contributions} contributions
                                 </p>
                               </div>
-                            </div>
+                            </Link>
                             <Button
                               size="sm"
                               variant="outline"

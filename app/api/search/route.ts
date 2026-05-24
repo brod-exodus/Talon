@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
           id: contributor.id,
           title: contributor.github_username,
           subtitle: context?.subtitle ?? contributor.name ?? "Contributor",
-          href: context?.href ?? "/",
+          href: `/contributors/${contributor.id}`,
         }
       }),
       scrapes: ((scrapesResult.data ?? []) as ScrapeSearchRow[]).map<SearchResult>((scrape) => ({
@@ -236,14 +236,14 @@ async function getContributorContext(
     const project = firstProjectByScrapeId.get(bestLink.scrape_id)
     if (project) {
       context.set(contributorId, {
-        href: `/ecosystems/${project.id}`,
         subtitle: `Contributor in ${project.name}`,
+        href: `/contributors/${contributorId}`,
       })
       continue
     }
     context.set(contributorId, {
-      href: "/",
       subtitle: `Contributor in ${scrapesById.get(bestLink.scrape_id)}`,
+      href: `/contributors/${contributorId}`,
     })
   }
 
