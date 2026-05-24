@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 
@@ -48,12 +48,17 @@ export default function LoginPage() {
     <main className="relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
       <Card className="w-full max-w-md overflow-hidden">
         <CardHeader>
-          <div className="mb-2 flex items-center gap-3">
-            <Image src="/logos/talon-prism-mark.svg" alt="" width={40} height={40} className="h-10 w-10 shrink-0 object-contain" />
-            <div>
-              <CardTitle className="text-2xl font-extrabold prism-text-gradient">Talon</CardTitle>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
-            </div>
+          <div className="mb-2 flex flex-col items-start gap-2">
+            <Image
+              src="/branding/talon-header-logo-cropped.png"
+              alt="Talon"
+              width={190}
+              height={59}
+              priority
+              unoptimized
+              className="h-12 w-auto object-contain"
+            />
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
           </div>
           <CardDescription>
             Sign in with your team email and password. For break-glass admin access, leave email blank and use the
