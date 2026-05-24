@@ -16,6 +16,8 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Plus,
+  Rocket,
   Search,
   Settings,
   Shield,
@@ -178,6 +180,7 @@ export function Header() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canAdmin = me?.permissions.canAdmin ?? false
+  const canWrite = me?.permissions.canWrite ?? false
 
   useEffect(() => {
     if (!canAdmin) {
@@ -425,6 +428,50 @@ export function Header() {
     )
   }
 
+  function renderQuickActions() {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            className="hidden gap-2 rounded-full shadow-lg shadow-indigo-500/15 lg:inline-flex"
+            disabled={!canWrite}
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-56 rounded-2xl border-white/70 bg-white/95 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+        >
+          <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+            Quick actions
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/?action=start-scrape">
+              <Rocket className="mr-2 h-4 w-4" />
+              Start Scrape
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/watched?action=add">
+              <Eye className="mr-2 h-4 w-4" />
+              Add Watched Repo
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/ecosystems?action=create">
+              <FolderKanban className="mr-2 h-4 w-4" />
+              Create Project
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
   const headerAccountTrigger = (
     <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2 bg-white/75" disabled={!me}>
       <AccountAvatar me={me} identityLabel={identityLabel} className="h-5 w-5 text-[10px]" />
@@ -543,6 +590,7 @@ export function Header() {
                 Ops attention
               </Link>
             )}
+            {renderQuickActions()}
             {renderAccountMenu(headerAccountTrigger)}
           </div>
         </div>
