@@ -2,9 +2,29 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react"
+import { type ChangeEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { AlertTriangle, Camera, Eye, Home, Layers, LogOut, Menu, Settings, Shield, Sparkles, Trash2, UserCircle, X } from "lucide-react"
+import {
+  AlertTriangle,
+  Camera,
+  Database,
+  Eye,
+  FolderKanban,
+  GitBranch,
+  Home,
+  Layers,
+  Loader2,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Trash2,
+  UserCircle,
+  Users,
+  X,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,6 +62,34 @@ const NAV_ITEMS = [
 ] as const
 
 type HealthStatus = "ok" | "warn" | "error" | null
+
+type SearchResult = {
+  id: string
+  title: string
+  subtitle?: string
+  href: string
+}
+
+type SearchGroups = {
+  contributors: SearchResult[]
+  scrapes: SearchResult[]
+  projects: SearchResult[]
+  watchedRepos: SearchResult[]
+}
+
+const EMPTY_SEARCH_GROUPS: SearchGroups = {
+  contributors: [],
+  scrapes: [],
+  projects: [],
+  watchedRepos: [],
+}
+
+const SEARCH_GROUP_META = [
+  { key: "contributors", label: "Contributors", icon: Users },
+  { key: "scrapes", label: "Scrapes", icon: Database },
+  { key: "projects", label: "Projects", icon: FolderKanban },
+  { key: "watchedRepos", label: "Watched repos", icon: GitBranch },
+] as const
 
 function TalonMark() {
   return (
@@ -121,6 +169,12 @@ export function Header() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileSaved, setProfileSaved] = useState(false)
   const [displayNameInput, setDisplayNameInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchGroups, setSearchGroups] = useState<SearchGroups>(EMPTY_SEARCH_GROUPS)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canAdmin = me?.permissions.canAdmin ?? false
@@ -161,6 +215,58 @@ export function Header() {
       setDisplayNameInput(me.displayName || getEmailFallback(me.email))
     }
   }, [me])
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!searchRef.current?.contains(event.target as Node)) {
+        setSearchOpen(false)
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [])
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!me || query.length < 2) {
+      setSearchGroups(EMPTY_SEARCH_GROUPS)
+      setSearchLoading(false)
+      setSearchError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchError(null)
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(data?.error || "Search failed")
+        setSearchGroups({
+          contributors: data?.groups?.contributors ?? [],
+          scrapes: data?.groups?.scrapes ?? [],
+          projects: data?.groups?.projects ?? [],
+          watchedRepos: data?.groups?.watchedRepos ?? [],
+        })
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setSearchGroups(EMPTY_SEARCH_GROUPS)
+        setSearchError("Search is unavailable right now.")
+      } finally {
+        if (!controller.signal.aborted) setSearchLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [me, searchQuery])
 
   async function handleSignOut() {
     setSigningOut(true)
@@ -247,6 +353,29 @@ export function Header() {
     }
   }
 
+  function getSearchResultCount() {
+    return SEARCH_GROUP_META.reduce((count, group) => count + searchGroups[group.key].length, 0)
+  }
+
+  function handleSearchNavigate(href: string) {
+    setSearchOpen(false)
+    setSearchQuery("")
+    setSearchGroups(EMPTY_SEARCH_GROUPS)
+    router.push(href)
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setSearchOpen(false)
+      return
+    }
+    if (event.key !== "Enter") return
+    const firstResult = SEARCH_GROUP_META.flatMap((group) => searchGroups[group.key])[0]
+    if (!firstResult) return
+    event.preventDefault()
+    handleSearchNavigate(firstResult.href)
+  }
+
   const roleLabel = me ? (me.actor === "user" ? ROLE_LABELS[me.role] : "Break-glass admin") : null
   const identityLabel = getIdentityLabel(me)
   const secondaryIdentityLabel = !me
@@ -258,6 +387,8 @@ export function Header() {
   const displayNameChanged =
     me?.actor === "user" &&
     displayNameInput.trim().replace(/\s+/g, " ") !== (me.displayName || getEmailFallback(me.email))
+  const trimmedSearchQuery = searchQuery.trim()
+  const searchResultCount = getSearchResultCount()
 
   function renderAccountMenu(trigger: ReactNode, align: "start" | "end" = "end") {
     return (
@@ -322,27 +453,86 @@ export function Header() {
             </Button>
             <TalonMark />
           </div>
-          <nav className="hidden items-center gap-1 lg:flex">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon
-              const active = item.isActive(pathname)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all",
-                    active
-                      ? "bg-indigo-50 text-primary shadow-sm shadow-indigo-500/10"
-                      : "text-muted-foreground hover:bg-white/70 hover:text-primary"
+          <div ref={searchRef} className="relative hidden flex-1 justify-center lg:flex">
+            <div className="relative w-full max-w-xl">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value)
+                  setSearchOpen(true)
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search contributors, repos, projects..."
+                className="h-10 rounded-full border-white/70 bg-white/75 pl-10 pr-10 text-sm font-semibold shadow-sm shadow-indigo-500/5 backdrop-blur-xl placeholder:text-muted-foreground/70 focus-visible:ring-primary/20"
+              />
+              {searchLoading && (
+                <Loader2 className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
+              )}
+              {searchOpen && trimmedSearchQuery.length > 0 && (
+                <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-3xl border border-white/70 bg-white/95 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl">
+                  {trimmedSearchQuery.length < 2 ? (
+                    <div className="px-4 py-5 text-sm font-semibold text-muted-foreground">
+                      Type at least 2 characters to search Talon.
+                    </div>
+                  ) : searchError ? (
+                    <div className="px-4 py-5 text-sm font-semibold text-rose-600">{searchError}</div>
+                  ) : searchLoading && searchResultCount === 0 ? (
+                    <div className="flex items-center gap-3 px-4 py-5 text-sm font-semibold text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      Searching...
+                    </div>
+                  ) : searchResultCount === 0 ? (
+                    <div className="px-4 py-5 text-sm font-semibold text-muted-foreground">
+                      No results found for &quot;{trimmedSearchQuery}&quot;.
+                    </div>
+                  ) : (
+                    <div className="max-h-[28rem] overflow-y-auto py-2">
+                      {SEARCH_GROUP_META.map((group) => {
+                        const results = searchGroups[group.key]
+                        if (results.length === 0) return null
+                        const Icon = group.icon
+                        return (
+                          <div key={group.key} className="py-2">
+                            <div className="flex items-center gap-2 px-4 pb-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+                              <Icon className="h-3.5 w-3.5" />
+                              {group.label}
+                            </div>
+                            <div className="space-y-1 px-2">
+                              {results.map((result) => (
+                                <button
+                                  key={`${group.key}-${result.id}`}
+                                  type="button"
+                                  onClick={() => handleSearchNavigate(result.href)}
+                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-indigo-50/80 focus:bg-indigo-50/80 focus:outline-none"
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm font-extrabold text-foreground">
+                                      {result.title}
+                                    </span>
+                                    {result.subtitle && (
+                                      <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                                        {result.subtitle}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-primary shadow-sm shadow-indigo-500/10">
+                                    Open
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
