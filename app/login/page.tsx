@@ -60,10 +60,7 @@ export default function LoginPage() {
             />
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
           </div>
-          <CardDescription>
-            Sign in with your team email and password. For break-glass admin access, leave email blank and use the
-            admin password.
-          </CardDescription>
+          <CardDescription>Sign in with your team email and password.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
