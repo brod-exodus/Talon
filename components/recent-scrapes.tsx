@@ -816,14 +816,13 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    className="bg-transparent hover:bg-primary/10 transition-all duration-300 flex-1"
+                    className="flex-1 shadow-lg shadow-indigo-500/15 transition-all duration-300"
                     onClick={() => toggleExpanded(scrape)}
                   >
                     {isExpanded ? (
-                      <><ChevronUp className="w-4 h-4 mr-2" />Hide</>
+                      <><ChevronUp className="w-4 h-4 mr-2" />Hide Contributors</>
                     ) : (
-                      <><ChevronDown className="w-4 h-4 mr-2" />View All ({scrape.contributorCount})</>
+                      <><ChevronDown className="w-4 h-4 mr-2" />View Contributors ({scrape.contributorCount})</>
                     )}
                   </Button>
 
