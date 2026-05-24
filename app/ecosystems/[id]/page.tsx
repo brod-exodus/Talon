@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download, AlertCircle
 } from "lucide-react"
-import { useAuthPermissions } from "@/lib/client-permissions"
+import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
+import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,10 +150,12 @@ function ContributorTableSkeleton() {
 }
 
 export default function EcosystemDetailPage() {
+  const me = useAuthMe()
   const { canWrite } = useAuthPermissions()
   const params = useParams()
   const router = useRouter()
   const id = params.id as string
+  const recentScope = getRecentlyViewedScope(me)
 
   const [ecosystem, setEcosystem] = useState<EcosystemDetail | null>(null)
   const [ecosystemLoading, setEcosystemLoading] = useState(true)
@@ -250,6 +253,17 @@ export default function EcosystemDetailPage() {
       cancelled = true
     }
   }, [id, router])
+
+  useEffect(() => {
+    if (!ecosystem) return
+    recordRecentlyViewed(recentScope, {
+      type: "project",
+      id: ecosystem.id,
+      title: ecosystem.name,
+      subtitle: `${ecosystem.scrapes.length} scrape${ecosystem.scrapes.length === 1 ? "" : "s"}`,
+      href: `/ecosystems/${ecosystem.id}`,
+    })
+  }, [ecosystem, recentScope])
 
   // Scrapes not yet in this project.
   const availableScrapes = allScrapes.filter(

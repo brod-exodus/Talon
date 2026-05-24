@@ -10,6 +10,7 @@ import {
   Camera,
   CheckCircle2,
   CircleDot,
+  Clock,
   Database,
   Eye,
   FolderKanban,
@@ -50,6 +51,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { AUTH_ME_REFRESH_EVENT, type AuthMe, useAuthMe } from "@/lib/client-permissions"
+import {
+  getRecentlyViewedItems,
+  getRecentlyViewedScope,
+  RECENTLY_VIEWED_EVENT,
+  type RecentlyViewedItem,
+} from "@/lib/recently-viewed"
 import { cn } from "@/lib/utils"
 
 const ROLE_LABELS = {
@@ -91,6 +98,13 @@ type ActivityEvent = {
   createdAt: string
 }
 
+const RECENTLY_VIEWED_META = {
+  contributor: { label: "Contributor", icon: Users },
+  project: { label: "Project", icon: FolderKanban },
+  scrape: { label: "Scrape", icon: Database },
+  watched_repo: { label: "Watched repo", icon: Eye },
+} as const
+
 const EMPTY_SEARCH_GROUPS: SearchGroups = {
   contributors: [],
   scrapes: [],
@@ -104,6 +118,9 @@ const SEARCH_GROUP_META = [
   { key: "projects", label: "Projects", icon: FolderKanban },
   { key: "watchedRepos", label: "Watched repos", icon: GitBranch },
 ] as const
+
+const HEADER_ICON_TRIGGER_CLASS =
+  "hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
@@ -212,11 +229,16 @@ export function Header() {
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
   const [activityError, setActivityError] = useState<string | null>(null)
+  const [recentOpen, setRecentOpen] = useState(false)
+  const [recentItems, setRecentItems] = useState<RecentlyViewedItem[]>([])
   const searchRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const activityOpenedByPointerRef = useRef(false)
+  const recentOpenedByPointerRef = useRef(false)
 
   const canAdmin = me?.permissions.canAdmin ?? false
   const canWrite = me?.permissions.canWrite ?? false
+  const recentScope = getRecentlyViewedScope(me)
 
   useEffect(() => {
     if (!canAdmin) {
@@ -254,6 +276,20 @@ export function Header() {
       setDisplayNameInput(me.displayName || getEmailFallback(me.email))
     }
   }, [me])
+
+  useEffect(() => {
+    function loadRecentItems() {
+      setRecentItems(getRecentlyViewedItems(recentScope))
+    }
+
+    loadRecentItems()
+    window.addEventListener(RECENTLY_VIEWED_EVENT, loadRecentItems)
+    window.addEventListener("storage", loadRecentItems)
+    return () => {
+      window.removeEventListener(RECENTLY_VIEWED_EVENT, loadRecentItems)
+      window.removeEventListener("storage", loadRecentItems)
+    }
+  }, [recentScope])
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -539,21 +575,31 @@ export function Header() {
     return (
       <DropdownMenu open={activityOpen} onOpenChange={setActivityOpen}>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            className="relative hidden rounded-full bg-white/75 lg:inline-flex"
+          <button
+            type="button"
+            className={cn("relative", HEADER_ICON_TRIGGER_CLASS)}
             disabled={!me}
             aria-label="Open recent activity"
+            onPointerDown={() => {
+              activityOpenedByPointerRef.current = true
+            }}
+            onKeyDown={() => {
+              activityOpenedByPointerRef.current = false
+            }}
           >
             <Bell className="h-4 w-4" />
             {activityEvents.length > 0 && (
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-white" />
             )}
-          </Button>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          onCloseAutoFocus={(event) => {
+            if (!activityOpenedByPointerRef.current) return
+            event.preventDefault()
+            activityOpenedByPointerRef.current = false
+          }}
           className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
         >
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
@@ -597,6 +643,77 @@ export function Header() {
                           {event.description}
                         </span>
                       )}
+                    </span>
+                  </DropdownMenuItem>
+                )
+              })}
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  function renderRecentlyViewedMenu() {
+    return (
+      <DropdownMenu open={recentOpen} onOpenChange={setRecentOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={HEADER_ICON_TRIGGER_CLASS}
+            disabled={!me}
+            aria-label="Open recently viewed"
+            onPointerDown={() => {
+              recentOpenedByPointerRef.current = true
+            }}
+            onKeyDown={() => {
+              recentOpenedByPointerRef.current = false
+            }}
+          >
+            <Clock className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(event) => {
+            if (!recentOpenedByPointerRef.current) return
+            event.preventDefault()
+            recentOpenedByPointerRef.current = false
+          }}
+          className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
+        >
+          <DropdownMenuLabel className="px-3 py-2 text-sm font-extrabold text-foreground">
+            Recently viewed
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {recentItems.length === 0 ? (
+            <div className="px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
+              No recent items yet.
+            </div>
+          ) : (
+            <div className="max-h-96 overflow-y-auto py-1">
+              {recentItems.map((item) => {
+                const meta = RECENTLY_VIEWED_META[item.type]
+                const Icon = meta.icon
+                return (
+                  <DropdownMenuItem
+                    key={`${item.type}-${item.id}`}
+                    onSelect={() => router.push(item.href)}
+                    className="cursor-pointer rounded-2xl p-3 focus:bg-indigo-50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate text-sm font-extrabold text-foreground">{item.title}</span>
+                        <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                          {formatActivityTime(item.viewedAt)}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                        {item.subtitle ?? meta.label}
+                      </span>
                     </span>
                   </DropdownMenuItem>
                 )
@@ -727,6 +844,7 @@ export function Header() {
               </Link>
             )}
             {renderQuickActions()}
+            {renderRecentlyViewedMenu()}
             {renderActivityMenu()}
             {renderAccountMenu(headerAccountTrigger)}
           </div>
