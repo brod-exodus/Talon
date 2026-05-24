@@ -27,7 +27,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useAuthPermissions } from "@/lib/client-permissions"
+import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
+import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 
 type ContributorProfile = {
   id: string
@@ -107,9 +108,11 @@ function getContactEntries(contributor: ContributorProfile) {
 
 export default function ContributorProfilePage() {
   const params = useParams<{ id: string }>()
+  const me = useAuthMe()
   const permissions = useAuthPermissions()
   const canWrite = permissions.canWrite
   const contributorId = params.id
+  const recentScope = getRecentlyViewedScope(me)
 
   const [contributor, setContributor] = useState<ContributorProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -142,6 +145,17 @@ export default function ContributorProfilePage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!contributor) return
+    recordRecentlyViewed(recentScope, {
+      type: "contributor",
+      id: contributor.id,
+      title: contributor.name,
+      subtitle: `@${contributor.username}`,
+      href: `/contributors/${contributor.id}`,
+    })
+  }, [contributor, recentScope])
 
   const contactEntries = useMemo(() => (contributor ? getContactEntries(contributor) : []), [contributor])
   const totalContributions = useMemo(

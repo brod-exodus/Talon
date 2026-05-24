@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { useAuthPermissions } from "@/lib/client-permissions"
+import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
+import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 
 type WatchedRepo = {
   id: string
@@ -73,7 +74,9 @@ function getCheckResultSummary(result: WatchedRepoCheckResult): string {
 
 export function WatchedRepos() {
   const searchParams = useSearchParams()
+  const me = useAuthMe()
   const { canWrite } = useAuthPermissions()
+  const recentScope = getRecentlyViewedScope(me)
   const [repos, setRepos] = useState<WatchedRepo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
@@ -243,6 +246,19 @@ export function WatchedRepos() {
     }
   }, [canWrite, toast, fetchRepos])
 
+  const recordWatchedRepoView = useCallback(
+    (watchedRepo: WatchedRepo) => {
+      recordRecentlyViewed(recentScope, {
+        type: "watched_repo",
+        id: watchedRepo.id,
+        title: watchedRepo.repo,
+        subtitle: "Watched repo",
+        href: "/watched",
+      })
+    },
+    [recentScope]
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -371,7 +387,10 @@ export function WatchedRepos() {
                   transition={{ duration: 0.2, delay: index * 0.04 }}
                 >
                   <Card className="border-border bg-card hover:border-primary/40 transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
-                    <CardContent className="pt-4 pb-4">
+                    <CardContent
+                      className="cursor-pointer pt-4 pb-4"
+                      onClick={() => recordWatchedRepoView(r)}
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-mono text-sm font-medium text-foreground truncate">
@@ -420,7 +439,10 @@ export function WatchedRepos() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-                            onClick={() => handleDelete(r.id, r.repo)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleDelete(r.id, r.repo)
+                            }}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

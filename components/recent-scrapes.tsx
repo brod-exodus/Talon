@@ -42,7 +42,8 @@ import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAuthPermissions } from "@/lib/client-permissions"
+import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
+import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -333,7 +334,9 @@ export type RecentScrapesHandle = {
 }
 
 export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScrapes(_, ref) {
+  const me = useAuthMe()
   const { canWrite } = useAuthPermissions()
+  const recentScope = getRecentlyViewedScope(me)
   const [scrapes, setScrapes] = useState<CompletedScrapeSummary[]>([])
   const [failedScrapes, setFailedScrapes] = useState<CompletedScrapeSummary[]>([])
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
@@ -448,19 +451,27 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
   // ── Toggle expand, triggering fetch on first open ─────────────────────────
   const toggleExpanded = useCallback(
-    (scrapeId: string) => {
+    (scrape: CompletedScrapeSummary) => {
+      const scrapeId = scrape.id
       setExpandedScrapes((prev) => {
         const next = new Set(prev)
         if (next.has(scrapeId)) {
           next.delete(scrapeId)
         } else {
           next.add(scrapeId)
+          recordRecentlyViewed(recentScope, {
+            type: "scrape",
+            id: scrape.id,
+            title: scrape.target,
+            subtitle: `${scrape.type} scrape`,
+            href: "/",
+          })
           fetchContributors(scrapeId)
         }
         return next
       })
     },
-    [fetchContributors]
+    [fetchContributors, recentScope]
   )
 
   // ── Outreach update writes to Supabase then updates cache ─────────────────
@@ -807,7 +818,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   <Button
                     variant="outline"
                     className="bg-transparent hover:bg-primary/10 transition-all duration-300 flex-1"
-                    onClick={() => toggleExpanded(scrape.id)}
+                    onClick={() => toggleExpanded(scrape)}
                   >
                     {isExpanded ? (
                       <><ChevronUp className="w-4 h-4 mr-2" />Hide</>
