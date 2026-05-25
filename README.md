@@ -1,154 +1,167 @@
-# Talon
+Talon README
 
-Talon is a GitHub contributor discovery and monitoring app. It helps you scrape repositories and organizations, enrich contributor profiles with contact signals, group talent into ecosystems, track outreach state, and watch repos for new contributors over time.
+Talon
 
-## What Talon Does
+Talon is a contributor intelligence platform for technical recruiting and ecosystem discovery. It analyzes GitHub contributors across repositories and organizations, enriches contributor profiles with contact and ecosystem intelligence, and helps teams identify high-signal engineers through open source activity.
 
-- Scrape GitHub organizations or individual repositories
-- Enrich contributors with email, Twitter/X, LinkedIn, website, bio, and company data
-- Track contributor outreach state and notes
-- Group scrapes into ecosystems to surface cross-repo overlap
-- Monitor watched repos for newly appearing contributors
-- Share curated contributor lists with public links
+Talon is designed to move technical sourcing beyond resumes and LinkedIn profiles by mapping the contributor graph itself:
+- open source participation
+- cross-repo overlap
+- maintainer influence
+- contribution depth
+- ecosystem relationships
+- contributor migration patterns
 
-## Stack
+Why Talon Exists
+
+Traditional recruiting workflows rely heavily on:
+- LinkedIn profiles
+- resumes
+- inbound applicants
+- keyword matching
+
+Talon approaches technical recruiting from a different angle:
+- who is actually building
+- where they contribute
+- which ecosystems they participate in
+- how communities overlap
+- how contributors move between projects over time
+
+This allows recruiting teams to surface high-signal technical talent earlier and build stronger ecosystem-level sourcing strategies.
+
+Core Capabilities
+
+Contributor Discovery
+Analyze GitHub organizations and repositories to surface contributors across technical ecosystems.
+
+Contributor Intelligence
+Enrich contributor profiles with:
+- email signals
+- Twitter/X
+- LinkedIn
+- websites
+- bios
+- company data
+- contribution metadata
+
+Ecosystem Mapping
+Group repositories and scrapes into ecosystems to identify:
+- cross-repo contributor overlap
+- maintainer clusters
+- contributor density
+- ecosystem relationships
+
+Outreach Tracking
+Track recruiting workflows directly inside Talon:
+- outreach status
+- recruiter notes
+- contributor state
+- project assignment
+
+Watched Repositories
+Monitor repositories over time and detect newly appearing contributors automatically.
+
+Durable Scrape Infrastructure
+Queue-based scraping architecture with resumable jobs, retries, cancellation support, and worker diagnostics.
+
+Tech Stack
 
 - Next.js 15
+- React 19
 - TypeScript
 - Supabase
 - Tailwind CSS
 - shadcn/ui
 - GitHub REST API
 
-## Setup
+Architecture Highlights
 
-1. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-2. Configure your environment variables in `.env.local`. Start from `.env.example`.
-3. Start the dev server:
-   ```bash
-   pnpm dev
-   ```
-4. Open [http://localhost:3000](http://localhost:3000).
+Secure Credential Model
+- Browser-managed GitHub tokens
+- Optional local persistence
+- Protected server-side routes
+- Supabase RLS enabled by default
+- Service-role restricted backend access
 
-## Environment Variables
+Durable Worker System
+Scrape jobs are:
+- queued
+- resumable
+- cancellable
+- retryable
+- event-tracked
 
-Required for production:
+Health Diagnostics
+Authenticated admins can verify:
+- environment configuration
+- database connectivity
+- GitHub token validity
+- rate limit availability
+- Slack integration state
 
-| Variable | Scope | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser/server | Supabase project URL. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Public Supabase anon key. Required by Supabase clients, but not used for privileged Talon server data access. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Server-side database client for protected routes, jobs, and cron work. |
-| `TALON_ADMIN_PASSWORD` | Server only | Password for the built-in admin login. |
-| `TALON_SESSION_SECRET` | Server only | Secret used to sign admin session cookies. Use a long random value. |
-| `CRON_SECRET` | Server only | Bearer secret for protected cron endpoints. |
-| `GITHUB_TOKEN` | Server only | GitHub token used by durable scrape jobs and watched-repo checks. |
+Typical Workflow
 
-Optional:
+1. Add a GitHub token in Settings
+2. Start a repository or organization analysis
+3. Allow Talon workers to process contributor data
+4. Review enriched contributor intelligence
+5. Track outreach and recruiter notes
+6. Group repositories into ecosystems
+7. Watch repositories for new contributors over time
 
-| Variable | Scope | Purpose |
-| --- | --- | --- |
-| `SLACK_WEBHOOK_URL` | Server only | Slack webhook for automated watched-repo alerts. |
+Setup
 
-## Credential Model
+Install dependencies:
 
-- GitHub tokens entered in Settings are browser-managed.
-- By default, Talon stores the token only for the current tab session.
-- Users can optionally persist the token in local browser storage on that machine.
-- Private app APIs require the signed admin session cookie created from `TALON_ADMIN_PASSWORD`.
-- Server-side database reads and writes require `SUPABASE_SERVICE_ROLE_KEY`.
-- Recruiter accounts can sign in with Supabase Auth email/password when their email exists in `team_memberships`.
-- The shared admin password remains available as break-glass access when the login email field is blank.
-- Server-side watched-repo checks use `GITHUB_TOKEN` from the deployment environment.
-- Automated Slack alerts use `SLACK_WEBHOOK_URL` from the deployment environment.
-- Cron invocations of watched-repo checks should send `Authorization: Bearer $CRON_SECRET`.
-- Durable scrape jobs are queued in `scrape_jobs` and processed by `/api/scrape-jobs/run`.
-- The scrape worker uses server-side `GITHUB_TOKEN`; browser-entered GitHub tokens are not persisted into the job queue.
+pnpm install
 
-## Database Setup
+Configure environment variables:
 
-Apply migrations in order before deploying the app:
+cp .env.example .env.local
 
-1. `db/migrations/001_initial_schema.sql`
-2. `db/migrations/002_scrape_jobs.sql`
-3. `db/migrations/003_scrape_job_resume_cancel.sql`
-4. `db/migrations/004_scrape_job_contributions.sql`
-5. `db/migrations/005_scrape_contributors_page_rpc.sql`
-6. `db/migrations/006_scrape_job_events.sql`
-7. `db/migrations/007_security_events.sql`
-8. `db/migrations/008_team_foundation.sql`
-9. `db/migrations/009_team_unique_constraints.sql`
-10. `db/migrations/010_service_role_rls_lockdown.sql`
-11. `db/migrations/011_team_user_auth.sql`
+Start the development server:
 
-The baseline schema enables RLS and intentionally creates no broad anon policies. Talon server routes use `SUPABASE_SERVICE_ROLE_KEY` and enforce the app admin session before reading or mutating private data. Migration `010` removes temporary app-wide anon/auth policies and adds authenticated team-member read policies for the future Supabase Auth rollout.
+pnpm dev
 
-## Cron Jobs
+Open:
+http://localhost:3000
 
-`vercel.json` defines the daily cron route supported by Vercel Hobby:
+Environment Variables
 
-| Route | Schedule | Purpose |
-| --- | --- | --- |
-| `/api/watched-repos/check` | Daily at 09:00 UTC | Checks watched repos for new contributors and can send Slack alerts. |
+Required
 
-Cron endpoints accept `Authorization: Bearer $CRON_SECRET`.
+- NEXT_PUBLIC_SUPABASE_URL
+- NEXT_PUBLIC_SUPABASE_ANON_KEY
+- SUPABASE_SERVICE_ROLE_KEY
+- TALON_ADMIN_PASSWORD
+- TALON_SESSION_SECRET
+- CRON_SECRET
+- GITHUB_TOKEN
 
-Durable scrape jobs are processed by `POST /api/scrape-jobs/run`. That endpoint is intentionally not listed in `vercel.json` because Vercel Hobby accounts only support daily cron schedules, and scrape queues need a more frequent worker cadence. Use one of these options:
+Optional
 
-- Vercel Pro: add `/api/scrape-jobs/run` with a frequent schedule such as `*/5 * * * *`.
-- External scheduler: call `POST /api/scrape-jobs/run` every few minutes with `Authorization: Bearer $CRON_SECRET`.
-- Manual admin run: call the endpoint from an authenticated admin session during testing.
+- SLACK_WEBHOOK_URL
 
-## Health Diagnostics
+Security Model
 
-Authenticated admins can call `/api/health` to check production readiness without exposing secret values. The health response reports:
+Talon is designed with server-side protection and restrictive database policies by default.
 
-- required environment variable presence
-- recommended secret lengths
-- database reachability
-- GitHub token validity and remaining core rate limit
-- optional Slack webhook configuration state
+Key principles:
+- Supabase RLS enabled
+- No broad anonymous database access
+- Protected admin session enforcement
+- Service-role restricted backend operations
+- Cron authorization via bearer token
+- Browser GitHub tokens not persisted into worker queues
 
-The dashboard shows a Production Readiness panel when any check is warning or failing.
+Roadmap
 
-Scrape job events are stored in `scrape_job_events` and surfaced in the Worker Queue panel. Events include queueing, worker claims, phase transitions, retries, cancellations, failures, and success.
-
-## Typical Workflow
-
-1. Add a GitHub token in Settings.
-2. Start a scrape for an org or repository.
-3. Let the protected scrape worker process queued jobs.
-4. Review contributors and contact signals.
-5. Mark outreach progress and notes.
-6. Group related scrapes into ecosystems.
-7. Add watched repos to monitor for new contributors.
-
-## Testing
-
-Run local verification with:
-
-```bash
-pnpm test
-pnpm lint
-pnpm typecheck
-pnpm build
-```
-
-CI runs the same gates with `pnpm install --frozen-lockfile`.
-
-## Production Checklist
-
-- Apply all migrations in order.
-- Set every required environment variable in the deployment platform.
-- Use a strong `TALON_ADMIN_PASSWORD`, `TALON_SESSION_SECRET`, and `CRON_SECRET`.
-- Confirm `SUPABASE_SERVICE_ROLE_KEY` is set and never exposed to the browser.
-- Keep Supabase RLS enabled; do not add broad anon policies for private app tables.
-- Confirm Vercel cron is enabled for watched-repo checks.
-- Configure a frequent scrape-worker trigger for `/api/scrape-jobs/run` using Vercel Pro cron or an external scheduler.
-- Configure `GITHUB_TOKEN` with enough rate limit for scrape jobs.
-- Configure `SLACK_WEBHOOK_URL` only if watched-repo Slack alerts should be sent.
-- Confirm `/api/health` reports `ok` after deployment.
-- Run `pnpm test`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` before release.
+- Contributor Intelligence Scoring
+- Relationship Mapping
+- Contributor Migration Tracking
+- Ecosystem Graph Visualization
+- AI-Assisted Recruiting Workflows
+- Maintainer Influence Analysis
+- Cross-Ecosystem Discovery
+- Recruiting Team Collaboration
+- Advanced Talent Intelligence Analytics
