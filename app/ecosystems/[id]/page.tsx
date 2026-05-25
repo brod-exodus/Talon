@@ -792,6 +792,34 @@ export default function EcosystemDetailPage() {
                           {!c.contacts.email && !c.contacts.linkedin && !c.contacts.twitter && !c.contacts.website && (
                             <span className="text-xs text-muted-foreground/40">—</span>
                           )}
+                          {canWrite && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="ml-2 h-7 bg-transparent text-xs"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPreviewContributor({
+                                  id: c.id,
+                                  username: c.username,
+                                  name: c.name,
+                                  avatar: c.avatar,
+                                  contacts: c.contacts,
+                                  stats: [
+                                    { label: "Repos", value: c.scrapeCount },
+                                    { label: "Contributions", value: c.totalContributions.toLocaleString() },
+                                    { label: "Project", value: ecosystem?.name ?? "Current" },
+                                  ],
+                                  repositories: c.scrapeTargets,
+                                  projects: ecosystem ? [{ id: ecosystem.id, name: ecosystem.name }] : [],
+                                })
+                              }}
+                            >
+                              <Plus className="h-3 w-3" />
+                              Save
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -807,6 +835,8 @@ export default function EcosystemDetailPage() {
       <ContributorQuickPreview
         open={Boolean(previewContributor)}
         contributor={previewContributor}
+        currentProject={ecosystem ? { id: ecosystem.id, name: ecosystem.name } : null}
+        canSaveToList={canWrite}
         onOpenChange={(open) => {
           if (!open) setPreviewContributor(null)
         }}

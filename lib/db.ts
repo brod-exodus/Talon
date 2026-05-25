@@ -1252,6 +1252,15 @@ export type ContributorProfile = {
   }>
 }
 
+export type ProjectListSummary = {
+  id: string
+  projectId: string
+  name: string
+  contributorCount: number
+  createdAt: string
+  updatedAt: string
+}
+
 type ContributorProfileScrapeLink = {
   scrape_id: string
   contributor_id: string
@@ -1708,6 +1717,100 @@ export async function removeScrapeFromEcosystem(
 export async function deleteEcosystem(id: string, teamId?: string): Promise<void> {
   const resolvedTeamId = await resolveTeamId(teamId)
   const { error } = await supabaseAdmin.from("ecosystems").delete().eq("id", id).eq("team_id", resolvedTeamId)
+  if (error) throw error
+}
+
+export async function getProjectLists(ecosystemId: string, teamId?: string): Promise<ProjectListSummary[]> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const exists = await ecosystemExists(ecosystemId, resolvedTeamId)
+  if (!exists) throw new Error("Project not found")
+
+  const { data: lists, error } = await supabaseAdmin
+    .from("project_lists")
+    .select("id, ecosystem_id, name, created_at, updated_at")
+    .eq("team_id", resolvedTeamId)
+    .eq("ecosystem_id", ecosystemId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  if (!lists?.length) return []
+
+  const { data: links, error: linkError } = await supabaseAdmin
+    .from("project_list_contributors")
+    .select("project_list_id")
+    .eq("team_id", resolvedTeamId)
+    .in("project_list_id", lists.map((list) => list.id))
+  if (linkError) throw linkError
+
+  const countMap = new Map<string, number>()
+  for (const link of links ?? []) {
+    countMap.set(link.project_list_id, (countMap.get(link.project_list_id) ?? 0) + 1)
+  }
+
+  return lists.map((list) => ({
+    id: list.id,
+    projectId: list.ecosystem_id,
+    name: list.name,
+    contributorCount: countMap.get(list.id) ?? 0,
+    createdAt: list.created_at,
+    updatedAt: list.updated_at,
+  }))
+}
+
+export async function createProjectList(
+  ecosystemId: string,
+  name: string,
+  teamId?: string
+): Promise<ProjectListSummary> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const exists = await ecosystemExists(ecosystemId, resolvedTeamId)
+  if (!exists) throw new Error("Project not found")
+
+  const { data, error } = await supabaseAdmin
+    .from("project_lists")
+    .insert({ team_id: resolvedTeamId, ecosystem_id: ecosystemId, name })
+    .select("id, ecosystem_id, name, created_at, updated_at")
+    .single()
+  if (error) throw error
+
+  return {
+    id: data.id,
+    projectId: data.ecosystem_id,
+    name: data.name,
+    contributorCount: 0,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  }
+}
+
+export async function addContributorToProjectList(
+  ecosystemId: string,
+  listId: string,
+  contributorId: string,
+  teamId?: string
+): Promise<void> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data: list, error: listError } = await supabaseAdmin
+    .from("project_lists")
+    .select("id")
+    .eq("id", listId)
+    .eq("ecosystem_id", ecosystemId)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (listError) throw listError
+  if (!list) throw new Error("Project list not found")
+
+  const { data: contributor, error: contributorError } = await supabaseAdmin
+    .from("contributors")
+    .select("id")
+    .eq("id", contributorId)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (contributorError) throw contributorError
+  if (!contributor) throw new Error("Contributor not found")
+
+  const { error } = await supabaseAdmin
+    .from("project_list_contributors")
+    .insert({ team_id: resolvedTeamId, project_list_id: listId, contributor_id: contributorId })
   if (error) throw error
 }
 
