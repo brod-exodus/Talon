@@ -4,6 +4,8 @@ Talon
 
 Talon is a contributor intelligence platform for technical recruiting and ecosystem discovery. It analyzes GitHub contributors across repositories and organizations, enriches contributor profiles with contact and ecosystem intelligence, and helps teams identify high-signal engineers through open source activity.
 
+<img width="800" height="464" alt="image" src="https://github.com/user-attachments/assets/21907c72-ade0-4184-82c1-29d60e9a23ea" />
+
 Talon is designed to move technical sourcing beyond resumes and LinkedIn profiles by mapping the contributor graph itself:
 - open source participation
 - cross-repo overlap
