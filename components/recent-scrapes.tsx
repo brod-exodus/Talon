@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { EmailCopyButton } from "@/components/email-copy-button"
+import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -346,6 +347,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState("all")
+  const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
@@ -1014,15 +1016,39 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                                 </p>
                               </div>
                             </Link>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-transparent hover:bg-primary/10 transition-all duration-300"
-                              onClick={() => window.open(`https://github.com/${contributor.username}`)}
-                            >
-                              <ExternalLink className="w-3 h-3 mr-1" />
-                              GitHub
-                            </Button>
+                            <div className="flex shrink-0 gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                                onClick={() =>
+                                  setPreviewContributor({
+                                    id: contributor.id,
+                                    username: contributor.username,
+                                    name: contributor.name,
+                                    avatar: contributor.avatar,
+                                    contacts: contributor.contacts,
+                                    stats: [
+                                      { label: "Contributions", value: contributor.contributions.toLocaleString() },
+                                      { label: "Repos", value: 1 },
+                                    ],
+                                    repositories: [scrape.target],
+                                    projects: scrape.projects ?? [],
+                                  })
+                                }
+                              >
+                                Preview
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                                onClick={() => window.open(`https://github.com/${contributor.username}`)}
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" />
+                                GitHub
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="space-y-2 pl-14">
@@ -1280,6 +1306,14 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           </TabsContent>
         </Tabs>
       </div>
+
+      <ContributorQuickPreview
+        open={Boolean(previewContributor)}
+        contributor={previewContributor}
+        onOpenChange={(open) => {
+          if (!open) setPreviewContributor(null)
+        }}
+      />
 
       {/* ── Share modal ────────────────────────────────────────────────── */}
       <Dialog
