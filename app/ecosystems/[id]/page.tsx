@@ -6,11 +6,19 @@ import Link from "next/link"
 import { Header } from "@/components/header"
 import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download, AlertCircle
+  ArrowLeft, Trash2, Plus, X, ExternalLink, Linkedin, Globe, Mail, Search, Download, AlertCircle, Pencil, BookmarkPlus
 } from "lucide-react"
 import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
 import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
@@ -45,6 +53,15 @@ type EcosystemContributor = {
 
 type ScrapeSummary = { id: string; target: string; type: string }
 type ContactFilter = "email" | "linkedin" | "twitter"
+type ProjectListSummary = {
+  id: string
+  projectId: string
+  name: string
+  contributorCount: number
+  contributorIds: string[]
+  createdAt: string
+  updatedAt: string
+}
 
 // ─── X icon ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +187,16 @@ export default function EcosystemDetailPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [minRepos, setMinRepos] = useState(1)
   const [contactFilters, setContactFilters] = useState<Set<ContactFilter>>(new Set())
+  const [projectLists, setProjectLists] = useState<ProjectListSummary[]>([])
+  const [listsLoading, setListsLoading] = useState(true)
+  const [selectedListId, setSelectedListId] = useState("all")
+  const [newListName, setNewListName] = useState("")
+  const [creatingList, setCreatingList] = useState(false)
+  const [renamingListId, setRenamingListId] = useState<string | null>(null)
+  const [renameListName, setRenameListName] = useState("")
+  const [rowListNames, setRowListNames] = useState<Record<string, string>>({})
+  const [savingContributorIds, setSavingContributorIds] = useState<Set<string>>(new Set())
+  const [listError, setListError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setContributorsLoading(true)
@@ -200,6 +227,22 @@ export default function EcosystemDetailPage() {
     setContributorsLoading(false)
     setEcosystemLoading(false)
   }, [id, router])
+
+  const loadProjectLists = useCallback(async () => {
+    setListsLoading(true)
+    setListError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/lists`, { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to fetch lists")
+      setProjectLists(Array.isArray(data?.lists) ? data.lists : [])
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "Failed to fetch lists")
+      setProjectLists([])
+    } finally {
+      setListsLoading(false)
+    }
+  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -257,6 +300,10 @@ export default function EcosystemDetailPage() {
   }, [id, router])
 
   useEffect(() => {
+    void loadProjectLists()
+  }, [loadProjectLists])
+
+  useEffect(() => {
     if (!ecosystem) return
     recordRecentlyViewed(recentScope, {
       type: "project",
@@ -303,10 +350,119 @@ export default function EcosystemDetailPage() {
     router.push("/ecosystems")
   }
 
+  async function createProjectList(name: string, contributorId?: string) {
+    const trimmed = name.trim()
+    if (!canWrite || !trimmed) return null
+    setCreatingList(true)
+    setListError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/lists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to create list")
+      const list = data.list as ProjectListSummary
+      setProjectLists((prev) => [list, ...prev])
+      setSelectedListId(list.id)
+      setNewListName("")
+      if (contributorId) await saveContributorToList(list.id, contributorId)
+      return list
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "Failed to create list")
+      return null
+    } finally {
+      setCreatingList(false)
+    }
+  }
+
+  async function renameProjectList(listId: string) {
+    const trimmed = renameListName.trim()
+    if (!canWrite || !trimmed) return
+    setListError(null)
+    const response = await fetch(`/api/ecosystems/${id}/lists/${listId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    })
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+      setListError(data?.error || "Failed to rename list")
+      return
+    }
+    setProjectLists((prev) => prev.map((list) => (list.id === listId ? { ...list, name: data.list.name } : list)))
+    setRenamingListId(null)
+    setRenameListName("")
+  }
+
+  async function deleteProjectList(listId: string, listName: string) {
+    if (!canWrite) return
+    if (!confirm(`Delete list "${listName}"? Contributors will not be deleted.`)) return
+    setListError(null)
+    const response = await fetch(`/api/ecosystems/${id}/lists/${listId}`, { method: "DELETE" })
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+      setListError(data?.error || "Failed to delete list")
+      return
+    }
+    setProjectLists((prev) => prev.filter((list) => list.id !== listId))
+    setSelectedListId((current) => (current === listId ? "all" : current))
+  }
+
+  async function saveContributorToList(listId: string, contributorId: string) {
+    if (!canWrite) return
+    setSavingContributorIds((prev) => new Set(prev).add(contributorId))
+    setListError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/lists/${listId}/contributors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contributorId }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        if (response.status === 409) return
+        throw new Error(data?.error || "Failed to save contributor")
+      }
+      setProjectLists((prev) =>
+        prev.map((list) =>
+          list.id === listId && !list.contributorIds.includes(contributorId)
+            ? {
+                ...list,
+                contributorCount: list.contributorCount + 1,
+                contributorIds: [...list.contributorIds, contributorId],
+              }
+            : list
+        )
+      )
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "Failed to save contributor")
+    } finally {
+      setSavingContributorIds((prev) => {
+        const next = new Set(prev)
+        next.delete(contributorId)
+        return next
+      })
+    }
+  }
+
+  async function createRowListAndSave(contributorId: string) {
+    const name = rowListNames[contributorId]?.trim()
+    if (!name) return
+    await createProjectList(name, contributorId)
+    setRowListNames((prev) => ({ ...prev, [contributorId]: "" }))
+  }
+
   const uniqueContributors = contributors.length
   const multiScrapeCount = contributors.filter((c) => c.scrapeCount > 1).length
   const scrapeRows = ecosystem?.scrapes ?? []
   const maxRepos = Math.max(1, scrapeRows.length)
+  const selectedList = projectLists.find((list) => list.id === selectedListId) ?? null
+  const selectedListContributorIds = useMemo(
+    () => new Set(selectedList?.contributorIds ?? []),
+    [selectedList?.contributorIds]
+  )
 
   useEffect(() => {
     setMinRepos((current) => Math.min(maxRepos, Math.max(1, current)))
@@ -316,6 +472,7 @@ export default function EcosystemDetailPage() {
     const query = searchQuery.trim().toLowerCase()
     return contributors
       .filter((contributor) => {
+        if (selectedList && !selectedListContributorIds.has(contributor.id)) return false
         if (contributor.scrapeCount < minRepos) return false
         if (query && !`${contributor.name} ${contributor.username}`.toLowerCase().includes(query)) return false
         if (contactFilters.has("email") && !contributor.contacts.email?.trim()) return false
@@ -324,7 +481,7 @@ export default function EcosystemDetailPage() {
         return true
       })
       .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
-  }, [contactFilters, contributors, minRepos, searchQuery])
+  }, [contactFilters, contributors, minRepos, searchQuery, selectedList, selectedListContributorIds])
 
   const toggleContactFilter = useCallback((filter: ContactFilter) => {
     setContactFilters((prev) => {
@@ -506,6 +663,153 @@ export default function EcosystemDetailPage() {
           )}
         </section>
 
+        {/* ── Project Lists ────────────────────────────────────────────── */}
+        <section className="mb-10">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-muted-foreground uppercase tracking-wide text-xs">
+                Lists
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Organize contributors for this specific hiring Project.
+              </p>
+            </div>
+            {canWrite && (
+              <div className="flex gap-2">
+                <Input
+                  value={newListName}
+                  onChange={(event) => setNewListName(event.target.value)}
+                  placeholder="New list name"
+                  maxLength={120}
+                  className="h-9 w-56"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => createProjectList(newListName)}
+                  disabled={creatingList || !newListName.trim()}
+                  className="gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create List
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-sm shadow-indigo-500/5 backdrop-blur-md">
+            {listError && (
+              <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                {listError}
+              </div>
+            )}
+            {listsLoading ? (
+              <div className="flex gap-3 overflow-hidden">
+                <Skeleton className="h-20 w-44 rounded-2xl" />
+                <Skeleton className="h-20 w-44 rounded-2xl" />
+                <Skeleton className="h-20 w-44 rounded-2xl" />
+              </div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedListId("all")}
+                  className={`min-w-44 cursor-pointer rounded-2xl border px-4 py-3 text-left transition-all ${
+                    selectedListId === "all"
+                      ? "border-primary/30 bg-primary/10 text-primary shadow-sm shadow-indigo-500/10"
+                      : "border-white/70 bg-white/70 text-foreground hover:border-primary/20 hover:bg-white"
+                  }`}
+                >
+                  <p className="text-sm font-extrabold">All Contributors</p>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{contributors.length} total</p>
+                </button>
+
+                {projectLists.map((list) => (
+                  <div
+                    key={list.id}
+                    className={`min-w-52 rounded-2xl border px-4 py-3 transition-all ${
+                      selectedListId === list.id
+                        ? "border-primary/30 bg-primary/10 shadow-sm shadow-indigo-500/10"
+                        : "border-white/70 bg-white/70 hover:border-primary/20 hover:bg-white"
+                    }`}
+                  >
+                    {renamingListId === list.id ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={renameListName}
+                          onChange={(event) => setRenameListName(event.target.value)}
+                          maxLength={120}
+                          className="h-8"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" className="h-7" onClick={() => renameProjectList(list.id)} disabled={!renameListName.trim()}>
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 bg-white/80"
+                            onClick={() => {
+                              setRenamingListId(null)
+                              setRenameListName("")
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button type="button" className="w-full cursor-pointer text-left" onClick={() => setSelectedListId(list.id)}>
+                          <p className="truncate text-sm font-extrabold text-foreground">{list.name}</p>
+                          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                            {list.contributorCount} contributor{list.contributorCount === 1 ? "" : "s"}
+                          </p>
+                        </button>
+                        {canWrite && (
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 bg-white/80 text-xs"
+                              onClick={() => {
+                                setRenamingListId(list.id)
+                                setRenameListName(list.name)
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Rename
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 bg-white/80 text-xs text-destructive hover:text-destructive"
+                              onClick={() => deleteProjectList(list.id, list.name)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+
+                {projectLists.length === 0 && (
+                  <div className="min-w-72 rounded-2xl border border-dashed border-primary/20 bg-indigo-50/50 px-4 py-3">
+                    <p className="text-sm font-extrabold text-foreground">No lists yet</p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                      Create your first recruiting list for strong fits, outreach, or interview follow-up.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* ── Contributor intelligence table ───────────────────────────── */}
         <section>
           <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -515,7 +819,9 @@ export default function EcosystemDetailPage() {
               </h2>
               {!contributorsLoading && contributors.length > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Showing {filteredContributors.length} of {contributors.length} contributors
+                  Showing {filteredContributors.length} of{" "}
+                  {selectedList ? selectedList.contributorCount : contributors.length} contributors
+                  {selectedList ? ` in ${selectedList.name}` : ""}
                 </p>
               )}
             </div>
@@ -617,7 +923,9 @@ export default function EcosystemDetailPage() {
               </div>
               {filteredContributors.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
-                  No contributors match the current filters.
+                  {selectedList && selectedList.contributorCount === 0
+                    ? "No contributors saved to this list yet."
+                    : "No contributors match the current filters."}
                 </div>
               ) : (
             <div className="rounded-lg border border-border overflow-hidden">
@@ -793,32 +1101,75 @@ export default function EcosystemDetailPage() {
                             <span className="text-xs text-muted-foreground/40">—</span>
                           )}
                           {canWrite && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="ml-2 h-7 bg-transparent text-xs"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setPreviewContributor({
-                                  id: c.id,
-                                  username: c.username,
-                                  name: c.name,
-                                  avatar: c.avatar,
-                                  contacts: c.contacts,
-                                  stats: [
-                                    { label: "Repos", value: c.scrapeCount },
-                                    { label: "Contributions", value: c.totalContributions.toLocaleString() },
-                                    { label: "Project", value: ecosystem?.name ?? "Current" },
-                                  ],
-                                  repositories: c.scrapeTargets,
-                                  projects: ecosystem ? [{ id: ecosystem.id, name: ecosystem.name }] : [],
-                                })
-                              }}
-                            >
-                              <Plus className="h-3 w-3" />
-                              Save
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="ml-2 h-7 bg-transparent text-xs"
+                                  disabled={savingContributorIds.has(c.id)}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <BookmarkPlus className="h-3 w-3" />
+                                  Save
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-72 rounded-2xl border-white/70 bg-white/95 p-2 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+                                  Save to list
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {projectLists.length === 0 ? (
+                                  <div className="px-2 py-3 text-sm font-semibold text-muted-foreground">
+                                    No lists yet. Create your first recruiting list below.
+                                  </div>
+                                ) : (
+                                  projectLists.map((list) => {
+                                    const alreadySaved = list.contributorIds.includes(c.id)
+                                    return (
+                                      <DropdownMenuItem
+                                        key={list.id}
+                                        disabled={alreadySaved}
+                                        className="cursor-pointer rounded-xl"
+                                        onSelect={() => saveContributorToList(list.id, c.id)}
+                                      >
+                                        <span className="min-w-0 flex-1 truncate">{list.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {alreadySaved ? "Saved" : list.contributorCount}
+                                        </span>
+                                      </DropdownMenuItem>
+                                    )
+                                  })
+                                )}
+                                <DropdownMenuSeparator />
+                                <div className="space-y-2 p-2">
+                                  <Input
+                                    value={rowListNames[c.id] ?? ""}
+                                    onChange={(event) =>
+                                      setRowListNames((prev) => ({ ...prev, [c.id]: event.target.value }))
+                                    }
+                                    placeholder="New list name"
+                                    maxLength={120}
+                                    className="h-8"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="w-full"
+                                    disabled={creatingList || !(rowListNames[c.id] ?? "").trim()}
+                                    onClick={() => createRowListAndSave(c.id)}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Create and Save
+                                  </Button>
+                                </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </div>
                       </td>

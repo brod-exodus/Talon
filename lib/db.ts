@@ -1257,6 +1257,7 @@ export type ProjectListSummary = {
   projectId: string
   name: string
   contributorCount: number
+  contributorIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -1736,14 +1737,18 @@ export async function getProjectLists(ecosystemId: string, teamId?: string): Pro
 
   const { data: links, error: linkError } = await supabaseAdmin
     .from("project_list_contributors")
-    .select("project_list_id")
+    .select("project_list_id, contributor_id")
     .eq("team_id", resolvedTeamId)
     .in("project_list_id", lists.map((list) => list.id))
   if (linkError) throw linkError
 
   const countMap = new Map<string, number>()
+  const contributorIdsByList = new Map<string, string[]>()
   for (const link of links ?? []) {
     countMap.set(link.project_list_id, (countMap.get(link.project_list_id) ?? 0) + 1)
+    const contributorIds = contributorIdsByList.get(link.project_list_id) ?? []
+    contributorIds.push(link.contributor_id)
+    contributorIdsByList.set(link.project_list_id, contributorIds)
   }
 
   return lists.map((list) => ({
@@ -1751,6 +1756,7 @@ export async function getProjectLists(ecosystemId: string, teamId?: string): Pro
     projectId: list.ecosystem_id,
     name: list.name,
     contributorCount: countMap.get(list.id) ?? 0,
+    contributorIds: contributorIdsByList.get(list.id) ?? [],
     createdAt: list.created_at,
     updatedAt: list.updated_at,
   }))
@@ -1777,9 +1783,50 @@ export async function createProjectList(
     projectId: data.ecosystem_id,
     name: data.name,
     contributorCount: 0,
+    contributorIds: [],
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   }
+}
+
+export async function renameProjectList(
+  ecosystemId: string,
+  listId: string,
+  name: string,
+  teamId?: string
+): Promise<ProjectListSummary> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("project_lists")
+    .update({ name, updated_at: new Date().toISOString() })
+    .eq("id", listId)
+    .eq("ecosystem_id", ecosystemId)
+    .eq("team_id", resolvedTeamId)
+    .select("id, ecosystem_id, name, created_at, updated_at")
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Project list not found")
+
+  return {
+    id: data.id,
+    projectId: data.ecosystem_id,
+    name: data.name,
+    contributorCount: 0,
+    contributorIds: [],
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  }
+}
+
+export async function deleteProjectList(ecosystemId: string, listId: string, teamId?: string): Promise<void> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { error } = await supabaseAdmin
+    .from("project_lists")
+    .delete()
+    .eq("id", listId)
+    .eq("ecosystem_id", ecosystemId)
+    .eq("team_id", resolvedTeamId)
+  if (error) throw error
 }
 
 export async function addContributorToProjectList(
