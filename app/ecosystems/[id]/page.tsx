@@ -511,11 +511,26 @@ export default function EcosystemDetailPage() {
         body: JSON.stringify({ contributorId, ...updates }),
       })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error || "Failed to update outreach tracking")
+      if (!response.ok) {
+        console.error("[project-tracking] API response failed", {
+          endpoint: `/api/ecosystems/${id}/tracking`,
+          method: "PATCH",
+          status: response.status,
+          requestBody: { contributorId, ...updates },
+          responseBody: data,
+        })
+        throw new Error(data?.error || "Failed to update outreach tracking")
+      }
       const tracking = data.tracking as ProjectContributorTracking
       setTrackingByContributorId((prev) => ({ ...prev, [contributorId]: tracking }))
       return tracking
     } catch (error) {
+      console.error("[project-tracking] update failed", {
+        projectId: id,
+        contributorId,
+        updates,
+        error,
+      })
       setTrackingError(error instanceof Error ? error.message : "Failed to update outreach tracking")
       return null
     } finally {

@@ -15,6 +15,56 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
+function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : ""
+  const message = error instanceof Error ? error.message : ""
+  const detail = error && typeof error === "object" && "details" in error ? String(error.details) : ""
+  const hint = error && typeof error === "object" && "hint" in error ? String(error.hint) : ""
+  const searchable = `${code} ${message} ${detail} ${hint}`.toLowerCase()
+
+  if (code === "42703") {
+    return NextResponse.json(
+      {
+        error: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
+        code: "project_tracking_schema_outdated",
+      },
+      { status: 503 }
+    )
+  }
+
+  if (code === "42P10" || searchable.includes("unique") || searchable.includes("on conflict")) {
+    return NextResponse.json(
+      {
+        error: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
+        code: "project_tracking_unique_constraint_missing",
+      },
+      { status: 503 }
+    )
+  }
+
+  if (
+    code === "42P01" ||
+    (searchable.includes("project_contributor_tracking") && searchable.includes("does not exist")) ||
+    searchable.includes("could not find the table")
+  ) {
+    return NextResponse.json(
+      {
+        error: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.",
+        code: "project_tracking_migration_missing",
+      },
+      { status: 503 }
+    )
+  }
+
+  return NextResponse.json(
+    {
+      error: action === "fetch" ? "Failed to fetch project tracking" : "Failed to update project tracking",
+      code: "project_tracking_request_failed",
+    },
+    { status: 500 }
+  )
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const authError = requireAuth(request)
   if (authError) return authError
@@ -33,8 +83,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message.includes("Project not found")) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
-    console.error("[ecosystems/[id]/tracking] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch project tracking" }, { status: 500 })
+    console.error("[ecosystems/[id]/tracking] GET error:", {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
+      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
+    })
+    return projectTrackingDbError(error, "fetch")
   }
 }
 
@@ -91,7 +147,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message.includes("Contributor not found")) {
       return NextResponse.json({ error: "Contributor not found" }, { status: 404 })
     }
-    console.error("[ecosystems/[id]/tracking] PATCH error:", error)
-    return NextResponse.json({ error: "Failed to update project tracking" }, { status: 500 })
+    console.error("[ecosystems/[id]/tracking] PATCH error:", {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
+      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
+    })
+    return projectTrackingDbError(error, "update")
   }
 }

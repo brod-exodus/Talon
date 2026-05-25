@@ -1971,39 +1971,20 @@ export async function upsertProjectContributorTracking(
   await assertProjectContributorScope(ecosystemId, contributorId, resolvedTeamId)
 
   const now = new Date().toISOString()
-  const existing = await getProjectContributorTrackingForContributor(ecosystemId, contributorId, resolvedTeamId)
-  if (!existing) {
-    const insert: Record<string, unknown> = {
-      team_id: resolvedTeamId,
-      ecosystem_id: ecosystemId,
-      contributor_id: contributorId,
-      status: updates.status ?? "not_contacted",
-      updated_at: now,
-    }
-    if (updates.notes !== undefined) insert.notes = updates.notes
-    if (updates.lastContactedAt !== undefined) insert.last_contacted_at = updates.lastContactedAt
-    if (updates.nextFollowUpAt !== undefined) insert.next_follow_up_at = updates.nextFollowUpAt
-
-    const { data, error } = await supabaseAdmin
-      .from("project_contributor_tracking")
-      .insert(insert)
-      .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
-      .single()
-    if (error) throw error
-    return toProjectContributorTracking(data as ProjectContributorTrackingRow)
+  const payload: Record<string, unknown> = {
+    team_id: resolvedTeamId,
+    ecosystem_id: ecosystemId,
+    contributor_id: contributorId,
+    status: updates.status ?? "not_contacted",
+    updated_at: now,
   }
-
-  const set: Record<string, unknown> = { updated_at: now }
-  if (updates.status !== undefined) set.status = updates.status
-  if (updates.notes !== undefined) set.notes = updates.notes
-  if (updates.lastContactedAt !== undefined) set.last_contacted_at = updates.lastContactedAt
-  if (updates.nextFollowUpAt !== undefined) set.next_follow_up_at = updates.nextFollowUpAt
+  if (updates.notes !== undefined) payload.notes = updates.notes
+  if (updates.lastContactedAt !== undefined) payload.last_contacted_at = updates.lastContactedAt
+  if (updates.nextFollowUpAt !== undefined) payload.next_follow_up_at = updates.nextFollowUpAt
 
   const { data, error } = await supabaseAdmin
     .from("project_contributor_tracking")
-    .update(set)
-    .eq("id", existing.id)
-    .eq("team_id", resolvedTeamId)
+    .upsert(payload, { onConflict: "ecosystem_id,contributor_id" })
     .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
     .single()
   if (error) throw error
