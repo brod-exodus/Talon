@@ -1039,6 +1039,31 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                               >
                                 Preview
                               </Button>
+                              {canWrite && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                                  onClick={() =>
+                                    setPreviewContributor({
+                                      id: contributor.id,
+                                      username: contributor.username,
+                                      name: contributor.name,
+                                      avatar: contributor.avatar,
+                                      contacts: contributor.contacts,
+                                      stats: [
+                                        { label: "Contributions", value: contributor.contributions.toLocaleString() },
+                                        { label: "Repos", value: 1 },
+                                      ],
+                                      repositories: [scrape.target],
+                                      projects: scrape.projects ?? [],
+                                    })
+                                  }
+                                >
+                                  <FolderPlus className="w-3 h-3 mr-1" />
+                                  Save to List
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1310,6 +1335,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       <ContributorQuickPreview
         open={Boolean(previewContributor)}
         contributor={previewContributor}
+        projectOptions={projects}
+        canSaveToList={canWrite}
         onOpenChange={(open) => {
           if (!open) setPreviewContributor(null)
         }}

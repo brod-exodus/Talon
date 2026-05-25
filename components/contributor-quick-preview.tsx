@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   Building2,
+  BookmarkPlus,
   Copy,
   FolderKanban,
   Github,
@@ -13,6 +14,7 @@ import {
   Loader2,
   Mail,
   MapPin,
+  Plus,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,6 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -73,6 +78,16 @@ type ContributorQuickPreviewProps = {
   open: boolean
   contributor: ContributorPreviewSummary | null
   onOpenChange: (open: boolean) => void
+  currentProject?: { id: string; name: string } | null
+  projectOptions?: Array<{ id: string; name: string }>
+  canSaveToList?: boolean
+}
+
+type ProjectListSummary = {
+  id: string
+  projectId: string
+  name: string
+  contributorCount: number
 }
 
 function XIcon({ className }: { className?: string }) {
@@ -100,11 +115,32 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value)
 }
 
-export function ContributorQuickPreview({ open, contributor, onOpenChange }: ContributorQuickPreviewProps) {
+export function ContributorQuickPreview({
+  open,
+  contributor,
+  onOpenChange,
+  currentProject = null,
+  projectOptions = [],
+  canSaveToList = false,
+}: ContributorQuickPreviewProps) {
   const { toast } = useToast()
   const [profile, setProfile] = useState<ContributorPreviewProfile | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState("")
+  const [projectLists, setProjectLists] = useState<ProjectListSummary[]>([])
+  const [selectedListId, setSelectedListId] = useState("")
+  const [newListName, setNewListName] = useState("")
+  const [listsLoading, setListsLoading] = useState(false)
+  const [listSaving, setListSaving] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+
+  const projectChoices = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>()
+    if (currentProject) byId.set(currentProject.id, currentProject)
+    for (const project of projectOptions) byId.set(project.id, project)
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [currentProject, projectOptions])
 
   useEffect(() => {
     if (!open || !contributor?.id) return
@@ -144,8 +180,61 @@ export function ContributorQuickPreview({ open, contributor, onOpenChange }: Con
       setProfile(null)
       setError(null)
       setLoading(false)
+      setSelectedProjectId("")
+      setProjectLists([])
+      setSelectedListId("")
+      setNewListName("")
+      setListError(null)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedProjectId(currentProject?.id ?? "")
+  }, [currentProject?.id, open])
+
+  useEffect(() => {
+    if (!open || !selectedProjectId) {
+      setProjectLists([])
+      setSelectedListId("")
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function loadProjectLists() {
+      setListsLoading(true)
+      setListError(null)
+      try {
+        const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists`, {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(data?.error || "Project lists could not load")
+        if (cancelled) return
+        const lists = Array.isArray(data?.lists) ? data.lists : []
+        setProjectLists(lists)
+        setSelectedListId((current) => (current && lists.some((list: ProjectListSummary) => list.id === current) ? current : lists[0]?.id ?? ""))
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return
+        if (!cancelled) {
+          setProjectLists([])
+          setSelectedListId("")
+          setListError("Lists could not load for this Project.")
+        }
+      } finally {
+        if (!cancelled) setListsLoading(false)
+      }
+    }
+
+    loadProjectLists()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [open, selectedProjectId])
 
   const display = {
     id: profile?.id ?? contributor?.id ?? "",
@@ -187,6 +276,61 @@ export function ContributorQuickPreview({ open, contributor, onOpenChange }: Con
     if (!email) return
     await navigator.clipboard.writeText(email)
     toast({ title: "Email copied", description: email })
+  }
+
+  async function createList() {
+    if (!selectedProjectId || !newListName.trim()) return
+    setListSaving(true)
+    setListError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newListName.trim() }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "List could not be created")
+      const list = data.list as ProjectListSummary
+      setProjectLists((prev) => [list, ...prev])
+      setSelectedListId(list.id)
+      setNewListName("")
+      toast({ title: "List created", description: list.name })
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "List could not be created")
+    } finally {
+      setListSaving(false)
+    }
+  }
+
+  async function saveToList() {
+    if (!display.id || !selectedProjectId || !selectedListId) return
+    setListSaving(true)
+    setListError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists/${selectedListId}/contributors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contributorId: display.id }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Contributor could not be saved")
+      const listName = projectLists.find((list) => list.id === selectedListId)?.name ?? "list"
+      setProjectLists((prev) =>
+        prev.map((list) =>
+          list.id === selectedListId ? { ...list, contributorCount: list.contributorCount + 1 } : list
+        )
+      )
+      toast({ title: "Saved to list", description: `${display.name} was saved to ${listName}.` })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Contributor could not be saved"
+      if (message.includes("already")) {
+        toast({ title: "Already saved", description: `${display.name} is already in that list.` })
+      } else {
+        setListError(message)
+      }
+    } finally {
+      setListSaving(false)
+    }
   }
 
   return (
@@ -250,6 +394,106 @@ export function ContributorQuickPreview({ open, contributor, onOpenChange }: Con
                 </Button>
               </div>
             </section>
+
+            {canSaveToList && (
+              <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
+                <div className="flex items-center gap-2">
+                  <BookmarkPlus className="h-4 w-4 text-primary" />
+                  <h4 className="text-sm font-extrabold text-foreground">Save to Project list</h4>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {!currentProject && (
+                    <div className="space-y-2">
+                      <Label>Project</Label>
+                      {projectChoices.length > 0 ? (
+                        <Select value={selectedProjectId || undefined} onValueChange={setSelectedProjectId}>
+                          <SelectTrigger className="w-full bg-white/80">
+                            <SelectValue placeholder="Choose a Project first" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projectChoices.map((project) => (
+                              <SelectItem key={project.id} value={project.id}>
+                                {project.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                          Choose or create a Project before saving contributors to lists.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedProjectId && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>List</Label>
+                        {listsLoading ? (
+                          <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm font-semibold text-primary">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading lists...
+                          </div>
+                        ) : projectLists.length > 0 ? (
+                          <Select value={selectedListId || undefined} onValueChange={setSelectedListId}>
+                            <SelectTrigger className="w-full bg-white/80">
+                              <SelectValue placeholder="Choose a list" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {projectLists.map((list) => (
+                                <SelectItem key={list.id} value={list.id}>
+                                  {list.name} ({list.contributorCount})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm font-medium text-muted-foreground">
+                            No lists in this Project yet. Create one below.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Input
+                          value={newListName}
+                          onChange={(event) => setNewListName(event.target.value)}
+                          placeholder="New list name"
+                          maxLength={120}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={createList}
+                          disabled={listSaving || !newListName.trim()}
+                          className="bg-white/80"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create
+                        </Button>
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={saveToList}
+                        disabled={listSaving || !selectedListId}
+                        className="w-full"
+                      >
+                        {listSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
+                        Save Contributor
+                      </Button>
+                    </>
+                  )}
+
+                  {listError && (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                      {listError}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
 
             <section className="grid gap-3 sm:grid-cols-3">
               {stats.length > 0 ? (
