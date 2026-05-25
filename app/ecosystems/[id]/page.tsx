@@ -531,9 +531,9 @@ export default function EcosystemDetailPage() {
   if (!ecosystemLoading && !ecosystem) return null
 
   return (
-    <div className="prism-app">
+    <div className="prism-app bg-background">
       <Header />
-      <main className="prism-main">
+      <main className="prism-main min-h-screen bg-background">
 
         {/* ── Breadcrumb / back ─────────────────────────────────────────── */}
         <Link
