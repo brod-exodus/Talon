@@ -1,4 +1,12 @@
 export type ScrapeType = "organization" | "repository"
+export type ProjectOutreachStatus =
+  | "not_contacted"
+  | "contacted"
+  | "replied"
+  | "interested"
+  | "interviewing"
+  | "rejected"
+  | "archived"
 
 const NAME_MAX = 120
 const NOTES_MAX = 5000
@@ -10,6 +18,15 @@ const SCRAPE_ID_RE = /^[A-Za-z0-9_-]{6,120}$/
 const GITHUB_USERNAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/
 const GITHUB_TOKEN_RE = /^(ghp_|github_pat_)[A-Za-z0-9_]+$/
 const SHARE_TOKEN_RE = /^[A-Za-z0-9_-]{24,128}$/
+const PROJECT_OUTREACH_STATUSES = new Set<ProjectOutreachStatus>([
+  "not_contacted",
+  "contacted",
+  "replied",
+  "interested",
+  "interviewing",
+  "rejected",
+  "archived",
+])
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -131,4 +148,12 @@ export function normalizeOptionalStatus(value: unknown): string | null | undefin
   if (typeof value !== "string") return undefined
   const status = value.trim()
   return status.length <= STATUS_MAX ? status : undefined
+}
+
+export function normalizeProjectOutreachStatus(value: unknown): ProjectOutreachStatus | undefined {
+  if (typeof value !== "string") return undefined
+  const status = value.trim()
+  return PROJECT_OUTREACH_STATUSES.has(status as ProjectOutreachStatus)
+    ? (status as ProjectOutreachStatus)
+    : undefined
 }

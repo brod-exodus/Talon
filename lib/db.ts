@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { recordActivityEvent } from "@/lib/activity"
 import { aggregateEcosystemContributors, shouldRecomputeEcosystemContributorCache } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
+import type { ProjectOutreachStatus } from "@/lib/validation"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
@@ -1262,6 +1263,18 @@ export type ProjectListSummary = {
   updatedAt: string
 }
 
+export type ProjectContributorTracking = {
+  id: string
+  projectId: string
+  contributorId: string
+  status: ProjectOutreachStatus
+  notes: string | null
+  lastContactedAt: string | null
+  nextFollowUpAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 type ContributorProfileScrapeLink = {
   scrape_id: string
   contributor_id: string
@@ -1859,6 +1872,142 @@ export async function addContributorToProjectList(
     .from("project_list_contributors")
     .insert({ team_id: resolvedTeamId, project_list_id: listId, contributor_id: contributorId })
   if (error) throw error
+}
+
+type ProjectContributorTrackingRow = {
+  id: string
+  ecosystem_id: string
+  contributor_id: string
+  status: ProjectOutreachStatus
+  notes: string | null
+  last_contacted_at: string | null
+  next_follow_up_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+function toProjectContributorTracking(row: ProjectContributorTrackingRow): ProjectContributorTracking {
+  return {
+    id: row.id,
+    projectId: row.ecosystem_id,
+    contributorId: row.contributor_id,
+    status: row.status,
+    notes: row.notes,
+    lastContactedAt: row.last_contacted_at,
+    nextFollowUpAt: row.next_follow_up_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+async function assertProjectContributorScope(
+  ecosystemId: string,
+  contributorId: string,
+  teamId: string
+): Promise<void> {
+  const [projectExists, contributorResult] = await Promise.all([
+    ecosystemExists(ecosystemId, teamId),
+    supabaseAdmin
+      .from("contributors")
+      .select("id")
+      .eq("id", contributorId)
+      .eq("team_id", teamId)
+      .maybeSingle(),
+  ])
+  if (!projectExists) throw new Error("Project not found")
+  if (contributorResult.error) throw contributorResult.error
+  if (!contributorResult.data) throw new Error("Contributor not found")
+}
+
+export async function getProjectContributorTracking(
+  ecosystemId: string,
+  teamId?: string
+): Promise<ProjectContributorTracking[]> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const exists = await ecosystemExists(ecosystemId, resolvedTeamId)
+  if (!exists) throw new Error("Project not found")
+
+  const { data, error } = await supabaseAdmin
+    .from("project_contributor_tracking")
+    .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+    .eq("team_id", resolvedTeamId)
+    .eq("ecosystem_id", ecosystemId)
+    .order("updated_at", { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as ProjectContributorTrackingRow[]).map(toProjectContributorTracking)
+}
+
+export async function getProjectContributorTrackingForContributor(
+  ecosystemId: string,
+  contributorId: string,
+  teamId?: string
+): Promise<ProjectContributorTracking | null> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  await assertProjectContributorScope(ecosystemId, contributorId, resolvedTeamId)
+
+  const { data, error } = await supabaseAdmin
+    .from("project_contributor_tracking")
+    .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+    .eq("team_id", resolvedTeamId)
+    .eq("ecosystem_id", ecosystemId)
+    .eq("contributor_id", contributorId)
+    .maybeSingle()
+  if (error) throw error
+  return data ? toProjectContributorTracking(data as ProjectContributorTrackingRow) : null
+}
+
+export async function upsertProjectContributorTracking(
+  ecosystemId: string,
+  contributorId: string,
+  updates: {
+    status?: ProjectOutreachStatus
+    notes?: string | null
+    lastContactedAt?: string | null
+    nextFollowUpAt?: string | null
+  },
+  teamId?: string
+): Promise<ProjectContributorTracking> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  await assertProjectContributorScope(ecosystemId, contributorId, resolvedTeamId)
+
+  const now = new Date().toISOString()
+  const existing = await getProjectContributorTrackingForContributor(ecosystemId, contributorId, resolvedTeamId)
+  if (!existing) {
+    const insert: Record<string, unknown> = {
+      team_id: resolvedTeamId,
+      ecosystem_id: ecosystemId,
+      contributor_id: contributorId,
+      status: updates.status ?? "not_contacted",
+      updated_at: now,
+    }
+    if (updates.notes !== undefined) insert.notes = updates.notes
+    if (updates.lastContactedAt !== undefined) insert.last_contacted_at = updates.lastContactedAt
+    if (updates.nextFollowUpAt !== undefined) insert.next_follow_up_at = updates.nextFollowUpAt
+
+    const { data, error } = await supabaseAdmin
+      .from("project_contributor_tracking")
+      .insert(insert)
+      .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+      .single()
+    if (error) throw error
+    return toProjectContributorTracking(data as ProjectContributorTrackingRow)
+  }
+
+  const set: Record<string, unknown> = { updated_at: now }
+  if (updates.status !== undefined) set.status = updates.status
+  if (updates.notes !== undefined) set.notes = updates.notes
+  if (updates.lastContactedAt !== undefined) set.last_contacted_at = updates.lastContactedAt
+  if (updates.nextFollowUpAt !== undefined) set.next_follow_up_at = updates.nextFollowUpAt
+
+  const { data, error } = await supabaseAdmin
+    .from("project_contributor_tracking")
+    .update(set)
+    .eq("id", existing.id)
+    .eq("team_id", resolvedTeamId)
+    .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+    .single()
+  if (error) throw error
+  return toProjectContributorTracking(data as ProjectContributorTrackingRow)
 }
 
 export async function getEcosystemContributors(

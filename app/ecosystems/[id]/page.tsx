@@ -5,6 +5,15 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
 import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
+import {
+  getDefaultProjectTracking,
+  PROJECT_OUTREACH_STATUS_OPTIONS,
+  ProjectOutreachBadge,
+  ProjectOutreachForm,
+  type ProjectContributorTracking,
+  type ProjectOutreachStatus,
+  type ProjectTrackingUpdate,
+} from "@/components/project-outreach"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -53,6 +62,7 @@ type EcosystemContributor = {
 
 type ScrapeSummary = { id: string; target: string; type: string }
 type ContactFilter = "email" | "linkedin" | "twitter"
+type StatusFilter = "all" | ProjectOutreachStatus
 type ProjectListSummary = {
   id: string
   projectId: string
@@ -119,6 +129,7 @@ function ContributorTableSkeleton() {
             <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden sm:table-cell">
               Contributions
             </th>
+            <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Outreach</th>
             <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contact</th>
           </tr>
         </thead>
@@ -150,6 +161,9 @@ function ContributorTableSkeleton() {
               </td>
               <td className="px-3 py-3 align-middle hidden sm:table-cell text-right">
                 <Skeleton className="h-4 w-12 rounded-md ml-auto" />
+              </td>
+              <td className="px-3 py-3 align-middle">
+                <Skeleton className="h-7 w-32 rounded-full" />
               </td>
               <td className="px-3 py-3 align-middle">
                 <div className="flex items-center gap-2">
@@ -187,6 +201,7 @@ export default function EcosystemDetailPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [minRepos, setMinRepos] = useState(1)
   const [contactFilters, setContactFilters] = useState<Set<ContactFilter>>(new Set())
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [projectLists, setProjectLists] = useState<ProjectListSummary[]>([])
   const [listsLoading, setListsLoading] = useState(true)
   const [selectedListId, setSelectedListId] = useState("all")
@@ -197,6 +212,10 @@ export default function EcosystemDetailPage() {
   const [rowListNames, setRowListNames] = useState<Record<string, string>>({})
   const [savingContributorIds, setSavingContributorIds] = useState<Set<string>>(new Set())
   const [listError, setListError] = useState<string | null>(null)
+  const [trackingByContributorId, setTrackingByContributorId] = useState<Record<string, ProjectContributorTracking>>({})
+  const [trackingLoading, setTrackingLoading] = useState(true)
+  const [trackingError, setTrackingError] = useState<string | null>(null)
+  const [savingTrackingIds, setSavingTrackingIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setContributorsLoading(true)
@@ -241,6 +260,25 @@ export default function EcosystemDetailPage() {
       setProjectLists([])
     } finally {
       setListsLoading(false)
+    }
+  }, [id])
+
+  const loadProjectTracking = useCallback(async () => {
+    setTrackingLoading(true)
+    setTrackingError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/tracking`, { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to fetch outreach tracking")
+      const tracking = Array.isArray(data?.tracking) ? (data.tracking as ProjectContributorTracking[]) : []
+      setTrackingByContributorId(
+        Object.fromEntries(tracking.map((item) => [item.contributorId, item]))
+      )
+    } catch (error) {
+      setTrackingError(error instanceof Error ? error.message : "Failed to fetch outreach tracking")
+      setTrackingByContributorId({})
+    } finally {
+      setTrackingLoading(false)
     }
   }, [id])
 
@@ -302,6 +340,10 @@ export default function EcosystemDetailPage() {
   useEffect(() => {
     void loadProjectLists()
   }, [loadProjectLists])
+
+  useEffect(() => {
+    void loadProjectTracking()
+  }, [loadProjectTracking])
 
   useEffect(() => {
     if (!ecosystem) return
@@ -454,6 +496,37 @@ export default function EcosystemDetailPage() {
     setRowListNames((prev) => ({ ...prev, [contributorId]: "" }))
   }
 
+  function getTracking(contributorId: string) {
+    return trackingByContributorId[contributorId] ?? getDefaultProjectTracking(id, contributorId)
+  }
+
+  async function updateProjectTracking(contributorId: string, updates: ProjectTrackingUpdate) {
+    if (!canWrite) return null
+    setSavingTrackingIds((prev) => new Set(prev).add(contributorId))
+    setTrackingError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/tracking`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contributorId, ...updates }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to update outreach tracking")
+      const tracking = data.tracking as ProjectContributorTracking
+      setTrackingByContributorId((prev) => ({ ...prev, [contributorId]: tracking }))
+      return tracking
+    } catch (error) {
+      setTrackingError(error instanceof Error ? error.message : "Failed to update outreach tracking")
+      return null
+    } finally {
+      setSavingTrackingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(contributorId)
+        return next
+      })
+    }
+  }
+
   const uniqueContributors = contributors.length
   const multiScrapeCount = contributors.filter((c) => c.scrapeCount > 1).length
   const scrapeRows = ecosystem?.scrapes ?? []
@@ -472,7 +545,9 @@ export default function EcosystemDetailPage() {
     const query = searchQuery.trim().toLowerCase()
     return contributors
       .filter((contributor) => {
+        const tracking = trackingByContributorId[contributor.id] ?? getDefaultProjectTracking(id, contributor.id)
         if (selectedList && !selectedListContributorIds.has(contributor.id)) return false
+        if (statusFilter !== "all" && tracking.status !== statusFilter) return false
         if (contributor.scrapeCount < minRepos) return false
         if (query && !`${contributor.name} ${contributor.username}`.toLowerCase().includes(query)) return false
         if (contactFilters.has("email") && !contributor.contacts.email?.trim()) return false
@@ -481,7 +556,7 @@ export default function EcosystemDetailPage() {
         return true
       })
       .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
-  }, [contactFilters, contributors, minRepos, searchQuery, selectedList, selectedListContributorIds])
+  }, [contactFilters, contributors, id, minRepos, searchQuery, selectedList, selectedListContributorIds, statusFilter, trackingByContributorId])
 
   const toggleContactFilter = useCallback((filter: ContactFilter) => {
     setContactFilters((prev) => {
@@ -868,7 +943,7 @@ export default function EcosystemDetailPage() {
           ) : (
             <div className="space-y-3">
               <div className="rounded-lg border border-border bg-card p-3">
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-end">
                   <div className="space-y-1">
                     <label htmlFor="project-contributor-search" className="text-xs font-medium text-muted-foreground">
                       Search
@@ -899,6 +974,24 @@ export default function EcosystemDetailPage() {
                       className="h-9 w-full lg:w-32"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <label htmlFor="project-status-filter" className="text-xs font-medium text-muted-foreground">
+                      Status
+                    </label>
+                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                      <SelectTrigger id="project-status-filter" className="h-9 w-full bg-transparent lg:w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        {PROJECT_OUTREACH_STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {(
                       [
@@ -921,6 +1014,11 @@ export default function EcosystemDetailPage() {
                   </div>
                 </div>
               </div>
+              {trackingError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                  {trackingError}
+                </div>
+              )}
               {filteredContributors.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
                   {selectedList && selectedList.contributorCount === 0
@@ -937,11 +1035,15 @@ export default function EcosystemDetailPage() {
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Repos</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden md:table-cell">Appears In</th>
                     <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden sm:table-cell">Contributions</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Outreach</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contact</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredContributors.map((c, idx) => (
+                  {filteredContributors.map((c, idx) => {
+                    const tracking = getTracking(c.id)
+                    const trackingSaving = savingTrackingIds.has(c.id)
+                    return (
                     <tr
                       key={c.id}
                       tabIndex={0}
@@ -1046,6 +1148,71 @@ export default function EcosystemDetailPage() {
                       {/* Total contributions */}
                       <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground hidden sm:table-cell">
                         {c.totalContributions.toLocaleString()}
+                      </td>
+
+                      {/* Outreach status */}
+                      <td className="px-3 py-3">
+                        <div className="flex min-w-36 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                          {canWrite ? (
+                            <Select
+                              value={tracking.status}
+                              onValueChange={(value) =>
+                                updateProjectTracking(c.id, { status: value as ProjectOutreachStatus })
+                              }
+                              disabled={trackingSaving || trackingLoading}
+                            >
+                              <SelectTrigger className="h-8 w-40 bg-white/80 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PROJECT_OUTREACH_STATUS_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <ProjectOutreachBadge status={tracking.status} />
+                          )}
+                          {canWrite && <ProjectOutreachBadge status={tracking.status} className="hidden xl:inline-flex" />}
+                          {canWrite && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 bg-transparent text-xs"
+                                  disabled={trackingSaving}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  Edit
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-96 rounded-2xl border-white/70 bg-white/95 p-4 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <DropdownMenuLabel className="px-0 text-xs font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+                                  Project outreach
+                                </DropdownMenuLabel>
+                                <div className="mt-3">
+                                  <ProjectOutreachForm
+                                    tracking={tracking}
+                                    compact
+                                    nativeStatus
+                                    saving={trackingSaving}
+                                    onSave={async (updates) => {
+                                      await updateProjectTracking(c.id, updates)
+                                    }}
+                                  />
+                                </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                       </td>
 
                       {/* Contact info */}
@@ -1174,7 +1341,8 @@ export default function EcosystemDetailPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1187,7 +1355,11 @@ export default function EcosystemDetailPage() {
         open={Boolean(previewContributor)}
         contributor={previewContributor}
         currentProject={ecosystem ? { id: ecosystem.id, name: ecosystem.name } : null}
+        currentProjectTracking={previewContributor ? getTracking(previewContributor.id) : null}
         canSaveToList={canWrite}
+        canUpdateProjectTracking={canWrite}
+        trackingSaving={previewContributor ? savingTrackingIds.has(previewContributor.id) : false}
+        onUpdateProjectTracking={updateProjectTracking}
         onOpenChange={(open) => {
           if (!open) setPreviewContributor(null)
         }}
