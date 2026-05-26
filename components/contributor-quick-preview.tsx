@@ -547,7 +547,10 @@ export function ContributorQuickPreview({
                       tracking={currentProjectTracking}
                       saving={trackingSaving}
                       onSave={async (updates) => {
-                        await onUpdateProjectTracking(display.id, updates)
+                        const result = await onUpdateProjectTracking(display.id, updates)
+                        if (result === null) {
+                          throw new Error("Outreach details could not be saved. Please try again.")
+                        }
                       }}
                     />
                   ) : (

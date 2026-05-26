@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { CalendarClock, Loader2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { CalendarClock, Check, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -103,12 +103,15 @@ export function ProjectOutreachForm({
   saving?: boolean
   compact?: boolean
   nativeStatus?: boolean
-  onSave: (updates: ProjectTrackingUpdate) => Promise<void> | void
+  onSave: (updates: ProjectTrackingUpdate) => Promise<unknown> | unknown
 }) {
   const [status, setStatus] = useState<ProjectOutreachStatus>(tracking.status)
   const [notes, setNotes] = useState(tracking.notes ?? "")
   const [lastContactedAt, setLastContactedAt] = useState(tracking.lastContactedAt ?? "")
   const [nextFollowUpAt, setNextFollowUpAt] = useState(tracking.nextFollowUpAt ?? "")
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const resetSavedTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     setStatus(tracking.status)
@@ -116,6 +119,45 @@ export function ProjectOutreachForm({
     setLastContactedAt(tracking.lastContactedAt ?? "")
     setNextFollowUpAt(tracking.nextFollowUpAt ?? "")
   }, [tracking])
+
+  useEffect(() => {
+    return () => {
+      if (resetSavedTimerRef.current !== null) {
+        window.clearTimeout(resetSavedTimerRef.current)
+      }
+    }
+  }, [])
+
+  const isSaving = disabled || saving || saveState === "saving"
+  const showSaved = !isSaving && saveState === "saved"
+
+  async function handleSave() {
+    if (isSaving) return
+    setSaveError(null)
+    setSaveState("saving")
+    try {
+      const result = await onSave({
+        status,
+        notes: notes.trim() ? notes : null,
+        lastContactedAt: lastContactedAt || null,
+        nextFollowUpAt: nextFollowUpAt || null,
+      })
+      if (result === null || result === false) {
+        throw new Error("Save failed. Please try again.")
+      }
+      setSaveState("saved")
+      if (resetSavedTimerRef.current !== null) {
+        window.clearTimeout(resetSavedTimerRef.current)
+      }
+      resetSavedTimerRef.current = window.setTimeout(() => {
+        setSaveState("idle")
+        resetSavedTimerRef.current = null
+      }, 1600)
+    } catch (error) {
+      setSaveState("idle")
+      setSaveError(error instanceof Error && error.message ? error.message : "Save failed. Please try again.")
+    }
+  }
 
   return (
     <div className={compact ? "space-y-3" : "space-y-4"}>
@@ -184,20 +226,32 @@ export function ProjectOutreachForm({
       </div>
       <Button
         type="button"
-        onClick={() =>
-          onSave({
-            status,
-            notes: notes.trim() ? notes : null,
-            lastContactedAt: lastContactedAt || null,
-            nextFollowUpAt: nextFollowUpAt || null,
-          })
-        }
-        disabled={disabled || saving}
+        onClick={handleSave}
+        disabled={isSaving}
         className={compact ? "w-full" : ""}
       >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
-        Save Outreach
+        {isSaving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Saving...
+          </>
+        ) : showSaved ? (
+          <>
+            <Check className="h-4 w-4" />
+            Saved
+          </>
+        ) : (
+          <>
+            <CalendarClock className="h-4 w-4" />
+            Save Outreach
+          </>
+        )}
       </Button>
+      {saveError && (
+        <p className="text-xs font-medium text-rose-700">
+          {saveError}
+        </p>
+      )}
     </div>
   )
 }
