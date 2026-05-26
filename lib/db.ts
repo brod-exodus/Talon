@@ -1275,7 +1275,7 @@ export type ProjectContributorTracking = {
   updatedAt: string
 }
 
-export type ProjectFollowUpQueueItem = {
+export type ProjectPipelineItem = {
   tracking: ProjectContributorTracking
   contributor: {
     id: string
@@ -1298,6 +1298,8 @@ export type ProjectFollowUpQueueItem = {
     name: string
   }
 }
+
+export type ProjectFollowUpQueueItem = ProjectPipelineItem
 
 type ContributorProfileScrapeLink = {
   scrape_id: string
@@ -1924,6 +1926,73 @@ function toProjectContributorTracking(row: ProjectContributorTrackingRow): Proje
   }
 }
 
+async function hydrateProjectTrackingItems(
+  tracking: ProjectContributorTracking[],
+  teamId: string
+): Promise<ProjectPipelineItem[]> {
+  if (tracking.length === 0) return []
+
+  const contributorIds = Array.from(new Set(tracking.map((item) => item.contributorId)))
+  const projectIds = Array.from(new Set(tracking.map((item) => item.projectId)))
+
+  const [contributorResult, projectResult] = await Promise.all([
+    supabaseAdmin
+      .from("contributors")
+      .select("id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website")
+      .eq("team_id", teamId)
+      .in("id", contributorIds),
+    supabaseAdmin
+      .from("ecosystems")
+      .select("id, name")
+      .eq("team_id", teamId)
+      .in("id", projectIds),
+  ])
+  if (contributorResult.error) throw contributorResult.error
+  if (projectResult.error) throw projectResult.error
+
+  const contributorsById = new Map<string, ContributorRow>()
+  for (const contributor of (contributorResult.data ?? []) as ContributorRow[]) {
+    contributorsById.set(contributor.id, contributor)
+  }
+
+  const projectsById = new Map<string, { id: string; name: string }>()
+  for (const project of (projectResult.data ?? []) as Array<{ id: string; name: string }>) {
+    projectsById.set(project.id, project)
+  }
+
+  const items: ProjectPipelineItem[] = []
+  for (const item of tracking) {
+    const contributor = contributorsById.get(item.contributorId)
+    const project = projectsById.get(item.projectId)
+    if (!contributor || !project) continue
+    items.push({
+      tracking: item,
+      contributor: {
+        id: contributor.id,
+        username: contributor.github_username,
+        name: contributor.name ?? contributor.github_username,
+        avatar: contributor.avatar_url ?? "",
+        bio: contributor.bio,
+        location: contributor.location,
+        company: contributor.company,
+        contacts: {
+          email: contributor.email ?? undefined,
+          twitter: contributor.twitter ?? undefined,
+          linkedin: contributor.linkedin ?? undefined,
+          website: contributor.website ?? undefined,
+          github: `https://github.com/${contributor.github_username}`,
+        },
+      },
+      project: {
+        id: project.id,
+        name: project.name,
+      },
+    })
+  }
+
+  return items
+}
+
 async function assertProjectContributorScope(
   ecosystemId: string,
   contributorId: string,
@@ -2032,67 +2101,20 @@ export async function getDueProjectFollowUps(
   if (error) throw error
 
   const tracking = ((data ?? []) as ProjectContributorTrackingRow[]).map(toProjectContributorTracking)
-  if (tracking.length === 0) return []
+  return hydrateProjectTrackingItems(tracking, resolvedTeamId)
+}
 
-  const contributorIds = Array.from(new Set(tracking.map((item) => item.contributorId)))
-  const projectIds = Array.from(new Set(tracking.map((item) => item.projectId)))
+export async function getProjectPipelineItems(teamId?: string): Promise<ProjectPipelineItem[]> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("project_contributor_tracking")
+    .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+    .eq("team_id", resolvedTeamId)
+    .order("updated_at", { ascending: false })
+  if (error) throw error
 
-  const [contributorResult, projectResult] = await Promise.all([
-    supabaseAdmin
-      .from("contributors")
-      .select("id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website")
-      .eq("team_id", resolvedTeamId)
-      .in("id", contributorIds),
-    supabaseAdmin
-      .from("ecosystems")
-      .select("id, name")
-      .eq("team_id", resolvedTeamId)
-      .in("id", projectIds),
-  ])
-  if (contributorResult.error) throw contributorResult.error
-  if (projectResult.error) throw projectResult.error
-
-  const contributorsById = new Map<string, ContributorRow>()
-  for (const contributor of (contributorResult.data ?? []) as ContributorRow[]) {
-    contributorsById.set(contributor.id, contributor)
-  }
-
-  const projectsById = new Map<string, { id: string; name: string }>()
-  for (const project of (projectResult.data ?? []) as Array<{ id: string; name: string }>) {
-    projectsById.set(project.id, project)
-  }
-
-  const followUps: ProjectFollowUpQueueItem[] = []
-  for (const item of tracking) {
-    const contributor = contributorsById.get(item.contributorId)
-    const project = projectsById.get(item.projectId)
-    if (!contributor || !project) continue
-    followUps.push({
-      tracking: item,
-      contributor: {
-        id: contributor.id,
-        username: contributor.github_username,
-        name: contributor.name ?? contributor.github_username,
-        avatar: contributor.avatar_url ?? "",
-        bio: contributor.bio,
-        location: contributor.location,
-        company: contributor.company,
-        contacts: {
-          email: contributor.email ?? undefined,
-          twitter: contributor.twitter ?? undefined,
-          linkedin: contributor.linkedin ?? undefined,
-          website: contributor.website ?? undefined,
-          github: `https://github.com/${contributor.github_username}`,
-        },
-      },
-      project: {
-        id: project.id,
-        name: project.name,
-      },
-    })
-  }
-
-  return followUps
+  const tracking = ((data ?? []) as ProjectContributorTrackingRow[]).map(toProjectContributorTracking)
+  return hydrateProjectTrackingItems(tracking, resolvedTeamId)
 }
 
 export async function getEcosystemContributors(

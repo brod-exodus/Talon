@@ -2,19 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Archive, CalendarClock, CheckCircle2, Loader2, RefreshCw } from "lucide-react"
+import { CalendarClock, Loader2, RefreshCw } from "lucide-react"
 import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
 import {
   ProjectOutreachBadge,
   type ProjectContributorTracking,
-  type ProjectOutreachStatus,
-  type ProjectTrackingUpdate,
 } from "@/components/project-outreach"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useToast } from "@/hooks/use-toast"
-import { useAuthPermissions } from "@/lib/client-permissions"
 
 type FollowUpQueueItem = {
   tracking: ProjectContributorTracking
@@ -42,12 +38,6 @@ type FollowUpQueueItem = {
 
 function todayString() {
   return new Date().toISOString().slice(0, 10)
-}
-
-function addDays(days: number) {
-  const date = new Date()
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
 }
 
 function formatDate(date: string | null) {
@@ -83,12 +73,9 @@ function toPreviewSummary(item: FollowUpQueueItem): ContributorPreviewSummary {
 }
 
 export function FollowUpQueue() {
-  const { canWrite } = useAuthPermissions()
-  const { toast } = useToast()
   const [followUps, setFollowUps] = useState<FollowUpQueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<FollowUpQueueItem | null>(null)
 
   const loadFollowUps = useCallback(async () => {
@@ -117,65 +104,7 @@ export function FollowUpQueue() {
     if (previewItem) byId.set(previewItem.project.id, previewItem.project)
     return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [followUps, previewItem])
-
-  async function updateTracking(item: FollowUpQueueItem, updates: ProjectTrackingUpdate) {
-    if (!canWrite) return null
-    setSavingIds((prev) => new Set(prev).add(item.tracking.id))
-    setError(null)
-    try {
-      const response = await fetch(`/api/ecosystems/${item.project.id}/tracking`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contributorId: item.contributor.id, ...updates }),
-      })
-      const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error || "Follow-up could not be updated")
-      const tracking = data.tracking as ProjectContributorTracking
-      const nextItem = { ...item, tracking }
-      const remainsDue =
-        Boolean(tracking.nextFollowUpAt) &&
-        tracking.nextFollowUpAt! <= todayString() &&
-        tracking.status !== "archived" &&
-        tracking.status !== "rejected"
-
-      setFollowUps((prev) =>
-        remainsDue
-          ? prev.map((current) => (current.tracking.id === item.tracking.id ? nextItem : current))
-          : prev.filter((current) => current.tracking.id !== item.tracking.id)
-      )
-      setPreviewItem((current) => (current?.tracking.id === item.tracking.id ? nextItem : current))
-      return tracking
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Follow-up could not be updated"
-      setError(message)
-      toast({ title: "Could not update follow-up", description: message, variant: "destructive" })
-      return null
-    } finally {
-      setSavingIds((prev) => {
-        const next = new Set(prev)
-        next.delete(item.tracking.id)
-        return next
-      })
-    }
-  }
-
-  async function markFollowedUp(item: FollowUpQueueItem) {
-    const tracking = await updateTracking(item, {
-      lastContactedAt: todayString(),
-      nextFollowUpAt: null,
-    })
-    if (tracking) toast({ title: "Follow-up cleared", description: `${item.contributor.name} was marked followed up.` })
-  }
-
-  async function snooze(item: FollowUpQueueItem, days: number) {
-    const tracking = await updateTracking(item, { nextFollowUpAt: addDays(days) })
-    if (tracking) toast({ title: "Follow-up snoozed", description: `${item.contributor.name} is due ${formatDate(tracking.nextFollowUpAt)}.` })
-  }
-
-  async function archive(item: FollowUpQueueItem) {
-    const tracking = await updateTracking(item, { status: "archived" as ProjectOutreachStatus })
-    if (tracking) toast({ title: "Contributor archived", description: `${item.contributor.name} was archived for this Project.` })
-  }
+  const previewItems = followUps.slice(0, 3)
 
   return (
     <>
@@ -185,13 +114,23 @@ export function FollowUpQueue() {
             <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Outreach</p>
             <CardTitle className="mt-1 flex items-center gap-2 text-2xl font-extrabold">
               <CalendarClock className="h-5 w-5 text-primary" />
-              Follow-Up Queue
+              Follow-Ups Due
             </CardTitle>
+            {!loading && (
+              <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                {followUps.length} due today or overdue
+              </p>
+            )}
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={loadFollowUps} disabled={loading} className="bg-white/70">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={loadFollowUps} disabled={loading} className="bg-white/70">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/pipeline">View Pipeline</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {error && (
@@ -211,9 +150,7 @@ export function FollowUpQueue() {
             </div>
           ) : (
             <div className="space-y-3">
-              {followUps.map((item) => {
-                const saving = savingIds.has(item.tracking.id)
-                return (
+              {previewItems.map((item) => (
                   <div
                     key={item.tracking.id}
                     role="button"
@@ -261,28 +198,17 @@ export function FollowUpQueue() {
                         </div>
                       </div>
 
-                      {canWrite && (
-                        <div className="flex flex-wrap gap-2 lg:justify-end" onClick={(event) => event.stopPropagation()}>
-                          <Button type="button" size="sm" onClick={() => markFollowedUp(item)} disabled={saving}>
-                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                            Mark Followed Up
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => snooze(item, 3)} disabled={saving} className="bg-white/80">
-                            Snooze 3 days
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => snooze(item, 7)} disabled={saving} className="bg-white/80">
-                            Snooze 1 week
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => archive(item)} disabled={saving} className="bg-white/80">
-                            <Archive className="h-4 w-4" />
-                            Archive
-                          </Button>
-                        </div>
-                      )}
+                      <Button asChild size="sm" variant="outline" className="w-fit bg-white/80" onClick={(event) => event.stopPropagation()}>
+                        <Link href="/pipeline">Work in Pipeline</Link>
+                      </Button>
                     </div>
                   </div>
-                )
-              })}
+                ))}
+              {followUps.length > previewItems.length && (
+                <Button asChild variant="outline" className="w-full bg-white/80">
+                  <Link href="/pipeline">View all {followUps.length} follow-ups</Link>
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
@@ -297,13 +223,8 @@ export function FollowUpQueue() {
         currentProject={previewItem?.project ?? null}
         currentProjectTracking={previewItem?.tracking ?? null}
         projectOptions={projectOptions}
-        canSaveToList={canWrite}
-        canUpdateProjectTracking={canWrite}
-        trackingSaving={previewItem ? savingIds.has(previewItem.tracking.id) : false}
-        onUpdateProjectTracking={async (contributorId, updates) => {
-          if (!previewItem || contributorId !== previewItem.contributor.id) return null
-          return updateTracking(previewItem, updates)
-        }}
+        canSaveToList={false}
+        canUpdateProjectTracking={false}
       />
     </>
   )
