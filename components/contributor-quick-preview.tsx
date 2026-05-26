@@ -5,6 +5,7 @@ import Link from "next/link"
 import {
   Building2,
   BookmarkPlus,
+  Check,
   Copy,
   FolderKanban,
   Github,
@@ -98,6 +99,7 @@ type ProjectListSummary = {
   projectId: string
   name: string
   contributorCount: number
+  contributorIds: string[]
 }
 
 function XIcon({ className }: { className?: string }) {
@@ -230,7 +232,9 @@ export function ContributorQuickPreview({
         if (cancelled) return
         const lists = Array.isArray(data?.lists) ? data.lists : []
         setProjectLists(lists)
-        setSelectedListId((current) => (current && lists.some((list: ProjectListSummary) => list.id === current) ? current : lists[0]?.id ?? ""))
+        setSelectedListId((current) =>
+          current && lists.some((list: ProjectListSummary) => list.id === current) ? current : ""
+        )
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return
         if (!cancelled) {
@@ -285,6 +289,13 @@ export function ContributorQuickPreview({
   }, [contributor?.stats, profile, projects.length, totalContributions])
   const skills = contributor?.skills ?? []
   const email = hasValue(display.contacts.email) ? display.contacts.email.trim() : ""
+  const selectedList = useMemo(
+    () => projectLists.find((list) => list.id === selectedListId) ?? null,
+    [projectLists, selectedListId]
+  )
+  const selectedListHasContributor = Boolean(
+    selectedList && display.id && selectedList.contributorIds.includes(display.id)
+  )
 
   async function copyEmail() {
     if (!email) return
@@ -318,6 +329,13 @@ export function ContributorQuickPreview({
 
   async function saveToList() {
     if (!display.id || !selectedProjectId || !selectedListId) return
+    if (selectedListHasContributor) {
+      toast({
+        title: "Already saved",
+        description: `${display.name} is already in ${selectedList?.name ?? "that list"}.`,
+      })
+      return
+    }
     setListSaving(true)
     setListError(null)
     try {
@@ -452,12 +470,17 @@ export function ContributorQuickPreview({
                         ) : projectLists.length > 0 ? (
                           <Select value={selectedListId || undefined} onValueChange={setSelectedListId}>
                             <SelectTrigger className="w-full bg-white/80">
-                              <SelectValue placeholder="Choose a list" />
+                              <SelectValue placeholder="Save to list..." />
                             </SelectTrigger>
                             <SelectContent>
                               {projectLists.map((list) => (
                                 <SelectItem key={list.id} value={list.id}>
-                                  {list.name} ({list.contributorCount})
+                                  <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                                    <span className="truncate">{list.name}</span>
+                                    {display.id && list.contributorIds.includes(display.id) && (
+                                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                                    )}
+                                  </div>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -491,11 +514,11 @@ export function ContributorQuickPreview({
                       <Button
                         type="button"
                         onClick={saveToList}
-                        disabled={listSaving || !selectedListId}
+                        disabled={listSaving || !selectedListId || selectedListHasContributor}
                         className="w-full"
                       >
                         {listSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
-                        Save Contributor
+                        {selectedListHasContributor ? "Already in list" : "Save Contributor"}
                       </Button>
                     </>
                   )}
