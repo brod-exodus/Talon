@@ -16,6 +16,12 @@ import {
   MapPin,
   Plus,
 } from "lucide-react"
+import {
+  ProjectOutreachBadge,
+  ProjectOutreachForm,
+  type ProjectContributorTracking,
+  type ProjectTrackingUpdate,
+} from "@/components/project-outreach"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -79,8 +85,12 @@ type ContributorQuickPreviewProps = {
   contributor: ContributorPreviewSummary | null
   onOpenChange: (open: boolean) => void
   currentProject?: { id: string; name: string } | null
+  currentProjectTracking?: ProjectContributorTracking | null
   projectOptions?: Array<{ id: string; name: string }>
   canSaveToList?: boolean
+  canUpdateProjectTracking?: boolean
+  trackingSaving?: boolean
+  onUpdateProjectTracking?: (contributorId: string, updates: ProjectTrackingUpdate) => Promise<ProjectContributorTracking | null> | ProjectContributorTracking | null | void
 }
 
 type ProjectListSummary = {
@@ -120,8 +130,12 @@ export function ContributorQuickPreview({
   contributor,
   onOpenChange,
   currentProject = null,
+  currentProjectTracking = null,
   projectOptions = [],
   canSaveToList = false,
+  canUpdateProjectTracking = false,
+  trackingSaving = false,
+  onUpdateProjectTracking,
 }: ContributorQuickPreviewProps) {
   const { toast } = useToast()
   const [profile, setProfile] = useState<ContributorPreviewProfile | null>(null)
@@ -489,6 +503,34 @@ export function ContributorQuickPreview({
                   {listError && (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
                       {listError}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {currentProject && currentProjectTracking && (
+              <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
+                <div className="flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4 text-primary" />
+                  <h4 className="text-sm font-extrabold text-foreground">Project outreach</h4>
+                </div>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                  Tracking for {currentProject.name}
+                </p>
+                <div className="mt-4">
+                  {canUpdateProjectTracking && onUpdateProjectTracking ? (
+                    <ProjectOutreachForm
+                      tracking={currentProjectTracking}
+                      saving={trackingSaving}
+                      onSave={async (updates) => {
+                        await onUpdateProjectTracking(display.id, updates)
+                      }}
+                    />
+                  ) : (
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                      <ProjectOutreachBadge status={currentProjectTracking.status} />
+                      <p>{currentProjectTracking.notes || "No project outreach notes yet."}</p>
                     </div>
                   )}
                 </div>
