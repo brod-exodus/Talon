@@ -7,7 +7,6 @@ import {
   BookmarkPlus,
   Check,
   Copy,
-  CheckCircle2,
   FolderKanban,
   Github,
   GitBranch,
@@ -151,8 +150,6 @@ export function ContributorQuickPreview({
   const [listsLoading, setListsLoading] = useState(false)
   const [listSaving, setListSaving] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-  const [outreachSavedAt, setOutreachSavedAt] = useState<Date | null>(null)
-  const [outreachSaveError, setOutreachSaveError] = useState<string | null>(null)
 
   const projectChoices = useMemo(() => {
     const byId = new Map<string, { id: string; name: string }>()
@@ -204,8 +201,6 @@ export function ContributorQuickPreview({
       setSelectedListId("")
       setNewListName("")
       setListError(null)
-      setOutreachSavedAt(null)
-      setOutreachSaveError(null)
     }
   }, [open])
 
@@ -548,54 +543,16 @@ export function ContributorQuickPreview({
                 </p>
                 <div className="mt-4">
                   {canUpdateProjectTracking && onUpdateProjectTracking ? (
-                    <div className="space-y-3">
-                      <ProjectOutreachForm
-                        tracking={currentProjectTracking}
-                        saving={trackingSaving}
-                        onSave={async (updates) => {
-                          setOutreachSaveError(null)
-                          try {
-                            const result = await onUpdateProjectTracking(display.id, updates)
-                            if (result === null) {
-                              const message = "Outreach details could not be saved. Please try again."
-                              setOutreachSaveError(message)
-                              toast({
-                                title: "Save failed",
-                                description: message,
-                                variant: "destructive",
-                              })
-                              return
-                            }
-                            setOutreachSavedAt(new Date())
-                            toast({
-                              title: "Outreach saved",
-                              description: "Notes and follow-up details were updated.",
-                            })
-                          } catch (error) {
-                            const message =
-                              error instanceof Error && error.message.trim()
-                                ? error.message
-                                : "Outreach details could not be saved. Please try again."
-                            setOutreachSaveError(message)
-                            toast({
-                              title: "Save failed",
-                              description: message,
-                              variant: "destructive",
-                            })
-                          }
-                        }}
-                      />
-                      {outreachSaveError ? (
-                        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">
-                          {outreachSaveError}
-                        </div>
-                      ) : outreachSavedAt ? (
-                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Saved just now
-                        </div>
-                      ) : null}
-                    </div>
+                    <ProjectOutreachForm
+                      tracking={currentProjectTracking}
+                      saving={trackingSaving}
+                      onSave={async (updates) => {
+                        const result = await onUpdateProjectTracking(display.id, updates)
+                        if (result === null) {
+                          throw new Error("Outreach details could not be saved. Please try again.")
+                        }
+                      }}
+                    />
                   ) : (
                     <div className="space-y-3 text-sm text-muted-foreground">
                       <ProjectOutreachBadge status={currentProjectTracking.status} />
