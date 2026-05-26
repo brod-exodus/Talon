@@ -267,15 +267,39 @@ export default function EcosystemDetailPage() {
     setTrackingLoading(true)
     setTrackingError(null)
     try {
-      const response = await fetch(`/api/ecosystems/${id}/tracking`, { cache: "no-store" })
+      const endpoint = `/api/ecosystems/${id}/tracking`
+      const response = await fetch(endpoint, { cache: "no-store" })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error || "Failed to fetch outreach tracking")
+      if (!response.ok) {
+        console.error("[project-tracking] API response failed", {
+          endpoint,
+          method: "GET",
+          status: response.status,
+          responseBody: data,
+        })
+        throw new Error(data?.error || "Project tracking could not load")
+      }
       const tracking = Array.isArray(data?.tracking) ? (data.tracking as ProjectContributorTracking[]) : []
       setTrackingByContributorId(
         Object.fromEntries(tracking.map((item) => [item.contributorId, item]))
       )
+      if (data?.warning) {
+        console.warn("[project-tracking] GET warning", {
+          endpoint,
+          method: "GET",
+          code: data?.code,
+          warning: data.warning,
+        })
+        setTrackingError(data.warning)
+      }
     } catch (error) {
-      setTrackingError(error instanceof Error ? error.message : "Failed to fetch outreach tracking")
+      console.error("[project-tracking] fetch failed", {
+        endpoint: `/api/ecosystems/${id}/tracking`,
+        method: "GET",
+        projectId: id,
+        error,
+      })
+      setTrackingError(error instanceof Error ? error.message : "Project tracking could not load")
       setTrackingByContributorId({})
     } finally {
       setTrackingLoading(false)

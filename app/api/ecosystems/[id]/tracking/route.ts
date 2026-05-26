@@ -15,7 +15,14 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
-function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
+type ProjectTrackingDbIssue = {
+  error: string
+  code: string
+  status: number
+  allowFetchFallback?: boolean
+}
+
+function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
   const code = error && typeof error === "object" && "code" in error ? String(error.code) : ""
   const message = error instanceof Error ? error.message : ""
   const detail = error && typeof error === "object" && "details" in error ? String(error.details) : ""
@@ -23,23 +30,20 @@ function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
   const searchable = `${code} ${message} ${detail} ${hint}`.toLowerCase()
 
   if (code === "42703") {
-    return NextResponse.json(
-      {
-        error: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
-        code: "project_tracking_schema_outdated",
-      },
-      { status: 503 }
-    )
+    return {
+      error: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
+      code: "project_tracking_schema_outdated",
+      status: 503,
+      allowFetchFallback: true,
+    }
   }
 
   if (code === "42P10" || searchable.includes("unique") || searchable.includes("on conflict")) {
-    return NextResponse.json(
-      {
-        error: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
-        code: "project_tracking_unique_constraint_missing",
-      },
-      { status: 503 }
-    )
+    return {
+      error: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
+      code: "project_tracking_unique_constraint_missing",
+      status: 503,
+    }
   }
 
   if (
@@ -47,22 +51,50 @@ function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
     (searchable.includes("project_contributor_tracking") && searchable.includes("does not exist")) ||
     searchable.includes("could not find the table")
   ) {
+    return {
+      error: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.",
+      code: "project_tracking_migration_missing",
+      status: 503,
+      allowFetchFallback: true,
+    }
+  }
+
+  return null
+}
+
+function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
+  const issue = projectTrackingDbIssue(error)
+  if (issue) {
     return NextResponse.json(
       {
-        error: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.",
-        code: "project_tracking_migration_missing",
+        error: issue.error,
+        code: issue.code,
       },
-      { status: 503 }
+      { status: issue.status }
     )
   }
 
   return NextResponse.json(
     {
-      error: action === "fetch" ? "Failed to fetch project tracking" : "Failed to update project tracking",
+      error:
+        action === "fetch"
+          ? "Project tracking could not load. Check server logs for Supabase error details."
+          : "Failed to update project tracking",
       code: "project_tracking_request_failed",
     },
     { status: 500 }
   )
+}
+
+function projectTrackingFetchFallback(error: unknown) {
+  const issue = projectTrackingDbIssue(error)
+  if (!issue?.allowFetchFallback) return null
+
+  return NextResponse.json({
+    tracking: [],
+    warning: issue.error,
+    code: issue.code,
+  })
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -90,6 +122,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       details: error && typeof error === "object" && "details" in error ? error.details : undefined,
       hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
     })
+    const fallback = projectTrackingFetchFallback(error)
+    if (fallback) return fallback
     return projectTrackingDbError(error, "fetch")
   }
 }
