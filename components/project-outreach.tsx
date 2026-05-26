@@ -103,7 +103,7 @@ export function ProjectOutreachForm({
   saving?: boolean
   compact?: boolean
   nativeStatus?: boolean
-  onSave: (updates: ProjectTrackingUpdate) => Promise<void> | void
+  onSave: (updates: ProjectTrackingUpdate) => Promise<unknown> | unknown
 }) {
   const [status, setStatus] = useState<ProjectOutreachStatus>(tracking.status)
   const [notes, setNotes] = useState(tracking.notes ?? "")
@@ -136,12 +136,15 @@ export function ProjectOutreachForm({
     setSaveError(null)
     setSaveState("saving")
     try {
-      await onSave({
+      const result = await onSave({
         status,
         notes: notes.trim() ? notes : null,
         lastContactedAt: lastContactedAt || null,
         nextFollowUpAt: nextFollowUpAt || null,
       })
+      if (result === null || result === false) {
+        throw new Error("Save failed. Please try again.")
+      }
       setSaveState("saved")
       if (resetSavedTimerRef.current !== null) {
         window.clearTimeout(resetSavedTimerRef.current)

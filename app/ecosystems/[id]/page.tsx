@@ -1261,7 +1261,7 @@ export default function EcosystemDetailPage() {
                                     nativeStatus
                                     saving={trackingSaving}
                                     onSave={async (updates) => {
-                                      await updateProjectTracking(c.id, updates)
+                                      return updateProjectTracking(c.id, updates)
                                     }}
                                   />
                                 </div>
