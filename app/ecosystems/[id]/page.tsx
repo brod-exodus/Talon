@@ -1065,23 +1065,36 @@ export default function EcosystemDetailPage() {
                     : "No contributors match the current filters."}
                 </div>
               ) : (
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+              <table className="w-full min-w-[1120px] table-fixed text-sm">
+                <colgroup>
+                  <col className="w-12" />
+                  <col className="w-[25%]" />
+                  <col className="w-28" />
+                  <col className="w-[22%]" />
+                  <col className="w-28" />
+                  <col className="w-64" />
+                  <col className="w-28" />
+                  <col className="w-28" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-10">#</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contributor</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Repos</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden md:table-cell">Appears In</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden sm:table-cell">Contributions</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Outreach</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">Contact</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">#</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Contributor</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Repos</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Appears In</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Contrib.</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Outreach</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Contact</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredContributors.map((c, idx) => {
                     const tracking = getTracking(c.id)
                     const trackingSaving = savingTrackingIds.has(c.id)
+                    const visibleTargets = c.scrapeTargets.slice(0, 2)
+                    const hiddenTargetCount = Math.max(0, c.scrapeTargets.length - visibleTargets.length)
                     return (
                     <tr
                       key={c.id}
@@ -1123,44 +1136,44 @@ export default function EcosystemDetailPage() {
                       }}
                     >
                       {/* Rank */}
-                      <td className="px-3 py-3 text-xs font-mono text-muted-foreground text-right">
+                      <td className="px-4 py-4 text-right font-mono text-xs text-muted-foreground">
                         {idx + 1}
                       </td>
 
                       {/* Avatar + name */}
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2.5">
+                      <td className="px-4 py-4">
+                        <div className="flex min-w-0 items-center gap-3">
                           <Link
                             href={`/contributors/${c.id}`}
-                            className="flex min-w-0 items-center gap-2.5 rounded-xl transition-colors hover:text-primary"
+                            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl transition-colors hover:text-primary"
                             onClick={(event) => event.stopPropagation()}
                           >
                             <img
                               src={c.avatar || "/placeholder.svg?height=32&width=32"}
                               alt={c.name}
-                              className="w-8 h-8 rounded-full ring-1 ring-border shrink-0"
+                              className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-border"
                             />
                             <div className="min-w-0">
-                              <p className="font-medium text-foreground truncate">{c.name}</p>
-                              <p className="text-xs text-muted-foreground font-mono truncate">@{c.username}</p>
+                              <p className="truncate font-semibold text-foreground">{c.name}</p>
+                              <p className="truncate font-mono text-xs text-muted-foreground">@{c.username}</p>
                             </div>
                           </Link>
                           <a
                             href={`https://github.com/${c.username}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         </div>
                       </td>
 
                       {/* Scrape count badge */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
                             c.scrapeCount > 1
                               ? "bg-primary/15 text-primary border border-primary/30"
                               : "bg-muted text-muted-foreground border border-border"
@@ -1171,27 +1184,32 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Scrape target tags */}
-                      <td className="px-3 py-3 hidden md:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          {c.scrapeTargets.map((t) => (
+                      <td className="px-4 py-4">
+                        <div className="flex min-w-0 flex-wrap gap-1.5" title={c.scrapeTargets.join(", ")}>
+                          {visibleTargets.map((t) => (
                             <span
                               key={t}
-                              className="px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground font-mono border border-border"
+                              className="inline-flex max-w-[8.5rem] items-center rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
                             >
-                              {t}
+                              <span className="truncate">{t}</span>
                             </span>
                           ))}
+                          {hiddenTargetCount > 0 && (
+                            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-bold text-primary">
+                              +{hiddenTargetCount} more
+                            </span>
+                          )}
                         </div>
                       </td>
 
                       {/* Total contributions */}
-                      <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground hidden sm:table-cell">
+                      <td className="px-4 py-4 text-right font-mono text-xs text-muted-foreground">
                         {c.totalContributions.toLocaleString()}
                       </td>
 
                       {/* Outreach status */}
-                      <td className="px-3 py-3">
-                        <div className="flex min-w-36 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                      <td className="px-4 py-4">
+                        <div className="flex min-w-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                           {canWrite ? (
                             <Select
                               value={tracking.status}
@@ -1200,7 +1218,7 @@ export default function EcosystemDetailPage() {
                               }
                               disabled={trackingSaving || trackingLoading}
                             >
-                              <SelectTrigger className="h-8 w-40 bg-white/80 text-xs">
+                              <SelectTrigger className="h-8 w-40 shrink-0 bg-white/80 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1214,7 +1232,6 @@ export default function EcosystemDetailPage() {
                           ) : (
                             <ProjectOutreachBadge status={tracking.status} />
                           )}
-                          {canWrite && <ProjectOutreachBadge status={tracking.status} className="hidden xl:inline-flex" />}
                           {canWrite && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -1222,7 +1239,7 @@ export default function EcosystemDetailPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 bg-transparent text-xs"
+                                  className="h-8 shrink-0 bg-transparent text-xs"
                                   disabled={trackingSaving}
                                   onClick={(event) => event.stopPropagation()}
                                 >
@@ -1255,16 +1272,16 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Contact info */}
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-4">
+                        <div className="flex min-w-0 items-center gap-2">
                           {c.contacts.email?.trim() && (
                             <a
                               href={`mailto:${c.contacts.email}`}
                               title={c.contacts.email}
-                              className="text-muted-foreground hover:text-primary transition-colors"
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              <Mail className="w-3.5 h-3.5" />
+                              <Mail className="h-4 w-4" />
                             </a>
                           )}
                           {c.contacts.linkedin?.trim() && (
@@ -1273,10 +1290,10 @@ export default function EcosystemDetailPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title={c.contacts.linkedin}
-                              className="text-muted-foreground hover:text-primary transition-colors"
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              <Linkedin className="w-3.5 h-3.5" />
+                              <Linkedin className="h-4 w-4" />
                             </a>
                           )}
                           {c.contacts.twitter?.trim() && (
@@ -1285,10 +1302,10 @@ export default function EcosystemDetailPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title={`@${c.contacts.twitter}`}
-                              className="text-muted-foreground hover:text-primary transition-colors"
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              <XIcon className="w-3.5 h-3.5" />
+                              <XIcon className="h-4 w-4" />
                             </a>
                           )}
                           {c.contacts.website?.trim() && (
@@ -1297,15 +1314,21 @@ export default function EcosystemDetailPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title={c.contacts.website}
-                              className="text-muted-foreground hover:text-primary transition-colors"
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              <Globe className="w-3.5 h-3.5" />
+                              <Globe className="h-4 w-4" />
                             </a>
                           )}
                           {!c.contacts.email && !c.contacts.linkedin && !c.contacts.twitter && !c.contacts.website && (
                             <span className="text-xs text-muted-foreground/40">—</span>
                           )}
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-4">
+                        <div className="flex items-center" onClick={(event) => event.stopPropagation()}>
                           {canWrite && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -1313,7 +1336,7 @@ export default function EcosystemDetailPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="ml-2 h-7 bg-transparent text-xs"
+                                  className="h-8 shrink-0 whitespace-nowrap bg-transparent text-xs"
                                   disabled={savingContributorIds.has(c.id)}
                                   onClick={(event) => event.stopPropagation()}
                                 >
