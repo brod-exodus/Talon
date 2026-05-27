@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthPermissions } from "@/lib/client-permissions"
+import { reconcileActiveScrapePoll } from "@/lib/scrape-polling"
 
 type ScrapeJobSummary = {
   id: string
@@ -43,34 +44,44 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
   const { toast } = useToast()
-  // Track whether we had active scrapes on the previous poll so we can detect
-  // the non-empty → empty transition that signals a scrape just completed.
-  const hadScrapesRef = useRef(false)
+  const scrapesRef = useRef<ActiveScrape[]>([])
+  const onScrapeCompletedRef = useRef(onScrapeCompleted)
 
   useEffect(() => {
+    onScrapeCompletedRef.current = onScrapeCompleted
+  }, [onScrapeCompleted])
+
+  useEffect(() => {
+    let cancelled = false
+
     const fetchScrapes = async () => {
       try {
-        const response = await fetch("/api/scrapes")
+        const response = await fetch("/api/scrapes", { cache: "no-store" })
+        if (!response.ok) throw new Error(`Failed to fetch active scrapes (${response.status})`)
         const data = await response.json()
-        const active: ActiveScrape[] = data.active || []
-        setScrapes(active)
-
-        // Fire callback when the list goes from having items to empty.
-        if (hadScrapesRef.current && active.length === 0) {
-          onScrapeCompleted?.()
-        }
-        hadScrapesRef.current = active.length > 0
+        const result = reconcileActiveScrapePoll(scrapesRef.current, {
+          active: data.active,
+          completed: data.completed,
+          failed: data.failed,
+        })
+        if (cancelled) return
+        scrapesRef.current = result.active
+        setScrapes(result.active)
+        if (result.didComplete) onScrapeCompletedRef.current?.()
       } catch (error) {
         console.error("[v0] Failed to fetch scrapes:", error)
       } finally {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       }
     }
 
     fetchScrapes()
     const interval = setInterval(fetchScrapes, 2000)
-    return () => clearInterval(interval)
-  }, [onScrapeCompleted])
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
 
   const formatTimeAgo = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000)
