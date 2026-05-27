@@ -4,7 +4,6 @@ import { useRef, useCallback } from "react"
 import { Header } from "@/components/header"
 import { ScrapeForm } from "@/components/scrape-form"
 import { ActiveScrapes } from "@/components/active-scrapes"
-import { FollowUpQueue } from "@/components/follow-up-queue"
 import { RecentScrapes, type RecentScrapesHandle } from "@/components/recent-scrapes"
 
 export default function Home() {
@@ -38,7 +37,6 @@ export default function Home() {
 
           <div className="space-y-4 sm:space-y-6 xl:col-span-2">
             <ActiveScrapes onScrapeCompleted={handleScrapeCompleted} />
-            <FollowUpQueue />
             <RecentScrapes ref={recentScrapesRef} />
           </div>
         </div>
