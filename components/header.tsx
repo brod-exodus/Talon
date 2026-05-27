@@ -149,11 +149,11 @@ function TalonMark() {
       <Image
         src="/branding/talon-header-logo-cropped.png"
         alt="Talon"
-        width={190}
-        height={42}
+        width={320}
+        height={116}
         priority
         unoptimized
-        className="h-8 w-auto shrink-0 object-contain"
+        className="h-10 w-auto shrink-0 object-contain md:h-11"
       />
     </Link>
   )
