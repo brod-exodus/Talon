@@ -8,6 +8,7 @@ import {
   parseRateLimitResetMs,
   parseRetryAfterMs,
 } from "../lib/github.ts"
+import { normalizeGitHubRepositoryTarget, normalizeScrapeTarget } from "../lib/validation.ts"
 
 test("repositoryExists returns true for an accessible repository", async () => {
   const fetchImpl = async (url: string | URL | Request) => {
@@ -25,6 +26,35 @@ test("repositoryExists returns false for a missing repository", async () => {
   const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
 
   assert.equal(await client.repositoryExists("missing/repo"), false)
+})
+
+test("repository target normalization accepts owner repo and GitHub URL formats", () => {
+  assert.equal(normalizeGitHubRepositoryTarget("firedancer-io/firedancer"), "firedancer-io/firedancer")
+  assert.equal(
+    normalizeGitHubRepositoryTarget("https://github.com/firedancer-io/firedancer"),
+    "firedancer-io/firedancer"
+  )
+  assert.equal(normalizeGitHubRepositoryTarget("github.com/firedancer-io/firedancer"), "firedancer-io/firedancer")
+  assert.equal(normalizeGitHubRepositoryTarget("https://github.com/firedancer-io/firedancer.git"), "firedancer-io/firedancer")
+  assert.equal(normalizeScrapeTarget("repository", "https://github.com/firedancer-io/firedancer"), "firedancer-io/firedancer")
+})
+
+test("repository API calls use normalized owner and repo path", async () => {
+  const urls: string[] = []
+  const fetchImpl = async (url: string | URL | Request) => {
+    urls.push(String(url))
+    return new Response(JSON.stringify({ full_name: "firedancer-io/firedancer" }), { status: 200 })
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  assert.equal(await client.repositoryExists("https://github.com/firedancer-io/firedancer"), true)
+  assert.equal(await client.repositoryExists("github.com/firedancer-io/firedancer"), true)
+  assert.equal(await client.repositoryExists("firedancer-io/firedancer"), true)
+  assert.deepEqual(urls, [
+    "https://api.github.com/repos/firedancer-io/firedancer",
+    "https://api.github.com/repos/firedancer-io/firedancer",
+    "https://api.github.com/repos/firedancer-io/firedancer",
+  ])
 })
 
 test("organizationExists returns false for a missing organization", async () => {

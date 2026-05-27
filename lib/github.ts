@@ -1,4 +1,5 @@
 // GitHub API client with authentication for 5000 req/hour rate limit
+import { normalizeGitHubRepositoryTarget } from "./validation.ts"
 
 export type BioContacts = {
   email?: string
@@ -273,7 +274,11 @@ class GitHubClient {
   }
 
   private repoPath(repo: string): string {
-    return repo.split("/").map(encodeURIComponent).join("/")
+    const normalized = normalizeGitHubRepositoryTarget(repo)
+    if (!normalized) {
+      throw new GitHubApiError(`Invalid repository target "${repo}". Expected owner/repo.`)
+    }
+    return normalized.split("/").map(encodeURIComponent).join("/")
   }
 
   private async sleep(ms: number): Promise<void> {
@@ -294,6 +299,7 @@ class GitHubClient {
       const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs)
 
       try {
+        console.info("[github] request", { url })
         const response = await this.fetchImpl(url, {
           headers: this.headers(),
           redirect: "follow",

@@ -45,18 +45,60 @@ export function parseScrapeType(value: unknown): ScrapeType | null {
   return value === "organization" || value === "repository" ? value : null
 }
 
-export function normalizeScrapeTarget(type: ScrapeType, value: unknown): string | null {
+function githubPathSegments(value: string): string[] | null {
+  let target = value.trim()
+  if (!target) return null
+
+  if (/^https?:\/\//i.test(target) || /^github\.com\//i.test(target) || /^www\.github\.com\//i.test(target)) {
+    try {
+      const url = new URL(/^https?:\/\//i.test(target) ? target : `https://${target}`)
+      if (url.hostname !== "github.com" && url.hostname !== "www.github.com") return null
+      target = url.pathname
+    } catch {
+      return null
+    }
+  }
+
+  return target
+    .split(/[?#]/, 1)[0]
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean)
+}
+
+export function normalizeGitHubRepositoryTarget(value: unknown): string | null {
   if (typeof value !== "string") return null
-  const target = value.trim()
-  if (!target || target.length > 160) return null
-  if (type === "repository") return OWNER_REPO_RE.test(target) ? target : null
-  return OWNER_RE.test(target) ? target : null
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > 2048) return null
+
+  const segments = githubPathSegments(trimmed)
+  if (!segments || segments.length < 2) return null
+
+  const owner = segments[0]
+  const repo = segments[1].replace(/\.git$/i, "")
+  const normalized = `${owner}/${repo}`
+  return normalized.length <= 160 && OWNER_REPO_RE.test(normalized) ? normalized : null
+}
+
+export function normalizeGitHubOwnerTarget(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > 2048) return null
+
+  const segments = githubPathSegments(trimmed)
+  if (!segments || segments.length !== 1) return null
+
+  const owner = segments[0]
+  return owner.length <= 160 && OWNER_RE.test(owner) ? owner : null
+}
+
+export function normalizeScrapeTarget(type: ScrapeType, value: unknown): string | null {
+  if (type === "repository") return normalizeGitHubRepositoryTarget(value)
+  return normalizeGitHubOwnerTarget(value)
 }
 
 export function normalizeRepo(value: unknown): string | null {
-  if (typeof value !== "string") return null
-  const repo = value.trim()
-  return repo.length <= 160 && OWNER_REPO_RE.test(repo) ? repo : null
+  return normalizeGitHubRepositoryTarget(value)
 }
 
 export function normalizeUuid(value: unknown): string | null {

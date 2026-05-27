@@ -20,7 +20,7 @@ function githubTargetNotFoundResponse(type: "organization" | "repository", targe
   const label = type === "repository" ? "Repository" : "Organization"
   const guidance =
     type === "repository"
-      ? `We couldn't find "${target}" on GitHub. Check the spelling and make sure the format is owner/repo. If this is private, make sure your GitHub token has access.`
+      ? `Repository not found or not accessible. Check the owner/repo name or GitHub token permissions. We couldn't find "${target}" on GitHub.`
       : `We couldn't find "${target}" on GitHub. Check the organization spelling. If this is private, make sure your GitHub token has access.`
 
   return NextResponse.json(
