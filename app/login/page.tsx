@@ -50,7 +50,7 @@ export default function LoginPage() {
         <CardHeader>
           <div className="mb-2 flex flex-col items-start gap-2">
             <Image
-              src="/branding/talon-header-logo-cropped.png"
+              src="/talon-header-logo.png"
               alt="Talon"
               width={190}
               height={59}
