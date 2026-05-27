@@ -176,6 +176,72 @@
     background-size: 40px 40px;
   }
 
+  .genesis-ticker {
+    height: 2rem;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    border-right: 1px solid #30363d;
+    border-left: 1px solid #30363d;
+    border-top: 1px solid #30363d;
+    border-bottom: 1px solid #30363d;
+    border-radius: 0.5rem;
+    background: rgba(10, 14, 20, 0.95);
+    color: #8b949e;
+    font-family: var(--font-jetbrains);
+    font-size: 10px;
+    line-height: 2rem;
+    mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+  }
+
+  .genesis-ticker-track {
+    display: flex;
+    width: max-content;
+    min-width: 200%;
+    gap: 2.5rem;
+    opacity: 0.58;
+    animation: genesis-ticker-scroll 92s linear infinite;
+    will-change: transform;
+  }
+
+  .genesis-ticker:hover .genesis-ticker-track {
+    animation-play-state: paused;
+    opacity: 0.78;
+  }
+
+  .genesis-ticker-sequence {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 2.5rem;
+    white-space: nowrap;
+  }
+
+  .genesis-ticker-highlight {
+    color: rgba(34, 211, 238, 0.74);
+  }
+
+  @keyframes genesis-ticker-scroll {
+    from {
+      transform: translateX(0);
+    }
+
+    to {
+      transform: translateX(-33.333%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .genesis-ticker-track {
+      animation: none;
+      transform: none;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .genesis-ticker {
+      font-size: 11px;
+    }
+  }
+
   .rounded-xl,
   .rounded-2xl,
   .rounded-3xl {

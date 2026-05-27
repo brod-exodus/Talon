@@ -123,6 +123,14 @@ const SEARCH_GROUP_META = [
 const HEADER_ICON_TRIGGER_CLASS =
   "hidden h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:border-border data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
+const GENESIS_TICKER_SEGMENT = [
+  "00000000  04 ff ff 00 1d 01 04 45",
+  "00000010  54 68 65 20 54 69 6d 65",
+  "00000020  The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
+  "00000030  6d 65 72 6b 6c 65 72 6f",
+  "00000040  6f 74 20 7c 20 6e 6f 64 65",
+]
+
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
   if (seconds < 60) return "Just now"
@@ -156,6 +164,31 @@ function TalonMark() {
         className="h-10 w-auto shrink-0 object-contain md:h-11"
       />
     </Link>
+  )
+}
+
+function GenesisTicker() {
+  const tickerContent = (
+    <span className="genesis-ticker-sequence">
+      {GENESIS_TICKER_SEGMENT.map((item, index) => (
+        <span
+          key={`${item}-${index}`}
+          className={index === 2 ? "genesis-ticker-highlight" : undefined}
+        >
+          {item}
+        </span>
+      ))}
+    </span>
+  )
+
+  return (
+    <div className="genesis-ticker" aria-label="Bitcoin Genesis Block homage">
+      <div className="genesis-ticker-track">
+        {tickerContent}
+        {tickerContent}
+        {tickerContent}
+      </div>
+    </div>
   )
 }
 
@@ -1012,6 +1045,7 @@ export function Header() {
           })}
         </nav>
         <div className="mt-auto">
+          {pathname === "/" && <GenesisTicker />}
           {renderAccountMenu(
             <button
               type="button"
