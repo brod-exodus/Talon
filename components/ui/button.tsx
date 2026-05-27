@@ -5,19 +5,19 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-bold transition-all duration-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/35 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 aria-invalid:border-destructive",
+  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-all duration-200 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/35 focus-visible:ring-2 aria-invalid:ring-destructive/20 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
-        default: 'prism-gradient text-primary-foreground shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/25',
+        default: 'bg-primary text-primary-foreground shadow-none hover:bg-cyan-300',
         destructive:
-          'bg-destructive text-white shadow-lg shadow-rose-500/15 hover:bg-destructive/90 focus-visible:ring-destructive/20',
+          'bg-destructive text-white shadow-none hover:bg-destructive/90 focus-visible:ring-destructive/20',
         outline:
-          'border border-white/70 bg-white/70 text-foreground shadow-sm shadow-indigo-500/5 backdrop-blur-md hover:bg-white hover:text-primary',
+          'border border-border bg-card text-foreground shadow-none hover:border-primary/40 hover:bg-muted hover:text-primary',
         secondary:
-          'bg-indigo-50 text-primary hover:bg-indigo-100',
+          'border border-border bg-muted text-foreground hover:border-secondary/40 hover:bg-muted/80 hover:text-secondary',
         ghost:
-          'text-muted-foreground hover:bg-white/70 hover:text-primary',
+          'text-muted-foreground hover:bg-muted hover:text-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {

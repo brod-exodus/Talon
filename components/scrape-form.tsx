@@ -256,7 +256,7 @@ export function ScrapeForm() {
     <Card className="sticky top-24 overflow-hidden">
       <CardHeader>
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full prism-gradient text-white shadow-lg shadow-indigo-500/20">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary">
             <Rocket className="h-5 w-5" />
           </div>
           <div>
@@ -448,7 +448,6 @@ export function ScrapeForm() {
     </Card>
     <Dialog open={Boolean(invalidTargetError)} onOpenChange={(open) => !open && setInvalidTargetError(null)}>
       <DialogContent className="overflow-hidden border-primary/20 bg-card sm:max-w-md">
-        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full prism-gradient opacity-10 blur-3xl" />
         <DialogHeader className="relative gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
             <Search className="h-5 w-5" />
