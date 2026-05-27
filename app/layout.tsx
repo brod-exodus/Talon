@@ -31,8 +31,8 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <div className="flex-1">{children}</div>
         </Suspense>
-        <footer className="relative z-10 border-t border-white/60 bg-white/55 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:px-6 lg:px-8">
+        <footer className="relative z-10 border-t border-border bg-[#0a0e14]">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-1 px-4 py-4 font-mono text-[11px] text-muted-foreground sm:flex-row sm:px-6 lg:px-8">
             <span>© {new Date().getFullYear()} Talon</span>
             <span>Developed by Brodan White</span>
           </div>

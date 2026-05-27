@@ -67,13 +67,13 @@ export function getDefaultProjectTracking(projectId: string, contributorId: stri
 }
 
 function statusBadgeClass(status: ProjectOutreachStatus) {
-  if (status === "not_contacted") return "border-slate-200 bg-slate-50 text-slate-600"
-  if (status === "contacted") return "border-blue-100 bg-blue-50 text-blue-700"
-  if (status === "replied") return "border-violet-100 bg-violet-50 text-violet-700"
-  if (status === "interested") return "border-emerald-100 bg-emerald-50 text-emerald-700"
-  if (status === "interviewing") return "border-indigo-100 bg-indigo-50 text-indigo-700"
-  if (status === "rejected") return "border-rose-100 bg-rose-50 text-rose-700"
-  return "border-zinc-200 bg-zinc-50 text-zinc-600"
+  if (status === "not_contacted") return "border-border bg-muted text-muted-foreground"
+  if (status === "contacted") return "border-primary/25 bg-primary/10 text-primary"
+  if (status === "replied") return "border-secondary/25 bg-secondary/10 text-secondary"
+  if (status === "interested") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+  if (status === "interviewing") return "border-primary/35 bg-primary/15 text-primary"
+  if (status === "rejected") return "border-destructive/30 bg-destructive/10 text-destructive"
+  return "border-border bg-muted text-muted-foreground"
 }
 
 export function ProjectOutreachBadge({
@@ -169,7 +169,7 @@ export function ProjectOutreachForm({
               value={status}
               onChange={(event) => setStatus(event.target.value as ProjectOutreachStatus)}
               disabled={disabled}
-              className="h-10 w-full cursor-pointer rounded-full border border-white/70 bg-white/80 px-4 text-sm shadow-sm shadow-indigo-500/5 outline-none transition focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-10 w-full cursor-pointer rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none transition focus-visible:border-primary/70 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {PROJECT_OUTREACH_STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -179,7 +179,7 @@ export function ProjectOutreachForm({
             </select>
           ) : (
             <Select value={status} onValueChange={(value) => setStatus(value as ProjectOutreachStatus)} disabled={disabled}>
-              <SelectTrigger className="w-full bg-white/80">
+              <SelectTrigger className="w-full bg-background">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -199,7 +199,7 @@ export function ProjectOutreachForm({
             value={lastContactedAt}
             onChange={(event) => setLastContactedAt(event.target.value)}
             disabled={disabled}
-            className="bg-white/80"
+            className="bg-background"
           />
         </div>
         <div className="space-y-2">
@@ -209,7 +209,7 @@ export function ProjectOutreachForm({
             value={nextFollowUpAt}
             onChange={(event) => setNextFollowUpAt(event.target.value)}
             disabled={disabled}
-            className="bg-white/80"
+            className="bg-background"
           />
         </div>
       </div>
@@ -221,7 +221,7 @@ export function ProjectOutreachForm({
           disabled={disabled}
           maxLength={5000}
           placeholder="Add recruiter notes for this Project..."
-          className="min-h-24 w-full resize-y rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm shadow-sm shadow-indigo-500/5 outline-none transition focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-24 w-full resize-y rounded-lg border border-input bg-background px-3 py-3 text-sm shadow-none outline-none transition focus-visible:border-primary/70 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
       <Button

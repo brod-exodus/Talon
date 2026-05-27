@@ -223,9 +223,9 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
                       {Math.round(scrape.progress)}%
                     </motion.span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-indigo-100 overflow-hidden">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full prism-gradient"
+                      className="h-full rounded-full bg-primary"
                       style={{
                         width: `${Math.min(100, Math.max(0, scrape.progress))}%`,
                         transition: "width 0.5s ease-in-out",

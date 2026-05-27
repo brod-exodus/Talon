@@ -121,7 +121,7 @@ const SEARCH_GROUP_META = [
 ] as const
 
 const HEADER_ICON_TRIGGER_CLASS =
-  "hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
+  "hidden h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:border-border data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
@@ -193,7 +193,7 @@ function AccountAvatar({
   return (
     <span
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-indigo-50 text-xs font-extrabold text-primary ring-1 ring-indigo-100",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-xs font-extrabold text-primary",
         className
       )}
       aria-hidden="true"
@@ -499,7 +499,7 @@ export function Header() {
       <DropdownMenuTrigger asChild>
         {trigger}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="w-72 rounded-2xl border-white/70 bg-white/95 shadow-xl shadow-indigo-500/10 backdrop-blur-xl">
+      <DropdownMenuContent align={align} className="w-72 rounded-lg border-border bg-popover shadow-none">
         <DropdownMenuLabel className="flex min-w-0 items-center gap-3">
           <AccountAvatar me={me} identityLabel={identityLabel} className="h-10 w-10" />
           <span className="min-w-0 space-y-1">
@@ -534,7 +534,7 @@ export function Header() {
         <DropdownMenuTrigger asChild>
           <Button
             size="sm"
-            className="hidden gap-2 rounded-full shadow-lg shadow-indigo-500/15 lg:inline-flex"
+            className="hidden gap-2 lg:inline-flex"
             disabled={!canWrite}
           >
             <Plus className="h-4 w-4" />
@@ -543,7 +543,7 @@ export function Header() {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-56 rounded-2xl border-white/70 bg-white/95 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+          className="w-56 rounded-lg border-border bg-popover shadow-none"
         >
           <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
             Quick actions
@@ -589,9 +589,7 @@ export function Header() {
             }}
           >
             <Bell className="h-4 w-4" />
-            {activityEvents.length > 0 && (
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-white" />
-            )}
+            {activityEvents.length > 0 && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" />}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -601,7 +599,7 @@ export function Header() {
             event.preventDefault()
             activityOpenedByPointerRef.current = false
           }}
-          className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
+          className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
             <span className="text-sm font-extrabold text-foreground">Recent activity</span>
@@ -627,9 +625,9 @@ export function Header() {
                   <DropdownMenuItem
                     key={event.id}
                     onSelect={() => router.push(event.href)}
-                    className="cursor-pointer rounded-2xl p-3 focus:bg-indigo-50"
+                    className="cursor-pointer rounded-lg p-3 focus:bg-primary/10"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-primary">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -681,7 +679,7 @@ export function Header() {
             event.preventDefault()
             recentOpenedByPointerRef.current = false
           }}
-          className="w-96 rounded-3xl border-white/70 bg-white/95 p-2 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl"
+          className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
           <DropdownMenuLabel className="px-3 py-2 text-sm font-extrabold text-foreground">
             Recently viewed
@@ -700,9 +698,9 @@ export function Header() {
                   <DropdownMenuItem
                     key={`${item.type}-${item.id}`}
                     onSelect={() => router.push(item.href)}
-                    className="cursor-pointer rounded-2xl p-3 focus:bg-indigo-50"
+                    className="cursor-pointer rounded-lg p-3 focus:bg-primary/10"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-primary">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -727,7 +725,7 @@ export function Header() {
   }
 
   const headerAccountTrigger = (
-    <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2 bg-white/75" disabled={!me}>
+    <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2" disabled={!me}>
       <AccountAvatar me={me} identityLabel={identityLabel} className="h-5 w-5 text-[10px]" />
       <span className="min-w-0 truncate text-left">{identityLabel}</span>
       {roleLabel && (
@@ -740,7 +738,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-white/70 bg-white/80 shadow-lg shadow-indigo-500/5 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border bg-[#0a0e14]/90 backdrop-blur-md">
         <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
@@ -767,13 +765,13 @@ export function Header() {
                 onFocus={() => setSearchOpen(true)}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Search contributors, repos, projects..."
-                className="h-10 rounded-full border-white/70 bg-white/75 pl-10 pr-10 text-sm font-semibold shadow-sm shadow-indigo-500/5 backdrop-blur-xl placeholder:text-muted-foreground/70 focus-visible:ring-primary/20"
+                className="h-10 rounded-md pl-10 pr-10 font-mono text-sm placeholder:text-muted-foreground/70 focus-visible:ring-primary/20"
               />
               {searchLoading && (
                 <Loader2 className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
               )}
               {searchOpen && trimmedSearchQuery.length > 0 && (
-                <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-3xl border border-white/70 bg-white/95 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl">
+                <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-lg border border-border bg-popover shadow-none">
                   {trimmedSearchQuery.length < 2 ? (
                     <div className="px-4 py-5 text-sm font-semibold text-muted-foreground">
                       Type at least 2 characters to search Talon.
@@ -807,7 +805,7 @@ export function Header() {
                                   key={`${group.key}-${result.id}`}
                                   type="button"
                                   onClick={() => handleSearchNavigate(result.href)}
-                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-indigo-50/80 focus:bg-indigo-50/80 focus:outline-none"
+                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-primary/10 focus:bg-primary/10 focus:outline-none"
                                 >
                                   <span className="min-w-0">
                                     <span className="block truncate text-sm font-extrabold text-foreground">
@@ -819,7 +817,7 @@ export function Header() {
                                       </span>
                                     )}
                                   </span>
-                                  <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-primary shadow-sm shadow-indigo-500/10">
+                                  <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 font-mono text-[10px] font-bold text-primary">
                                     Open
                                   </span>
                                 </button>
@@ -838,7 +836,7 @@ export function Header() {
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
-                className="hidden items-center gap-2 rounded-full border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs font-bold text-amber-700 shadow-sm shadow-amber-500/10 transition-colors hover:bg-amber-100 sm:inline-flex"
+                className="hidden items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/15 sm:inline-flex"
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Ops attention
@@ -851,12 +849,12 @@ export function Header() {
           </div>
         </div>
         {mobileOpen && (
-          <nav className="grid gap-1 border-t border-white/70 bg-white/90 p-3 shadow-xl shadow-indigo-500/5 backdrop-blur-xl lg:hidden">
+          <nav className="grid gap-1 border-t border-border bg-[#0a0e14] p-3 lg:hidden">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
                 onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm font-bold text-amber-700"
+                className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-300"
               >
                 <AlertTriangle className="h-4 w-4" />
                 Ops attention
@@ -872,7 +870,7 @@ export function Header() {
                   onClick={() => setMobileOpen(false)}
                   className={cn(
                     "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all",
-                    active ? "prism-gradient text-white shadow-lg shadow-indigo-500/20" : "text-muted-foreground hover:bg-white hover:text-primary"
+                    active ? "border border-primary/30 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -885,13 +883,13 @@ export function Header() {
       </header>
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="rounded-3xl border-white/70 bg-white/95 shadow-2xl shadow-indigo-500/15 backdrop-blur-xl sm:max-w-md">
+        <DialogContent className="rounded-lg border-border bg-card shadow-none sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Profile</DialogTitle>
             <DialogDescription>Manage the account identity shown inside Talon.</DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
-            <div className="flex items-center gap-4 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm shadow-indigo-500/5">
+            <div className="flex items-center gap-4 rounded-lg border border-border bg-muted p-4">
               <AccountAvatar me={me} identityLabel={identityLabel} className="h-20 w-20 text-xl ring-2 ring-white" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-base font-extrabold text-foreground">{identityLabel}</p>
@@ -932,7 +930,7 @@ export function Header() {
                       variant="outline"
                       disabled={profileBusy || !displayNameInput.trim() || !displayNameChanged}
                       onClick={handleDisplayNameSave}
-                      className="bg-white/80"
+                      className="bg-background"
                     >
                       Save
                     </Button>
@@ -960,7 +958,7 @@ export function Header() {
                     variant="outline"
                     disabled={profileBusy || me?.actor !== "user" || !me.avatarUrl}
                     onClick={handleRemovePhoto}
-                    className="w-full bg-white/80 text-destructive hover:text-destructive"
+                    className="w-full text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
                     Remove photo
@@ -968,7 +966,7 @@ export function Header() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm font-semibold text-muted-foreground">
+              <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-semibold text-muted-foreground">
                 Profile photos are available for team user accounts.
               </div>
             )}
@@ -980,10 +978,10 @@ export function Header() {
         </DialogContent>
       </Dialog>
 
-      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-white/70 bg-white/55 p-4 shadow-xl shadow-indigo-500/5 backdrop-blur-xl lg:flex lg:flex-col">
-        <div className="mb-5 rounded-2xl border border-white/70 bg-white/65 p-4 shadow-sm shadow-indigo-500/5">
+      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-[#0a0e14] p-4 lg:flex lg:flex-col">
+        <div className="mb-5 rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full prism-gradient text-white shadow-lg shadow-indigo-500/20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary">
               <Sparkles className="h-4 w-4" />
             </div>
             <div>
@@ -1003,8 +1001,8 @@ export function Header() {
                 className={cn(
                   "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all duration-200",
                   active
-                    ? "bg-white text-primary shadow-md shadow-indigo-500/10 ring-1 ring-white/80"
-                    : "text-muted-foreground hover:translate-x-1 hover:bg-white/65 hover:text-primary"
+                    ? "border border-primary/30 bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:translate-x-1 hover:bg-muted hover:text-foreground"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -1018,7 +1016,7 @@ export function Header() {
             <button
               type="button"
               disabled={!me}
-              className="group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-white/70 bg-white/70 p-4 text-left shadow-md shadow-indigo-500/10 transition-all hover:bg-white hover:shadow-lg hover:shadow-indigo-500/15 disabled:pointer-events-none disabled:opacity-70"
+              className="group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-muted disabled:pointer-events-none disabled:opacity-70"
               aria-label="Open account menu"
             >
               <AccountAvatar me={me} identityLabel={identityLabel} className="h-11 w-11" />
