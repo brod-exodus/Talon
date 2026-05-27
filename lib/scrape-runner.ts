@@ -13,7 +13,7 @@ import {
   type ScrapeJobRow,
   type ScrapeContributorProfile,
 } from "@/lib/db"
-import { createGitHubClient, extractContactsFromBio, extractSocialContacts } from "@/lib/github"
+import { createGitHubClient, extractContactsFromBio, extractSocialContacts, GitHubApiError } from "@/lib/github"
 
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
@@ -47,10 +47,29 @@ async function hydrateContributor(
   login: string,
   contributions: number
 ): Promise<ScrapeContributorProfile> {
-  const [details, socialAccounts] = await Promise.all([
-    githubClient.getUserDetails(login),
-    githubClient.getUserSocialAccounts(login),
-  ])
+  let details
+  try {
+    details = await githubClient.getUserDetails(login)
+  } catch (error) {
+    if (error instanceof GitHubApiError && error.status === 404) {
+      console.warn("[scrape-runner] Skipping unavailable contributor profile details", {
+        login,
+        endpointPath: error.endpointPath,
+        url: error.url,
+        responseBody: error.responseBody,
+      })
+      return {
+        username: login,
+        name: login,
+        avatar: "",
+        contributions,
+        contacts: {},
+      }
+    }
+    throw error
+  }
+
+  const socialAccounts = await githubClient.getUserSocialAccounts(login)
   const bioContacts = extractContactsFromBio(details.bio)
   const blogContacts = extractContactsFromBio(details.blog)
   const fromSocial = extractSocialContacts(socialAccounts)

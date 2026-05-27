@@ -157,6 +157,14 @@ type GitHubResponsePayload<T> = {
   headers: Headers
 }
 
+type GitHubRequestLogContext = {
+  owner?: string
+  repo?: string
+  endpointPath: string
+  fullGitHubApiUrl: string
+  method: "GET"
+}
+
 type RetryDecision = {
   retryable: boolean
   delayMs: number
@@ -172,6 +180,8 @@ export class GitHubApiError extends Error {
   retryAfterMs?: number
   rateLimitResetAt?: Date
   responseBody?: string
+  url?: string
+  endpointPath?: string
 
   constructor(
     message: string,
@@ -180,6 +190,8 @@ export class GitHubApiError extends Error {
       retryAfterMs?: number
       rateLimitResetAt?: Date
       responseBody?: string
+      url?: string
+      endpointPath?: string
       cause?: unknown
     } = {}
   ) {
@@ -189,6 +201,8 @@ export class GitHubApiError extends Error {
     this.retryAfterMs = options.retryAfterMs
     this.rateLimitResetAt = options.rateLimitResetAt
     this.responseBody = options.responseBody
+    this.url = options.url
+    this.endpointPath = options.endpointPath
   }
 }
 
@@ -285,32 +299,64 @@ class GitHubClient {
     await new Promise((resolve) => setTimeout(resolve, ms))
   }
 
-  private requestErrorMessage(status: number, statusText: string, body: string): string {
+  private requestLogContext(url: string): GitHubRequestLogContext {
+    const parsed = new URL(url)
+    const segments = parsed.pathname.split("/").filter(Boolean).map(decodeURIComponent)
+    const repoIndex = segments[0] === "repos" && segments.length >= 3 ? 0 : -1
+
+    return {
+      owner: repoIndex === 0 ? segments[1] : undefined,
+      repo: repoIndex === 0 ? segments[2] : undefined,
+      endpointPath: `${parsed.pathname}${parsed.search}`,
+      fullGitHubApiUrl: parsed.toString(),
+      method: "GET",
+    }
+  }
+
+  private logGitHubResponse(context: GitHubRequestLogContext, statusCode: number, responseBody: string): void {
+    console.info("[github] response", {
+      owner: context.owner,
+      repo: context.repo,
+      endpointPath: context.endpointPath,
+      fullGitHubApiUrl: context.fullGitHubApiUrl,
+      method: context.method,
+      statusCode,
+      responseBody,
+    })
+  }
+
+  private requestErrorMessage(status: number, statusText: string, body: string, context: GitHubRequestLogContext): string {
     const cleanedBody = body.trim().replace(/\s+/g, " ")
     const detail = cleanedBody ? ` - ${cleanedBody.slice(0, 500)}` : ""
-    return `GitHub API error: ${status} ${statusText}${detail}`
+    return `GitHub API error: ${status} ${statusText} at ${context.method} ${context.fullGitHubApiUrl}${detail}`
   }
 
   private async fetchJson<T = unknown>(url: string): Promise<GitHubResponsePayload<T>> {
     let lastError: Error | null = null
+    const context = this.requestLogContext(url)
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs)
 
       try {
-        console.info("[github] request", { url })
+        console.info("[github] request", context)
         const response = await this.fetchImpl(url, {
           headers: this.headers(),
           redirect: "follow",
           signal: controller.signal,
         })
 
-        if (response.status === 204) return { data: [] as T, headers: response.headers }
+        if (response.status === 204) {
+          this.logGitHubResponse(context, response.status, "")
+          return { data: [] as T, headers: response.headers }
+        }
+
+        const text = await response.text()
+        this.logGitHubResponse(context, response.status, text)
 
         if (!response.ok) {
-          const body = await response.text()
-          const decision = getGitHubRetryDecision(response.status, response.headers, body, attempt)
+          const decision = getGitHubRetryDecision(response.status, response.headers, text, attempt)
           const canRetry = attempt < this.maxRetries && decision.retryable && decision.delayMs <= this.maxRetryDelayMs
 
           if (canRetry) {
@@ -321,18 +367,19 @@ class GitHubClient {
           const resetMs = parseRateLimitResetMs(response.headers.get("x-ratelimit-reset"))
           const retryAfterMs = decision.retryable ? decision.delayMs : resetMs ?? undefined
           const resetAt = resetMs !== null ? new Date(Date.now() + resetMs) : undefined
-          throw new GitHubApiError(this.requestErrorMessage(response.status, response.statusText, body), {
+          throw new GitHubApiError(this.requestErrorMessage(response.status, response.statusText, text, context), {
             status: response.status,
             retryAfterMs,
             rateLimitResetAt: resetAt,
-            responseBody: body,
+            responseBody: text,
+            url: context.fullGitHubApiUrl,
+            endpointPath: context.endpointPath,
           })
         }
 
         const contentLength = response.headers.get("content-length")
         if (contentLength === "0") return { data: [] as T, headers: response.headers }
 
-        const text = await response.text()
         if (!text.trim()) return { data: [] as T, headers: response.headers }
         return { data: JSON.parse(text) as T, headers: response.headers }
       } catch (error) {

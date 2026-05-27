@@ -4,6 +4,7 @@ import {
   createGitHubClient,
   extractContactsFromBio,
   extractSocialContacts,
+  GitHubApiError,
   getGitHubRetryDecision,
   parseRateLimitResetMs,
   parseRetryAfterMs,
@@ -55,6 +56,28 @@ test("repository API calls use normalized owner and repo path", async () => {
     "https://api.github.com/repos/firedancer-io/firedancer",
     "https://api.github.com/repos/firedancer-io/firedancer",
   ])
+})
+
+test("GitHub API errors include the exact failing endpoint", async () => {
+  const body = JSON.stringify({ message: "Not Found", status: "404" })
+  const fetchImpl = async (url: string | URL | Request) => {
+    assert.equal(String(url), "https://api.github.com/users/deleted-user")
+    return new Response(body, { status: 404, statusText: "Not Found" })
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 })
+
+  await assert.rejects(
+    () => client.getUserDetails("deleted-user"),
+    (error) => {
+      assert.ok(error instanceof GitHubApiError)
+      assert.equal(error.status, 404)
+      assert.equal(error.url, "https://api.github.com/users/deleted-user")
+      assert.equal(error.endpointPath, "/users/deleted-user")
+      assert.equal(error.responseBody, body)
+      assert.match(error.message, /GET https:\/\/api\.github\.com\/users\/deleted-user/)
+      return true
+    }
+  )
 })
 
 test("organizationExists returns false for a missing organization", async () => {
