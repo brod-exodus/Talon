@@ -68,8 +68,8 @@ const ROLE_LABELS = {
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: Home, isActive: (path: string) => path === "/" },
-  { href: "/watched", label: "Watched Repos", icon: Eye, isActive: (path: string) => path === "/watched" },
   { href: "/ecosystems", label: "Projects", icon: Layers, isActive: (path: string) => path.startsWith("/ecosystems") },
+  { href: "/watched", label: "Watched Repos", icon: Eye, isActive: (path: string) => path === "/watched" },
   { href: "/pipeline", label: "Pipeline", icon: CircleDot, isActive: (path: string) => path.startsWith("/pipeline") },
   { href: "/settings", label: "Settings", icon: Settings, isActive: (path: string) => path === "/settings" },
 ] as const
