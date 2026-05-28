@@ -88,9 +88,9 @@ test("organizationExists returns false for a missing organization", async () => 
   assert.equal(await client.organizationExists("missing-org"), false)
 })
 
-test("extractContactsFromBio pulls email, twitter, linkedin, and website", () => {
+test("extractContactsFromBio pulls email, explicit twitter links, linkedin, and website", () => {
   const result = extractContactsFromBio(
-    "Founder. Reach me at jane@example.com, follow @janedoe, linkedin.com/in/jane-doe https://janedoe.dev"
+    "Founder. Reach me at jane@example.com, https://x.com/janedoe, linkedin.com/in/jane-doe https://janedoe.dev"
   )
 
   assert.deepEqual(result, {
@@ -101,10 +101,15 @@ test("extractContactsFromBio pulls email, twitter, linkedin, and website", () =>
   })
 })
 
-test("extractContactsFromBio handles twitter handles followed by punctuation", () => {
-  const result = extractContactsFromBio("Maintainer, OSS builder. Find me at @janedoe.")
+test("extractContactsFromBio ignores bare GitHub bio mentions as twitter handles", () => {
+  const result = extractContactsFromBio("Maintainer, OSS builder. Working on @rpcpool and contributing to @project.")
 
-  assert.equal(result.twitter, "janedoe")
+  assert.equal(result.twitter, undefined)
+})
+
+test("extractContactsFromBio extracts explicit twitter and x profile URLs", () => {
+  assert.equal(extractContactsFromBio("Find me at https://x.com/someuser").twitter, "someuser")
+  assert.equal(extractContactsFromBio("Find me at https://twitter.com/someuser.").twitter, "someuser")
 })
 
 test("extractContactsFromBio ignores social URLs when selecting website", () => {

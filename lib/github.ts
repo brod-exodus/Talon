@@ -34,8 +34,12 @@ function normaliseLinkedIn(raw: string | null | undefined): string | null {
 
 /**
  * Extract contact information from a free-text string (bio, blog field, etc.).
- * Finds: emails, Twitter/X handles, LinkedIn URLs (always stored as full https:// URL),
+ * Finds: emails, explicit Twitter/X URLs, LinkedIn URLs (always stored as full https:// URL),
  * and other http/https URLs.
+ *
+ * Deliberately does not treat bare @mentions as Twitter/X handles. GitHub bios
+ * often mention companies/projects that way, and storing them as personal
+ * contact info creates false positives.
  */
 export function extractContactsFromBio(text: string | null | undefined): BioContacts {
   const result: BioContacts = {}
@@ -47,10 +51,10 @@ export function extractContactsFromBio(text: string | null | undefined): BioCont
   const emailMatch = s.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)
   if (emailMatch) result.email = emailMatch[0]
 
-  // Twitter/X: @handle or twitter.com/handle or x.com/handle
-  const twitterHandleMatch =
-    s.match(/(?:^|[\s(])@([a-zA-Z0-9_]{1,15})(?=[\s),.;!?]|$)/)?.[1] ??
-    s.match(/(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)/i)?.[1]
+  // Twitter/X: only explicit twitter.com or x.com profile URLs.
+  const twitterHandleMatch = s.match(
+    /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/(?!home\b|intent\b|share\b|search\b)([a-zA-Z0-9_]{1,15})(?=[\/\?\#\s),.;!?]|$)/i
+  )?.[1]
   if (twitterHandleMatch) result.twitter = twitterHandleMatch
 
   // LinkedIn — try every recognised pattern and normalise to full URL
@@ -91,7 +95,7 @@ export function extractSocialContacts(accounts: SocialAccount[]): {
     result.linkedin = normaliseLinkedIn(li.url) ?? li.url
   }
 
-  const tw = accounts.find((a) => a.provider === "twitter")
+  const tw = accounts.find((a) => a.provider === "twitter" || a.provider === "x" || /(?:twitter\.com|x\.com)\//i.test(a.url))
   if (tw?.url) {
     // Store just the handle (no @ prefix) to match how twitter_username is stored
     const handle = tw.url.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i)?.[1]
