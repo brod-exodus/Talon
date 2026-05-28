@@ -4,7 +4,7 @@ import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
-import { createGitHubClient, extractContactsFromBio } from "@/lib/github"
+import { createGitHubClient, extractContactsFromBio, extractSocialContacts } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -131,19 +131,21 @@ export async function POST(request: NextRequest) {
           // New contributor — fetch details, upsert into contributors table
           try {
             const details = await githubClient.getUserDetails(contributor.login)
+            const socialAccounts = await githubClient.getUserSocialAccounts(contributor.login)
             const bioContacts  = extractContactsFromBio(details.bio)
             const blogContacts = extractContactsFromBio(details.blog)
+            const socialContacts = extractSocialContacts(socialAccounts)
             const structured = {
               email:    details.email || undefined,
-              twitter:  details.twitter_username || undefined,
+              twitter:  socialContacts.twitter ?? details.twitter_username ?? blogContacts.twitter ?? undefined,
               linkedin: blogContacts.linkedin ?? undefined,
               website:
-                details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+                details.blog && !/(linkedin\.com|twitter\.com|x\.com)/i.test(details.blog) ? details.blog : undefined,
             }
             const contacts = {
               email:    structured.email    ?? bioContacts.email    ?? null,
-              twitter:  structured.twitter  ?? bioContacts.twitter  ?? null,
-              linkedin: structured.linkedin ?? bioContacts.linkedin ?? null,
+              twitter:  structured.twitter  ?? null,
+              linkedin: socialContacts.linkedin ?? structured.linkedin ?? bioContacts.linkedin ?? null,
               website:  structured.website  ?? bioContacts.website  ?? null,
             }
 

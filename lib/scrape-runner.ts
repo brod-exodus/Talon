@@ -36,7 +36,7 @@ function mergeContacts(
 ) {
   return {
     email: structured.email ?? fromBio.email,
-    twitter: fromSocial.twitter ?? structured.twitter ?? fromBio.twitter,
+    twitter: fromSocial.twitter ?? structured.twitter,
     linkedin: fromSocial.linkedin ?? structured.linkedin ?? fromBio.linkedin,
     website: structured.website ?? fromBio.website,
   }
@@ -75,9 +75,9 @@ async function hydrateContributor(
   const fromSocial = extractSocialContacts(socialAccounts)
   const structured = {
     email: details.email || undefined,
-    twitter: details.twitter_username || undefined,
+    twitter: details.twitter_username || blogContacts.twitter || undefined,
     linkedin: blogContacts.linkedin ?? undefined,
-    website: details.blog && !details.blog.includes("linkedin.com") ? details.blog : undefined,
+    website: details.blog && !/(linkedin\.com|twitter\.com|x\.com)/i.test(details.blog) ? details.blog : undefined,
   }
 
   return {
