@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/permissions"
 import { type AuthRole } from "@/lib/permission-rules"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
+import { ensurePrivateWorkspaceForUser } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
 
 const ROLES: AuthRole[] = ["owner", "admin", "recruiter", "viewer"]
@@ -160,34 +161,38 @@ export async function POST(request: NextRequest) {
       authUserUpdated = true
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("team_memberships")
-      .upsert(
-        {
-          team_id: team.teamId,
-          email,
-          display_name: displayName,
-          role,
-          invited_by: actorEmail,
-        },
-        { onConflict: "team_id,email" }
-      )
-      .select("id, team_id, email, display_name, role, invited_by, created_at")
-      .single()
-    if (error) throw error
+    const privateMembership = await ensurePrivateWorkspaceForUser(email, displayName)
 
     await recordAuditEvent({
       request,
       action: "team.member.upsert",
       outcome: "success",
       actor: team.actor,
-      metadata: { teamSlug: team.teamSlug, role, emailHash: hashAuditValue(email), authUserCreated, authUserUpdated },
+      teamId: team.teamId,
+      metadata: {
+        teamSlug: team.teamSlug,
+        provisionedTeamSlug: privateMembership.teamSlug,
+        role: privateMembership.role,
+        requestedRole: role,
+        emailHash: hashAuditValue(email),
+        authUserCreated,
+        authUserUpdated,
+      },
     })
 
     return NextResponse.json({
-      member: mapTeamMember(data as TeamMemberRow, nextAuthUser),
+      member: {
+        teamId: privateMembership.teamId,
+        email,
+        displayName,
+        role: privateMembership.role,
+        invitedBy: actorEmail,
+        createdAt: new Date().toISOString(),
+        authStatus: getAuthStatus(nextAuthUser),
+      },
       authUserCreated,
       authUserUpdated,
+      privateWorkspaceProvisioned: true,
     })
   } catch (error) {
     console.error("[team-members] POST error:", error)

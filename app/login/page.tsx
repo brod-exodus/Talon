@@ -13,9 +13,11 @@ import Image from "next/image"
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
+  const [displayName, setDisplayName] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<"signin" | "signup">("signin")
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -23,10 +25,10 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(mode === "signin" ? "/api/auth/login" : "/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, displayName }),
       })
 
       if (!response.ok) {
@@ -60,10 +62,27 @@ export default function LoginPage() {
             />
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
           </div>
-          <CardDescription>Sign in with your team email and password.</CardDescription>
+          <CardDescription>
+            {mode === "signin"
+              ? "Sign in with your team email and password."
+              : "Create your private Talon workspace."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
+            {mode === "signup" && (
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Display name</Label>
+                <Input
+                  id="displayName"
+                  type="text"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  autoComplete="name"
+                  placeholder="Brody"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -91,7 +110,24 @@ export default function LoginPage() {
               </Alert>
             )}
             <Button className="w-full" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading
+                ? mode === "signin"
+                  ? "Signing in..."
+                  : "Creating workspace..."
+                : mode === "signin"
+                  ? "Sign In"
+                  : "Create Workspace"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs"
+              onClick={() => {
+                setError("")
+                setMode((current) => (current === "signin" ? "signup" : "signin"))
+              }}
+            >
+              {mode === "signin" ? "Create a private workspace" : "Already have an account? Sign in"}
             </Button>
           </form>
         </CardContent>

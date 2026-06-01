@@ -111,6 +111,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       action: "team.member.update_role",
       outcome: "success",
       actor: team.actor,
+      teamId: team.teamId,
       metadata: { teamSlug: team.teamSlug, role, emailHash: hashAuditValue(target.email) },
     })
 
@@ -154,6 +155,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       action: "team.member.remove",
       outcome: "success",
       actor: team.actor,
+      teamId: team.teamId,
       metadata: { teamSlug: team.teamSlug, role: target.role, emailHash: hashAuditValue(target.email) },
     })
 

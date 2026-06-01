@@ -54,6 +54,7 @@ export async function PATCH(request: NextRequest) {
       request,
       action: "outreach.update",
       outcome: "success",
+      teamId,
       metadata: {
         username,
         teamSlug,

@@ -60,6 +60,7 @@ export async function PATCH(request: NextRequest) {
       action: "profile.update",
       outcome: "success",
       actor: "user",
+      teamId: team.teamId,
       metadata: { teamSlug: team.teamSlug, emailHash: hashAuditValue(session.email) },
     })
 

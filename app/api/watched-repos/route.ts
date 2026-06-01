@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       request,
       action: "watched_repo.create",
       outcome: "success",
+      teamId,
       metadata: { watchedRepoId: data.id, teamSlug, repo: normalizedRepo, intervalHours: normalizedInterval },
     })
     await recordActivityEvent({

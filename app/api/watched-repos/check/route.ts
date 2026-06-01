@@ -236,6 +236,7 @@ export async function POST(request: NextRequest) {
       action: "watched_repo.check",
       outcome: "success",
       actor: isCronRequest ? "cron" : "admin",
+      teamId: requestTeamId,
       metadata: {
         checked: dueRepos.length,
         trigger: isCronRequest ? "cron" : "manual",

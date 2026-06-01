@@ -38,12 +38,14 @@ export async function recordAuditEvent({
   action,
   outcome,
   actor = "admin",
+  teamId,
   metadata = {},
 }: {
   request: NextRequest
   action: string
   outcome: AuditOutcome
   actor?: string
+  teamId?: string | null
   metadata?: Record<string, unknown>
 }): Promise<void> {
   try {
@@ -52,6 +54,7 @@ export async function recordAuditEvent({
       action,
       outcome,
       actor,
+      team_id: teamId ?? null,
       ip_hash: ip === "unknown" ? null : hashAuditValue(ip),
       user_agent: userAgent(request),
       metadata,
@@ -62,12 +65,16 @@ export async function recordAuditEvent({
   }
 }
 
-export async function getRecentAuditEvents(limit = 25): Promise<AuditEvent[]> {
-  const { data, error } = await supabaseAdmin
+export async function getRecentAuditEvents(limit = 25, teamId?: string | null): Promise<AuditEvent[]> {
+  let query = supabaseAdmin
     .from("audit_events")
     .select("id, action, outcome, actor, ip_hash, user_agent, metadata, created_at")
     .order("created_at", { ascending: false })
     .limit(Math.max(1, Math.min(limit, 100)))
+
+  if (teamId) query = query.eq("team_id", teamId)
+
+  const { data, error } = await query
   if (error) throw error
 
   return (data ?? []).map((event) => ({

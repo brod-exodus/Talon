@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       request,
       action: "share.create",
       outcome: "success",
+      teamId,
       metadata: { scrapeId, teamSlug },
     })
     return NextResponse.json({ token })
