@@ -11,6 +11,7 @@ const memberships: TeamMembershipCandidate[] = [
   {
     email: "user@example.com",
     role: "viewer",
+    workspaceRole: "viewer",
     teamId: "shared-team",
     teamSlug: "default",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -19,7 +20,8 @@ const memberships: TeamMembershipCandidate[] = [
   },
   {
     email: "user@example.com",
-    role: "owner",
+    role: "recruiter",
+    workspaceRole: "owner",
     teamId: "private-team",
     teamSlug: "user-private",
     createdAt: "2026-02-01T00:00:00.000Z",
@@ -29,7 +31,10 @@ const memberships: TeamMembershipCandidate[] = [
 ]
 
 test("selectPrimaryTeamMembership prefers the user's private workspace", () => {
-  assert.equal(selectPrimaryTeamMembership(memberships, "user@example.com")?.teamId, "private-team")
+  const selected = selectPrimaryTeamMembership(memberships, "user@example.com")
+  assert.equal(selected?.teamId, "private-team")
+  assert.equal(selected?.role, "recruiter")
+  assert.equal(selected?.workspaceRole, "owner")
 })
 
 test("selectPrimaryTeamMembership falls back to oldest membership when no private workspace exists", () => {

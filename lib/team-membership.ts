@@ -13,8 +13,15 @@ import {
 export type TeamMembershipContext = {
   email: string
   role: AuthRole
+  workspaceRole: AuthRole
   teamId: string
   teamSlug: string
+}
+
+function normalizeRole(value: unknown): AuthRole | null {
+  return value === "owner" || value === "admin" || value === "recruiter" || value === "viewer"
+    ? value
+    : null
 }
 
 export async function getPrimaryTeamMembershipForEmail(email: string): Promise<TeamMembershipContext | null> {
@@ -23,7 +30,7 @@ export async function getPrimaryTeamMembershipForEmail(email: string): Promise<T
 
   const { data: memberships, error } = await supabaseAdmin
     .from("team_memberships")
-    .select("team_id, email, role, created_at")
+    .select("team_id, email, role, app_role, created_at")
     .eq("email", normalizedEmail)
     .order("created_at", { ascending: true })
   if (error) throw error
@@ -42,7 +49,8 @@ export async function getPrimaryTeamMembershipForEmail(email: string): Promise<T
     if (!team?.slug) return []
     return [{
       email: normalizedEmail,
-      role: membership.role as AuthRole,
+      role: normalizeRole(membership.app_role) ?? normalizeRole(membership.role) ?? "viewer",
+      workspaceRole: normalizeRole(membership.role) ?? "viewer",
       teamId: membership.team_id,
       teamSlug: team.slug,
       createdAt: membership.created_at,
@@ -56,17 +64,52 @@ export async function getPrimaryTeamMembershipForEmail(email: string): Promise<T
   return {
     email: selected.email,
     role: selected.role,
+    workspaceRole: selected.workspaceRole,
     teamId: selected.teamId,
     teamSlug: selected.teamSlug,
   }
 }
 
+async function getExistingAppRoleForEmail(email: string): Promise<AuthRole | null> {
+  const { data: memberships, error } = await supabaseAdmin
+    .from("team_memberships")
+    .select("team_id, role, app_role, created_at")
+    .eq("email", email)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  if (!memberships?.length) return null
+
+  const teamIds = memberships.map((membership) => membership.team_id)
+  const { data: teams, error: teamError } = await supabaseAdmin
+    .from("teams")
+    .select("id, workspace_kind")
+    .in("id", teamIds)
+  if (teamError) throw teamError
+
+  const teamsById = new Map((teams ?? []).map((team) => [team.id, team]))
+  const ranked = [...memberships].sort((a, b) => {
+    const aTeam = teamsById.get(a.team_id)
+    const bTeam = teamsById.get(b.team_id)
+    const aPriority = aTeam?.workspace_kind === "shared" ? 0 : 1
+    const bPriority = bTeam?.workspace_kind === "shared" ? 0 : 1
+    return aPriority - bPriority || Date.parse(a.created_at) - Date.parse(b.created_at)
+  })
+
+  for (const membership of ranked) {
+    const role = normalizeRole(membership.app_role) ?? normalizeRole(membership.role)
+    if (role) return role
+  }
+  return null
+}
+
 export async function ensurePrivateWorkspaceForUser(
   email: string,
-  displayName?: string | null
+  displayName?: string | null,
+  appRole?: AuthRole | null
 ): Promise<TeamMembershipContext> {
   const normalizedEmail = normalizeMembershipEmail(email)
   if (!normalizedEmail) throw new Error("Cannot provision private workspace without a valid email.")
+  const resolvedAppRole = appRole ?? await getExistingAppRoleForEmail(normalizedEmail) ?? "owner"
 
   const { data: existingTeam, error: existingTeamError } = await supabaseAdmin
     .from("teams")
@@ -113,6 +156,7 @@ export async function ensurePrivateWorkspaceForUser(
         email: normalizedEmail,
         display_name: displayName?.trim() || fallbackDisplayName(normalizedEmail),
         role: "owner",
+        app_role: resolvedAppRole,
         invited_by: null,
       },
       { onConflict: "team_id,email" }
@@ -121,7 +165,8 @@ export async function ensurePrivateWorkspaceForUser(
 
   return {
     email: normalizedEmail,
-    role: "owner",
+    role: resolvedAppRole,
+    workspaceRole: "owner",
     teamId: team.id,
     teamSlug: team.slug,
   }
@@ -136,7 +181,7 @@ export async function getTeamMembershipForSession(
 
   const { data: membership, error } = await supabaseAdmin
     .from("team_memberships")
-    .select("team_id, email, role")
+    .select("team_id, email, role, app_role")
     .eq("email", normalizedEmail)
     .eq("team_id", teamId)
     .maybeSingle()
@@ -153,7 +198,8 @@ export async function getTeamMembershipForSession(
 
   return {
     email: normalizedEmail,
-    role: membership.role as AuthRole,
+    role: normalizeRole(membership.app_role) ?? normalizeRole(membership.role) ?? "viewer",
+    workspaceRole: normalizeRole(membership.role) ?? "viewer",
     teamId: membership.team_id,
     teamSlug: team.slug,
   }

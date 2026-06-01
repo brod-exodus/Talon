@@ -14,6 +14,7 @@ type TeamMemberRow = {
   email: string
   display_name: string | null
   role: AuthRole
+  app_role: AuthRole | null
   invited_by: string | null
   created_at: string
 }
@@ -41,7 +42,7 @@ function mapTeamMember(row: TeamMemberRow, authUser: AuthUserSummary | null = nu
     teamId: row.team_id,
     email: row.email,
     displayName: row.display_name,
-    role: row.role,
+    role: row.app_role ?? row.role,
     invitedBy: row.invited_by,
     createdAt: row.created_at,
     authStatus: getAuthStatus(authUser),
@@ -64,7 +65,7 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
 async function getTeamMembers(teamId: string): Promise<TeamMemberRow[]> {
   const { data, error } = await supabaseAdmin
     .from("team_memberships")
-    .select("id, team_id, email, display_name, role, invited_by, created_at")
+    .select("id, team_id, email, display_name, role, app_role, invited_by, created_at")
     .eq("team_id", teamId)
   if (error) throw error
   return (data ?? []) as TeamMemberRow[]
@@ -93,16 +94,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const members = await getTeamMembers(team.teamId)
     const target = members.find((member) => member.id === memberId)
     if (!target) return NextResponse.json({ error: "Team member not found" }, { status: 404 })
-    if (role !== "owner" && isLastOwner(members, memberId)) {
-      return NextResponse.json({ error: "At least one owner must remain on the team" }, { status: 400 })
-    }
-
     const { data, error } = await supabaseAdmin
       .from("team_memberships")
-      .update({ role })
+      .update({ app_role: role })
       .eq("id", memberId)
       .eq("team_id", team.teamId)
-      .select("id, team_id, email, display_name, role, invited_by, created_at")
+      .select("id, team_id, email, display_name, role, app_role, invited_by, created_at")
       .single()
     if (error) throw error
 
@@ -156,7 +153,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       outcome: "success",
       actor: team.actor,
       teamId: team.teamId,
-      metadata: { teamSlug: team.teamSlug, role: target.role, emailHash: hashAuditValue(target.email) },
+      metadata: { teamSlug: team.teamSlug, role: target.app_role ?? target.role, emailHash: hashAuditValue(target.email) },
     })
 
     return NextResponse.json({ success: true })
