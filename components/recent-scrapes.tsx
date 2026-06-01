@@ -5,6 +5,7 @@ import Link from "next/link"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -348,6 +349,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState("all")
   const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
+  const [deleteDialogScrape, setDeleteDialogScrape] = useState<CompletedScrapeSummary | null>(null)
+  const [deletingScrapeId, setDeletingScrapeId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
@@ -515,9 +518,16 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   )
 
   // ── Delete ────────────────────────────────────────────────────────────────
-  const deleteScrape = useCallback(async (scrapeId: string) => {
+  const requestDeleteScrape = useCallback((scrape: CompletedScrapeSummary) => {
     if (!canWrite) return
-    if (!window.confirm("Are you sure you want to permanently delete this scrape? This action cannot be undone.")) return
+    setDeleteDialogScrape(scrape)
+  }, [canWrite])
+
+  const deleteScrape = useCallback(async () => {
+    if (!canWrite) return
+    const scrapeId = deleteDialogScrape?.id
+    if (!scrapeId) return
+    setDeletingScrapeId(scrapeId)
     try {
       const response = await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
       if (!response.ok) {
@@ -526,10 +536,14 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       setScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
       setFailedScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
       setContributorCache((prev) => { const next = new Map(prev); next.delete(scrapeId); return next })
+      setDeleteDialogScrape(null)
     } catch (err) {
       console.error("[v0] Failed to delete scrape:", err)
+      toast({ title: "Delete failed", description: "Talon could not delete this scrape. Try again.", variant: "destructive" })
+    } finally {
+      setDeletingScrapeId(null)
     }
-  }, [canWrite])
+  }, [canWrite, deleteDialogScrape?.id, toast])
 
   // ── Export ────────────────────────────────────────────────────────────────
   const exportToCSV = useCallback(
@@ -780,7 +794,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors"
-                    onClick={() => deleteScrape(scrape.id)}
+                    onClick={() => requestDeleteScrape(scrape)}
+                    aria-label={`Delete ${scrape.target}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -1161,7 +1176,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       toggleFilter,
       updateSort,
       handleShare,
-      deleteScrape,
+      requestDeleteScrape,
       exportToCSV,
       exportToExcel,
       updateContributorOutreach,
@@ -1213,7 +1228,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           size="sm"
                           variant="ghost"
                           className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => deleteScrape(scrape.id)}
+                          onClick={() => requestDeleteScrape(scrape)}
                         >
                           <Trash2 className="w-3 h-3 mr-1" />
                           Delete
@@ -1341,6 +1356,57 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           if (!open) setPreviewContributor(null)
         }}
       />
+
+      {/* ── Delete confirmation modal ──────────────────────────────────── */}
+      <Dialog
+        open={Boolean(deleteDialogScrape)}
+        onOpenChange={(open) => {
+          if (!open && !deletingScrapeId) setDeleteDialogScrape(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-md border border-destructive/25 bg-destructive/10 text-destructive">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <DialogTitle>Delete Scrape</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the scrape and its contributor data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteDialogScrape && (
+            <div className="rounded-lg border border-border bg-muted/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Scrape</p>
+              <p className="mt-1 truncate font-mono text-sm font-semibold text-foreground">
+                {deleteDialogScrape.target}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {deleteDialogScrape.type} · completed {formatTimeAgo(deleteDialogScrape.completedAt)}
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteDialogScrape(null)}
+              disabled={Boolean(deletingScrapeId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={deleteScrape}
+              disabled={Boolean(deletingScrapeId)}
+            >
+              {deletingScrapeId ? "Deleting..." : "Delete Scrape"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Share modal ────────────────────────────────────────────────── */}
       <Dialog
