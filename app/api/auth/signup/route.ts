@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       email,
       password,
       email_confirm: true,
-      user_metadata: { display_name: displayName },
+      user_metadata: { display_name: displayName, app_role: "owner" },
     })
 
     if (createError) {
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const membership = await ensurePrivateWorkspaceForUser(createdUser.user.email ?? email, displayName)
+    const membership = await ensurePrivateWorkspaceForUser(createdUser.user.email ?? email, displayName, "owner")
 
     await resetLoginRateLimit(request)
     await recordAuditEvent({

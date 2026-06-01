@@ -17,6 +17,7 @@ type TeamMemberRow = {
   email: string
   display_name: string | null
   role: AuthRole
+  app_role: AuthRole | null
   invited_by: string | null
   created_at: string
 }
@@ -63,7 +64,7 @@ function mapTeamMember(row: TeamMemberRow, authUser: AuthUserSummary | null = nu
     teamId: row.team_id,
     email: row.email,
     displayName: row.display_name,
-    role: row.role,
+    role: row.app_role ?? row.role,
     invitedBy: row.invited_by,
     createdAt: row.created_at,
     authStatus: getAuthStatus(authUser),
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
     const team = await resolveTeamContext(request)
     const { data, error } = await supabaseAdmin
       .from("team_memberships")
-      .select("id, team_id, email, display_name, role, invited_by, created_at")
+      .select("id, team_id, email, display_name, role, app_role, invited_by, created_at")
       .eq("team_id", team.teamId)
       .order("created_at", { ascending: true })
     if (error) throw error
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
         email,
         password,
         email_confirm: true,
+        user_metadata: { display_name: displayName, app_role: role },
       })
       if (createError) throw createError
       nextAuthUser = createdUser.user as AuthUserSummary
@@ -155,13 +157,14 @@ export async function POST(request: NextRequest) {
       const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(authUser.id, {
         ...(password ? { password } : {}),
         email_confirm: true,
+        user_metadata: { display_name: displayName, app_role: role },
       })
       if (updateError) throw updateError
       nextAuthUser = updatedUser.user as AuthUserSummary
       authUserUpdated = true
     }
 
-    const privateMembership = await ensurePrivateWorkspaceForUser(email, displayName)
+    const privateMembership = await ensurePrivateWorkspaceForUser(email, displayName, role)
 
     await recordAuditEvent({
       request,

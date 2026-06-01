@@ -4,6 +4,7 @@ import { type AuthRole } from "./auth-token.ts"
 export type TeamMembershipCandidate = {
   email: string
   role: AuthRole
+  workspaceRole: AuthRole
   teamId: string
   teamSlug: string
   createdAt: string

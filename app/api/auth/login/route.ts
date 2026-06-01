@@ -5,6 +5,7 @@ import { checkLoginRateLimit, recordLoginFailure, resetLoginRateLimit } from "@/
 import { supabaseAuth } from "@/lib/supabase"
 import { ensurePrivateWorkspaceForUser, getPrimaryTeamMembershipForEmail } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
+import { type AuthRole } from "@/lib/auth-token"
 
 function normalizeLoginEmail(value: unknown): string | null {
   if (typeof value !== "string") return null
@@ -16,6 +17,11 @@ function displayNameFromUser(user: { email?: string | null; user_metadata?: Reco
   const metadata = user.user_metadata ?? {}
   const value = metadata.display_name ?? metadata.full_name ?? metadata.name
   return typeof value === "string" && value.trim() ? value.trim() : user.email?.split("@")[0] ?? null
+}
+
+function appRoleFromUser(user: { user_metadata?: Record<string, unknown> | null }): AuthRole | null {
+  const role = user.user_metadata?.app_role
+  return role === "owner" || role === "admin" || role === "recruiter" || role === "viewer" ? role : null
 }
 
 export async function POST(request: NextRequest) {
@@ -73,7 +79,7 @@ export async function POST(request: NextRequest) {
       }, { status: 401 })
     }
 
-    await ensurePrivateWorkspaceForUser(data.user.email, displayNameFromUser(data.user))
+    await ensurePrivateWorkspaceForUser(data.user.email, displayNameFromUser(data.user), appRoleFromUser(data.user))
     const membership = await getPrimaryTeamMembershipForEmail(data.user.email)
     if (!membership) {
       throw new Error("Private workspace was provisioned, but no team membership could be resolved.")
