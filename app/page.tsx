@@ -18,15 +18,9 @@ export default function Home() {
       <Header />
 
       <main className="prism-main">
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="prism-section-title">Dashboard</p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              Contributor discovery workspace
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
-              Start targeted GitHub scrapes, monitor active work, and turn completed contributor lists into recruiter-ready outreach.
-            </p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">Dashboard</h1>
           </div>
         </div>
 
