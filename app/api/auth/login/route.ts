@@ -3,13 +3,19 @@ import { createSessionToken, setAuthCookie, validateAdminPassword } from "@/lib/
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { checkLoginRateLimit, recordLoginFailure, resetLoginRateLimit } from "@/lib/login-rate-limit"
 import { supabaseAuth } from "@/lib/supabase"
-import { getPrimaryTeamMembershipForEmail } from "@/lib/team-membership"
+import { ensurePrivateWorkspaceForUser, getPrimaryTeamMembershipForEmail } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
 
 function normalizeLoginEmail(value: unknown): string | null {
   if (typeof value !== "string") return null
   const email = value.trim().toLowerCase()
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : null
+}
+
+function displayNameFromUser(user: { email?: string | null; user_metadata?: Record<string, unknown> | null }): string | null {
+  const metadata = user.user_metadata ?? {}
+  const value = metadata.display_name ?? metadata.full_name ?? metadata.name
+  return typeof value === "string" && value.trim() ? value.trim() : user.email?.split("@")[0] ?? null
 }
 
 export async function POST(request: NextRequest) {
@@ -67,17 +73,10 @@ export async function POST(request: NextRequest) {
       }, { status: 401 })
     }
 
+    await ensurePrivateWorkspaceForUser(data.user.email, displayNameFromUser(data.user))
     const membership = await getPrimaryTeamMembershipForEmail(data.user.email)
     if (!membership) {
-      await recordLoginFailure(request)
-      await recordAuditEvent({
-        request,
-        action: "auth.login",
-        outcome: "failure",
-        actor: "user",
-        metadata: { reason: "missing_team_membership", emailHash: hashAuditValue(email) },
-      })
-      return NextResponse.json({ error: "No Talon team membership is configured for this user" }, { status: 403 })
+      throw new Error("Private workspace was provisioned, but no team membership could be resolved.")
     }
 
     await resetLoginRateLimit(request)
@@ -86,6 +85,7 @@ export async function POST(request: NextRequest) {
       action: "auth.login",
       outcome: "success",
       actor: "user",
+      teamId: membership.teamId,
       metadata: { teamSlug: membership.teamSlug, role: membership.role, emailHash: hashAuditValue(membership.email) },
     })
 

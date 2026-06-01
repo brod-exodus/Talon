@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       action: "auth.password_change",
       outcome: "failure",
       actor: "user",
+      teamId: session.teamId,
       metadata: { reason: "invalid_current_password", emailHash: hashAuditValue(session.email) },
     })
     return NextResponse.json({ error: "Current password is incorrect." }, { status: 401 })
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
       action: "auth.password_change",
       outcome: "failure",
       actor: "user",
+      teamId: session.teamId,
       metadata: { reason: "update_failed", emailHash: hashAuditValue(session.email) },
     })
     return NextResponse.json({ error: "Failed to update password." }, { status: 500 })
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
     action: "auth.password_change",
     outcome: "success",
     actor: "user",
+    teamId: session.teamId,
     metadata: { emailHash: hashAuditValue(session.email), teamSlug: session.teamSlug, role: session.role },
   })
 

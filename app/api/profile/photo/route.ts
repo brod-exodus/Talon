@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
       action: "profile.photo.update",
       outcome: "success",
       actor: "user",
+      teamId: team.teamId,
       metadata: { teamSlug: team.teamSlug, emailHash: hashAuditValue(session.email) },
     })
 
@@ -176,6 +177,7 @@ export async function DELETE(request: NextRequest) {
       action: "profile.photo.remove",
       outcome: "success",
       actor: "user",
+      teamId: team.teamId,
       metadata: { teamSlug: team.teamSlug, emailHash: hashAuditValue(session.email) },
     })
 

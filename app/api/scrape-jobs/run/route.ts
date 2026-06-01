@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     action: "scrape_worker.run",
     outcome: hasFailedResult ? "failure" : "success",
     actor: isCronRequest ? "cron" : "admin",
+    teamId,
     metadata: {
       workerId,
       teamSlug,
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
       action: "scrape.failure",
       outcome: "failure",
       actor: isCronRequest ? "cron" : "admin",
+      teamId: result.teamId,
       metadata: {
         workerId,
         jobId: result.jobId,

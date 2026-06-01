@@ -26,6 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       request,
       action: "scrape.retry",
       outcome: "success",
+      teamId,
       metadata: { jobId: job.id, scrapeId: job.scrapeId, teamSlug, workerTriggered: triggered },
     })
     return NextResponse.json({ job, workerTriggered: triggered, workerResult })

@@ -31,6 +31,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       request,
       action: "watched_repo.delete",
       outcome: "success",
+      teamId,
       metadata: { watchedRepoId, teamSlug },
     })
     return NextResponse.json({ success: true })

@@ -22,6 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       request,
       action: "scrape.cancel",
       outcome: "success",
+      teamId,
       metadata: { jobId: job.id, scrapeId: job.scrapeId, teamSlug },
     })
     return NextResponse.json({ job })

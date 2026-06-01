@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
       request,
       action: "scrape.start",
       outcome: "success",
+      teamId,
       metadata: { scrapeId, teamSlug, type, target, minContributions, projectId, workerTriggered: triggered },
     })
 
