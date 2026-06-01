@@ -5,6 +5,12 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { readJsonObject } from "@/lib/validation"
 
+type AuthUserSummary = {
+  id: string
+  email?: string | null
+  user_metadata?: Record<string, unknown> | null
+}
+
 function normalizeDisplayName(value: unknown): string | null {
   if (typeof value !== "string") return null
   const displayName = value.trim().replace(/\s+/g, " ")
@@ -25,6 +31,19 @@ function profileStorageNotReady() {
     { error: "Profile storage is not ready. Apply db/migrations/012_team_profile_photos.sql." },
     { status: 500 }
   )
+}
+
+async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | null> {
+  let page = 1
+  while (page <= 10) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 })
+    if (error) throw error
+    const user = (data.users ?? []).find((item) => item.email?.toLowerCase() === email.toLowerCase())
+    if (user) return user as AuthUserSummary
+    if ((data.users ?? []).length < 1000) return null
+    page += 1
+  }
+  return null
 }
 
 export async function PATCH(request: NextRequest) {
@@ -53,6 +72,21 @@ export async function PATCH(request: NextRequest) {
     if (error) {
       if (profileMigrationError(error)) return profileStorageNotReady()
       throw error
+    }
+
+    try {
+      const authUser = await findAuthUserByEmail(session.email)
+      if (authUser?.id) {
+        const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(authUser.id, {
+          user_metadata: {
+            ...(authUser.user_metadata ?? {}),
+            display_name: displayName,
+          },
+        })
+        if (metadataError) throw metadataError
+      }
+    } catch (metadataError) {
+      console.warn("[profile] Could not sync display name to auth metadata:", metadataError)
     }
 
     await recordAuditEvent({

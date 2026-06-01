@@ -148,13 +148,26 @@ export async function ensurePrivateWorkspaceForUser(
 
   if (!team?.id || !team.slug) throw new Error("Private workspace could not be provisioned.")
 
+  const { data: existingMembership, error: existingMembershipError } = await supabaseAdmin
+    .from("team_memberships")
+    .select("display_name")
+    .eq("team_id", team.id)
+    .eq("email", normalizedEmail)
+    .maybeSingle()
+  if (existingMembershipError) throw existingMembershipError
+
+  const resolvedDisplayName =
+    existingMembership?.display_name?.trim() ||
+    displayName?.trim() ||
+    fallbackDisplayName(normalizedEmail)
+
   const { error: membershipError } = await supabaseAdmin
     .from("team_memberships")
     .upsert(
       {
         team_id: team.id,
         email: normalizedEmail,
-        display_name: displayName?.trim() || fallbackDisplayName(normalizedEmail),
+        display_name: resolvedDisplayName,
         role: "owner",
         app_role: resolvedAppRole,
         invited_by: null,
