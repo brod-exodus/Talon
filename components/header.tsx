@@ -25,7 +25,6 @@ import {
   Search,
   Settings,
   Shield,
-  Sparkles,
   Trash2,
   UserCircle,
   Users,
@@ -758,14 +757,8 @@ export function Header() {
   }
 
   const headerAccountTrigger = (
-    <Button variant="outline" size="sm" className="max-w-64 justify-start gap-2" disabled={!me}>
-      <AccountAvatar me={me} identityLabel={identityLabel} className="h-5 w-5 text-[10px]" />
-      <span className="min-w-0 truncate text-left">{identityLabel}</span>
-      {roleLabel && (
-        <Badge variant="secondary" className="ml-1 hidden shrink-0 text-[10px] sm:inline-flex">
-          {roleLabel}
-        </Badge>
-      )}
+    <Button variant="ghost" size="icon" className="rounded-full p-0" disabled={!me} aria-label="Open account menu">
+      <AccountAvatar me={me} identityLabel={identityLabel} className="h-9 w-9 text-xs" />
     </Button>
   )
 
@@ -1012,17 +1005,6 @@ export function Header() {
       </Dialog>
 
       <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-[#0a0e14] p-4 lg:flex lg:flex-col">
-        <div className="mb-5 rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-sm font-extrabold text-foreground">Default workspace</p>
-              <p className="text-xs font-semibold text-muted-foreground">Recruiting operations</p>
-            </div>
-          </div>
-        </div>
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
