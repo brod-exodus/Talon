@@ -56,7 +56,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
 
     const fetchScrapes = async () => {
       try {
-        const response = await fetch("/api/scrapes", { cache: "no-store" })
+        const response = await fetch("/api/scrapes/active", { cache: "no-store" })
         if (!response.ok) throw new Error(`Failed to fetch active scrapes (${response.status})`)
         const data = await response.json()
         const result = reconcileActiveScrapePoll(scrapesRef.current, {

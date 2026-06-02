@@ -56,7 +56,7 @@ export function ScrapeForm() {
 
   useEffect(() => {
     let cancelled = false
-    fetch("/api/scrapes")
+    fetch("/api/scrapes/recent?limit=50")
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return

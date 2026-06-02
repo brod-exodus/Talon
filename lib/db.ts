@@ -993,22 +993,24 @@ export type ScrapeSummary = {
   projects?: Array<{ id: string; name: string }>
 }
 
+export type ActiveScrapeSummary = {
+  id: string
+  target: string
+  type: string
+  progress: number
+  current: number
+  total: number
+  currentUser?: string
+  startedAt: string
+  job?: ScrapeJobSummary
+  projects?: Array<{ id: string; name: string }>
+}
+
 /**
  * Lightweight list query: one DB round trip. Does NOT load contributor details — use getScrape(id) for lazy-loaded detail.
  */
 export async function getScrapes(teamId?: string): Promise<{
-  active: Array<{
-    id: string
-    target: string
-    type: string
-    progress: number
-    current: number
-    total: number
-    currentUser?: string
-    startedAt: string
-    job?: ScrapeJobSummary
-    projects?: Array<{ id: string; name: string }>
-  }>
+  active: ActiveScrapeSummary[]
   failed: ScrapeSummary[]
   completed: ScrapeSummary[]
 }> {
@@ -1072,6 +1074,141 @@ export async function getScrapes(teamId?: string): Promise<{
   }))
 
   return { active, failed, completed }
+}
+
+export async function getActiveScrapes(teamId?: string): Promise<{
+  active: ActiveScrapeSummary[]
+  completed: Array<{ id: string }>
+  failed: Array<{ id: string }>
+}> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const [activeResult, terminalResult] = await Promise.all([
+    supabaseAdmin
+      .from("scrapes")
+      .select("id, type, target, status, progress, current, total, current_user_login, started_at")
+      .eq("team_id", resolvedTeamId)
+      .eq("status", "active")
+      .order("started_at", { ascending: false }),
+    supabaseAdmin
+      .from("scrapes")
+      .select("id, status")
+      .eq("team_id", resolvedTeamId)
+      .in("status", ["completed", "failed", "canceled"])
+      .order("started_at", { ascending: false })
+      .limit(50),
+  ])
+
+  if (activeResult.error) throw activeResult.error
+  if (terminalResult.error) throw terminalResult.error
+
+  const activeRows = activeResult.data ?? []
+  const activeIds = activeRows.map((row) => row.id)
+  const { data: jobRows, error: jobError } = activeIds.length
+    ? await supabaseAdmin.from("scrape_jobs").select("*").eq("team_id", resolvedTeamId).in("scrape_id", activeIds)
+    : { data: [], error: null }
+  if (jobError) throw jobError
+
+  const jobMap = new Map(((jobRows ?? []) as ScrapeJobRow[]).map((job) => [job.scrape_id, toScrapeJobSummary(job)]))
+  const projectMap = await getScrapeProjectMap(activeIds, resolvedTeamId)
+  const active: ActiveScrapeSummary[] = activeRows.map((row) => ({
+    id: row.id,
+    target: row.target,
+    type: row.type,
+    progress: row.progress,
+    current: row.current,
+    total: row.total,
+    currentUser: row.current_user_login ?? undefined,
+    startedAt: row.started_at,
+    job: jobMap.get(row.id),
+    projects: projectMap.get(row.id) ?? [],
+  }))
+
+  const terminalRows = terminalResult.data ?? []
+  return {
+    active,
+    completed: terminalRows.filter((row) => row.status === "completed").map((row) => ({ id: row.id })),
+    failed: terminalRows.filter((row) => row.status === "failed" || row.status === "canceled").map((row) => ({ id: row.id })),
+  }
+}
+
+export async function getRecentScrapes({
+  teamId,
+  limit = 10,
+  offset = 0,
+  type,
+}: {
+  teamId?: string
+  limit?: number
+  offset?: number
+  type?: string | null
+}): Promise<{
+  completed: ScrapeSummary[]
+  failed: ScrapeSummary[]
+  hasMore: boolean
+  nextOffset: number
+}> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)))
+  const safeOffset = Math.max(0, Math.floor(offset))
+  let completedQuery = supabaseAdmin
+    .from("scrapes")
+    .select("id, type, target, completed_at, started_at, contact_info_count, total_contributors")
+    .eq("team_id", resolvedTeamId)
+    .eq("status", "completed")
+    .order("started_at", { ascending: false })
+    .range(safeOffset, safeOffset + safeLimit)
+
+  if (type === "repository" || type === "organization") {
+    completedQuery = completedQuery.eq("type", type)
+  }
+
+  const [completedResult, failedResult] = await Promise.all([
+    completedQuery,
+    supabaseAdmin
+      .from("scrapes")
+      .select("id, type, target, completed_at, started_at, error, contact_info_count, total_contributors")
+      .eq("team_id", resolvedTeamId)
+      .in("status", ["failed", "canceled"])
+      .order("started_at", { ascending: false })
+      .limit(10),
+  ])
+
+  if (completedResult.error) throw completedResult.error
+  if (failedResult.error) throw failedResult.error
+
+  const completedRows = completedResult.data ?? []
+  const pageRows = completedRows.slice(0, safeLimit)
+  const failedRows = failedResult.data ?? []
+  const scrapeIds = [...pageRows, ...failedRows].map((row) => row.id)
+  const projectMap = await getScrapeProjectMap(scrapeIds, resolvedTeamId)
+
+  const completed: ScrapeSummary[] = pageRows.map((row) => ({
+    id: row.id,
+    target: row.target,
+    type: row.type,
+    completedAt: row.completed_at ?? row.started_at,
+    contributorCount: row.total_contributors ?? 0,
+    contactInfoCount: row.contact_info_count ?? 0,
+    projects: projectMap.get(row.id) ?? [],
+  }))
+
+  const failed: ScrapeSummary[] = failedRows.map((row) => ({
+    id: row.id,
+    target: row.target,
+    type: row.type,
+    completedAt: row.completed_at ?? row.started_at,
+    contributorCount: row.total_contributors ?? 0,
+    contactInfoCount: row.contact_info_count ?? 0,
+    error: row.error ?? undefined,
+    projects: projectMap.get(row.id) ?? [],
+  }))
+
+  return {
+    completed,
+    failed,
+    hasMore: completedRows.length > safeLimit,
+    nextOffset: safeOffset + pageRows.length,
+  }
 }
 
 async function getScrapeProjectMap(
