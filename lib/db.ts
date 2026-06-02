@@ -1438,6 +1438,17 @@ export type ProjectPipelineItem = {
 
 export type ProjectFollowUpQueueItem = ProjectPipelineItem
 
+export type PipelineDueFilter = "all" | "due" | "overdue" | "today" | "upcoming" | "none"
+
+export type ProjectPipelinePage = {
+  items: ProjectPipelineItem[]
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+  projects: Array<{ id: string; name: string }>
+}
+
 type ContributorProfileScrapeLink = {
   scrape_id: string
   contributor_id: string
@@ -2083,7 +2094,8 @@ function toProjectContributorTracking(row: ProjectContributorTrackingRow): Proje
 
 async function hydrateProjectTrackingItems(
   tracking: ProjectContributorTracking[],
-  teamId: string
+  teamId: string,
+  options: { lightweight?: boolean } = {}
 ): Promise<ProjectPipelineItem[]> {
   if (tracking.length === 0) return []
 
@@ -2093,7 +2105,11 @@ async function hydrateProjectTrackingItems(
   const [contributorResult, projectResult] = await Promise.all([
     supabaseAdmin
       .from("contributors")
-      .select("id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website")
+      .select(
+        options.lightweight
+          ? "id, github_username, name, avatar_url"
+          : "id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website"
+      )
       .eq("team_id", teamId)
       .in("id", contributorIds),
     supabaseAdmin
@@ -2106,7 +2122,7 @@ async function hydrateProjectTrackingItems(
   if (projectResult.error) throw projectResult.error
 
   const contributorsById = new Map<string, ContributorRow>()
-  for (const contributor of (contributorResult.data ?? []) as ContributorRow[]) {
+  for (const contributor of (contributorResult.data ?? []) as unknown as ContributorRow[]) {
     contributorsById.set(contributor.id, contributor)
   }
 
@@ -2127,14 +2143,14 @@ async function hydrateProjectTrackingItems(
         username: contributor.github_username,
         name: contributor.name ?? contributor.github_username,
         avatar: contributor.avatar_url ?? "",
-        bio: contributor.bio,
-        location: contributor.location,
-        company: contributor.company,
+        bio: options.lightweight ? null : contributor.bio,
+        location: options.lightweight ? null : contributor.location,
+        company: options.lightweight ? null : contributor.company,
         contacts: {
-          email: contributor.email ?? undefined,
-          twitter: contributor.twitter ?? undefined,
-          linkedin: contributor.linkedin ?? undefined,
-          website: contributor.website ?? undefined,
+          email: options.lightweight ? undefined : contributor.email ?? undefined,
+          twitter: options.lightweight ? undefined : contributor.twitter ?? undefined,
+          linkedin: options.lightweight ? undefined : contributor.linkedin ?? undefined,
+          website: options.lightweight ? undefined : contributor.website ?? undefined,
           github: `https://github.com/${contributor.github_username}`,
         },
       },
@@ -2270,6 +2286,120 @@ export async function getProjectPipelineItems(teamId?: string): Promise<ProjectP
 
   const tracking = ((data ?? []) as ProjectContributorTrackingRow[]).map(toProjectContributorTracking)
   return hydrateProjectTrackingItems(tracking, resolvedTeamId)
+}
+
+const ACTIVE_PIPELINE_STATUSES: ProjectOutreachStatus[] = ["contacted", "replied", "interested", "interviewing"]
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function getPipelineContributorSearchIds(teamId: string, search: string): Promise<string[] | null> {
+  const query = search.trim()
+  if (!query) return null
+  const pattern = `%${query.replace(/[%_]/g, "\\$&")}%`
+  const { data, error } = await supabaseAdmin
+    .from("contributors")
+    .select("id")
+    .eq("team_id", teamId)
+    .or(`github_username.ilike.${pattern},name.ilike.${pattern}`)
+    .limit(500)
+  if (error) throw error
+  return (data ?? []).map((row) => row.id)
+}
+
+export async function getProjectPipelinePage({
+  teamId,
+  limit = 50,
+  offset = 0,
+  projectId,
+  status,
+  due,
+  search,
+}: {
+  teamId?: string
+  limit?: number
+  offset?: number
+  projectId?: string | null
+  status?: ProjectOutreachStatus | "all" | null
+  due?: PipelineDueFilter | null
+  search?: string | null
+}): Promise<ProjectPipelinePage> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)))
+  const safeOffset = Math.max(0, Math.floor(offset))
+  const today = todayDateString()
+  const contributorIds = await getPipelineContributorSearchIds(resolvedTeamId, search ?? "")
+
+  if (contributorIds && contributorIds.length === 0) {
+    const projects = await getPipelineProjectOptions(resolvedTeamId)
+    return { items: [], total: 0, limit: safeLimit, offset: safeOffset, hasMore: false, projects }
+  }
+
+  let query = supabaseAdmin
+    .from("project_contributor_tracking")
+    .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at", {
+      count: "exact",
+    })
+    .eq("team_id", resolvedTeamId)
+
+  if (projectId && projectId !== "all") {
+    query = query.eq("ecosystem_id", projectId)
+  }
+
+  if (contributorIds) {
+    query = query.in("contributor_id", contributorIds)
+  }
+
+  if (status && status !== "all") {
+    query = query.eq("status", status)
+  } else if (!due || due === "all") {
+    query = query
+      .neq("status", "archived")
+      .neq("status", "rejected")
+      .or(`next_follow_up_at.lte.${today},status.in.(${ACTIVE_PIPELINE_STATUSES.join(",")})`)
+  } else {
+    query = query.neq("status", "archived").neq("status", "rejected")
+  }
+
+  if (due && due !== "all") {
+    if (due === "none") query = query.is("next_follow_up_at", null)
+    if (due === "due") query = query.lte("next_follow_up_at", today)
+    if (due === "overdue") query = query.lt("next_follow_up_at", today)
+    if (due === "today") query = query.eq("next_follow_up_at", today)
+    if (due === "upcoming") query = query.gt("next_follow_up_at", today)
+  }
+
+  const { data, error, count } = await query
+    .order("next_follow_up_at", { ascending: true, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .range(safeOffset, safeOffset + safeLimit - 1)
+  if (error) throw error
+
+  const tracking = ((data ?? []) as ProjectContributorTrackingRow[]).map(toProjectContributorTracking)
+  const [items, projects] = await Promise.all([
+    hydrateProjectTrackingItems(tracking, resolvedTeamId, { lightweight: true }),
+    getPipelineProjectOptions(resolvedTeamId),
+  ])
+
+  return {
+    items,
+    total: count ?? items.length,
+    limit: safeLimit,
+    offset: safeOffset,
+    hasMore: safeOffset + items.length < (count ?? items.length),
+    projects,
+  }
+}
+
+async function getPipelineProjectOptions(teamId: string): Promise<Array<{ id: string; name: string }>> {
+  const { data: projects, error } = await supabaseAdmin
+    .from("ecosystems")
+    .select("id, name")
+    .eq("team_id", teamId)
+    .order("name", { ascending: true })
+  if (error) throw error
+  return (projects ?? []).map((project) => ({ id: project.id, name: project.name }))
 }
 
 export async function getEcosystemContributors(
