@@ -223,7 +223,7 @@ export function ContributorQuickPreview({
       setListsLoading(true)
       setListError(null)
       try {
-        const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists`, {
+        const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists?includeContributorIds=1`, {
           cache: "no-store",
           signal: controller.signal,
         })
