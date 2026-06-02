@@ -92,6 +92,14 @@ type ProjectSummary = {
   name: string
 }
 
+const RECENT_SCRAPES_PAGE_SIZE = 10
+
+type CompletedScrapeTab = "repositories" | "organizations"
+
+function tabToScrapeType(tab: CompletedScrapeTab) {
+  return tab === "repositories" ? "repository" : "organization"
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(date: string | Date) {
@@ -348,6 +356,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState("all")
+  const [activeTab, setActiveTab] = useState<CompletedScrapeTab>("repositories")
+  const [hasMoreScrapes, setHasMoreScrapes] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
   const [deleteDialogScrape, setDeleteDialogScrape] = useState<CompletedScrapeSummary | null>(null)
   const [deletingScrapeId, setDeletingScrapeId] = useState<string | null>(null)
@@ -358,19 +369,37 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const cacheRef = useRef(contributorCache)
   useEffect(() => { cacheRef.current = contributorCache }, [contributorCache])
 
-  // ── Fetch the lightweight list ────────────────────────────────────────────
-  const fetchScrapes = useCallback(async () => {
+  // ── Fetch the bounded lightweight list ────────────────────────────────────
+  const loadScrapes = useCallback(async (offset = 0, append = false) => {
+    if (append) {
+      setIsLoadingMore(true)
+    }
+
     try {
-      const res = await fetch("/api/scrapes")
+      const params = new URLSearchParams({
+        limit: String(RECENT_SCRAPES_PAGE_SIZE),
+        offset: String(offset),
+        type: tabToScrapeType(activeTab),
+      })
+      const res = await fetch(`/api/scrapes/recent?${params.toString()}`, { cache: "no-store" })
       const data = await res.json()
-      setScrapes(data.completed || [])
-      setFailedScrapes(data.failed || [])
+      const completed = Array.isArray(data.completed) ? data.completed : []
+      setScrapes((prev) => (append ? [...prev, ...completed] : completed))
+      if (!append) setFailedScrapes(Array.isArray(data.failed) ? data.failed : [])
+      setHasMoreScrapes(Boolean(data.hasMore))
     } catch (err) {
       console.error("[v0] Failed to fetch scrapes:", err)
     } finally {
       setIsLoading(false)
+      setIsLoadingMore(false)
     }
-  }, [])
+  }, [activeTab])
+
+  const fetchScrapes = useCallback(() => loadScrapes(0, false), [loadScrapes])
+
+  const loadMoreScrapes = useCallback(() => {
+    void loadScrapes(scrapes.length, true)
+  }, [loadScrapes, scrapes.length])
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -396,34 +425,6 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     const interval = setInterval(fetchScrapes, 30000)
     return () => clearInterval(interval)
   }, [fetchProjects, fetchScrapes])
-
-  // ── Silent background prefetch (no skeleton, no error toast) ────────────
-  const prefetchContributors = useCallback(async (scrapeId: string) => {
-    if (cacheRef.current.has(scrapeId)) return
-    try {
-      const all: Contributor[] = []
-      let page = 1
-      while (true) {
-        const res = await fetch(`/api/scrape/${scrapeId}?page=${page}`)
-        if (!res.ok) break
-        const data = await res.json()
-        all.push(...(data.contributors ?? []))
-        if (!data.hasMore) break
-        page++
-      }
-      setContributorCache((prev) => new Map(prev).set(scrapeId, all))
-    } catch {
-      // Silently ignore — the count will populate if/when the user expands
-    }
-  }, [])
-
-  // ── Pre-fetch all scrapes as soon as the list loads ───────────────────────
-  useEffect(() => {
-    if (scrapes.length === 0) return
-    for (const scrape of scrapes) {
-      prefetchContributors(scrape.id)
-    }
-  }, [scrapes, prefetchContributors])
 
   // ── Lazy-load contributors for a single scrape (shown on explicit expand) ─
   const fetchContributors = useCallback(async (scrapeId: string) => {
@@ -1325,7 +1326,11 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             </SelectContent>
           </Select>
         </div>
-        <Tabs defaultValue="repositories" className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as CompletedScrapeTab)}
+          className="w-full"
+        >
           <TabsList className="bg-muted">
             <TabsTrigger value="repositories">Repositories</TabsTrigger>
             <TabsTrigger value="organizations">Organizations</TabsTrigger>
@@ -1345,6 +1350,20 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             }
           </TabsContent>
         </Tabs>
+
+        {hasMoreScrapes && (
+          <div className="flex justify-center pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-transparent"
+              disabled={isLoadingMore}
+              onClick={loadMoreScrapes}
+            >
+              {isLoadingMore ? "Loading..." : "Load more scrapes"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <ContributorQuickPreview
