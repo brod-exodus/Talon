@@ -18,7 +18,8 @@ export async function GET(
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
 
-    const lists = await getProjectLists(ecosystemId, teamId)
+    const includeContributorIds = request.nextUrl.searchParams.get("includeContributorIds") === "1"
+    const lists = await getProjectLists(ecosystemId, teamId, { includeContributorIds })
     return NextResponse.json({ lists })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)

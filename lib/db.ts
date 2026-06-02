@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase"
 import { recordActivityEvent } from "@/lib/activity"
-import { aggregateEcosystemContributors, shouldRecomputeEcosystemContributorCache } from "@/lib/ecosystem-utils"
+import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
@@ -1688,6 +1688,11 @@ export type EcosystemContributor = {
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
 }
 
+export type EcosystemContributorTableRow = EcosystemContributor & {
+  listIds: string[]
+  tracking: ProjectContributorTracking | null
+}
+
 export type EcosystemContributorCacheStatus = "hit" | "rebuilt" | "bypassed"
 
 export type EcosystemContributorCache = {
@@ -1699,10 +1704,17 @@ export type EcosystemContributorCache = {
   cacheStatus: EcosystemContributorCacheStatus
 }
 
-type EcosystemContributorCacheSource = {
+export type EcosystemContributorPage = {
+  contributors: EcosystemContributorTableRow[]
+  total: number
+  pageSize: number
+  offset: number
+  hasMore: boolean
+  contributorCount: number
+  multiRepoCount: number
   scrapeIds: string[]
-  totalScrapeContributors: number
-  latestScrapeCompletedAt: string | null
+  recomputedAt: string | null
+  cacheStatus: EcosystemContributorCacheStatus
 }
 
 export async function createEcosystem(name: string, teamId?: string): Promise<EcosystemSummary> {
@@ -1897,7 +1909,11 @@ export async function deleteEcosystem(id: string, teamId?: string): Promise<void
   if (error) throw error
 }
 
-export async function getProjectLists(ecosystemId: string, teamId?: string): Promise<ProjectListSummary[]> {
+export async function getProjectLists(
+  ecosystemId: string,
+  teamId?: string,
+  options: { includeContributorIds?: boolean } = {}
+): Promise<ProjectListSummary[]> {
   const resolvedTeamId = await resolveTeamId(teamId)
   const exists = await ecosystemExists(ecosystemId, resolvedTeamId)
   if (!exists) throw new Error("Project not found")
@@ -1922,9 +1938,11 @@ export async function getProjectLists(ecosystemId: string, teamId?: string): Pro
   const contributorIdsByList = new Map<string, string[]>()
   for (const link of links ?? []) {
     countMap.set(link.project_list_id, (countMap.get(link.project_list_id) ?? 0) + 1)
-    const contributorIds = contributorIdsByList.get(link.project_list_id) ?? []
-    contributorIds.push(link.contributor_id)
-    contributorIdsByList.set(link.project_list_id, contributorIds)
+    if (options.includeContributorIds) {
+      const contributorIds = contributorIdsByList.get(link.project_list_id) ?? []
+      contributorIds.push(link.contributor_id)
+      contributorIdsByList.set(link.project_list_id, contributorIds)
+    }
   }
 
   return lists.map((list) => ({
@@ -1932,7 +1950,7 @@ export async function getProjectLists(ecosystemId: string, teamId?: string): Pro
     projectId: list.ecosystem_id,
     name: list.name,
     contributorCount: countMap.get(list.id) ?? 0,
-    contributorIds: contributorIdsByList.get(list.id) ?? [],
+    contributorIds: options.includeContributorIds ? contributorIdsByList.get(list.id) ?? [] : [],
     createdAt: list.created_at,
     updatedAt: list.updated_at,
   }))
@@ -2262,6 +2280,143 @@ export async function getEcosystemContributors(
   return cache.contributors
 }
 
+export async function getEcosystemContributorPage({
+  ecosystemId,
+  teamId,
+  limit = 50,
+  offset = 0,
+  search,
+  minRepos = 1,
+  contactFilters = [],
+  status,
+  listId,
+}: {
+  ecosystemId: string
+  teamId?: string
+  limit?: number
+  offset?: number
+  search?: string | null
+  minRepos?: number
+  contactFilters?: string[]
+  status?: ProjectOutreachStatus | "all" | null
+  listId?: string | "all" | null
+}): Promise<EcosystemContributorPage> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const cache = await getOrRecomputeEcosystemContributors(ecosystemId, resolvedTeamId)
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)))
+  const safeOffset = Math.max(0, Math.floor(offset))
+  const safeMinRepos = Math.max(1, Math.floor(minRepos))
+  const query = search?.trim().toLowerCase() ?? ""
+  const filters = new Set(contactFilters)
+
+  const { data: lists, error: listError } = await supabaseAdmin
+    .from("project_lists")
+    .select("id")
+    .eq("team_id", resolvedTeamId)
+    .eq("ecosystem_id", ecosystemId)
+  if (listError) throw listError
+  const projectListIds = (lists ?? []).map((list) => list.id)
+
+  let listContributorIds: Set<string> | null = null
+  if (listId && listId !== "all" && projectListIds.includes(listId)) {
+    const { data: listLinks, error: listLinkError } = await supabaseAdmin
+      .from("project_list_contributors")
+      .select("contributor_id")
+      .eq("team_id", resolvedTeamId)
+      .eq("project_list_id", listId)
+    if (listLinkError) throw listLinkError
+    listContributorIds = new Set((listLinks ?? []).map((link) => link.contributor_id))
+  }
+
+  let statusContributorIds: Set<string> | null = null
+  if (status && status !== "all") {
+    const { data: statusRows, error: statusError } = await supabaseAdmin
+      .from("project_contributor_tracking")
+      .select("contributor_id, status")
+      .eq("team_id", resolvedTeamId)
+      .eq("ecosystem_id", ecosystemId)
+    if (statusError) throw statusError
+    const trackedRows = (statusRows ?? []) as Array<{ contributor_id: string; status: ProjectOutreachStatus }>
+    statusContributorIds = new Set(
+      trackedRows
+        .filter((row) => row.status === status)
+        .map((row) => row.contributor_id)
+    )
+    if (status === "not_contacted") {
+      const trackedContributorIds = new Set(trackedRows.map((row) => row.contributor_id))
+      for (const contributor of cache.contributors) {
+        if (!trackedContributorIds.has(contributor.id)) statusContributorIds.add(contributor.id)
+      }
+    }
+  }
+
+  const filtered = cache.contributors
+    .filter((contributor) => {
+      if (listContributorIds && !listContributorIds.has(contributor.id)) return false
+      if (statusContributorIds && !statusContributorIds.has(contributor.id)) return false
+      if (contributor.scrapeCount < safeMinRepos) return false
+      if (query && !`${contributor.name} ${contributor.username}`.toLowerCase().includes(query)) return false
+      if (filters.has("email") && !contributor.contacts.email?.trim()) return false
+      if (filters.has("linkedin") && !contributor.contacts.linkedin?.trim()) return false
+      if (filters.has("twitter") && !contributor.contacts.twitter?.trim()) return false
+      return true
+    })
+    .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
+
+  const page = filtered.slice(safeOffset, safeOffset + safeLimit)
+  const pageContributorIds = page.map((contributor) => contributor.id)
+  const trackingByContributorId = new Map<string, ProjectContributorTracking>()
+  const listIdsByContributorId = new Map<string, string[]>()
+
+  if (pageContributorIds.length > 0) {
+    const [trackingResult, listLinksResult] = await Promise.all([
+      supabaseAdmin
+        .from("project_contributor_tracking")
+        .select("id, ecosystem_id, contributor_id, status, notes, last_contacted_at, next_follow_up_at, created_at, updated_at")
+        .eq("team_id", resolvedTeamId)
+        .eq("ecosystem_id", ecosystemId)
+        .in("contributor_id", pageContributorIds),
+      projectListIds.length > 0
+        ? supabaseAdmin
+            .from("project_list_contributors")
+            .select("project_list_id, contributor_id")
+            .eq("team_id", resolvedTeamId)
+            .in("project_list_id", projectListIds)
+            .in("contributor_id", pageContributorIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    if (trackingResult.error) throw trackingResult.error
+    if (listLinksResult.error) throw listLinksResult.error
+
+    for (const row of (trackingResult.data ?? []) as ProjectContributorTrackingRow[]) {
+      trackingByContributorId.set(row.contributor_id, toProjectContributorTracking(row))
+    }
+    for (const link of listLinksResult.data ?? []) {
+      const current = listIdsByContributorId.get(link.contributor_id) ?? []
+      current.push(link.project_list_id)
+      listIdsByContributorId.set(link.contributor_id, current)
+    }
+  }
+
+  return {
+    contributors: page.map((contributor) => ({
+      ...contributor,
+      listIds: listIdsByContributorId.get(contributor.id) ?? [],
+      tracking: trackingByContributorId.get(contributor.id) ?? null,
+    })),
+    total: filtered.length,
+    pageSize: safeLimit,
+    offset: safeOffset,
+    hasMore: safeOffset + page.length < filtered.length,
+    contributorCount: cache.contributorCount,
+    multiRepoCount: cache.multiRepoCount,
+    scrapeIds: cache.scrapeIds,
+    recomputedAt: cache.recomputedAt,
+    cacheStatus: cache.cacheStatus,
+  }
+}
+
 export async function getCachedEcosystemContributors(
   ecosystemId: string,
   teamId?: string
@@ -2291,28 +2446,14 @@ export async function getOrRecomputeEcosystemContributors(
   teamId?: string
 ): Promise<EcosystemContributorCache> {
   const resolvedTeamId = await resolveTeamId(teamId)
-  const source = await getEcosystemContributorCacheSource(ecosystemId, resolvedTeamId)
-  let cached: EcosystemContributorCache | null = null
   try {
-    cached = await getCachedEcosystemContributors(ecosystemId, resolvedTeamId)
+    const cached = await getCachedEcosystemContributors(ecosystemId, resolvedTeamId)
+    if (cached) return cached
   } catch (error) {
     console.warn("[project-contributors-cache] Cache read failed; computing directly.", error)
-    return computeEcosystemContributorsWithoutCache(ecosystemId, resolvedTeamId, source.scrapeIds)
+    return computeEcosystemContributorsWithoutCache(ecosystemId, resolvedTeamId)
   }
 
-  if (
-    cached &&
-    !shouldRecomputeEcosystemContributorCache({
-      cachedScrapeIds: cached.scrapeIds,
-      currentScrapeIds: source.scrapeIds,
-      cachedContributorCount: cached.contributorCount,
-      totalScrapeContributors: source.totalScrapeContributors,
-      recomputedAt: cached.recomputedAt,
-      latestScrapeCompletedAt: source.latestScrapeCompletedAt,
-    })
-  ) {
-    return cached
-  }
   return recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId)
 }
 
@@ -2389,38 +2530,6 @@ async function getEcosystemScrapeIds(ecosystemId: string, teamId: string): Promi
   return (ecoLinks ?? []).map((link) => link.scrape_id)
 }
 
-async function getEcosystemContributorCacheSource(
-  ecosystemId: string,
-  teamId: string
-): Promise<EcosystemContributorCacheSource> {
-  const scrapeIds = await getEcosystemScrapeIds(ecosystemId, teamId)
-  if (scrapeIds.length === 0) {
-    return { scrapeIds, totalScrapeContributors: 0, latestScrapeCompletedAt: null }
-  }
-
-  let totalScrapeContributors = 0
-  let latestScrapeCompletedAt: string | null = null
-  for (let i = 0; i < scrapeIds.length; i += 50) {
-    const batch = scrapeIds.slice(i, i + 50)
-    const { data: scrapeRows, error } = await supabaseAdmin
-      .from("scrapes")
-      .select("id, total_contributors, completed_at")
-      .eq("team_id", teamId)
-      .in("id", batch)
-    if (error) throw error
-
-    for (const scrape of scrapeRows ?? []) {
-      totalScrapeContributors += scrape.total_contributors ?? 0
-      const completedAt = scrape.completed_at ?? null
-      if (completedAt && (!latestScrapeCompletedAt || new Date(completedAt) > new Date(latestScrapeCompletedAt))) {
-        latestScrapeCompletedAt = completedAt
-      }
-    }
-  }
-
-  return { scrapeIds, totalScrapeContributors, latestScrapeCompletedAt }
-}
-
 async function computeEcosystemContributors(
   ecosystemId: string,
   resolvedTeamId: string
@@ -2447,16 +2556,13 @@ async function computeEcosystemContributors(
     for (const r of scrapeRows ?? []) targetMap.set(r.id, r.target as string)
   }
 
-  const linkResults = await Promise.all(
-    scrapeIds.map((scrapeId) =>
-      supabaseAdmin
-        .from("scrape_contributors")
-        .select("scrape_id, contributor_id, contributions")
-        .eq("scrape_id", scrapeId)
-    )
-  )
   const allLinks: Array<{ scrape_id: string; contributor_id: string; contributions: number }> = []
-  for (const { data: rows, error: linksErr } of linkResults) {
+  for (let i = 0; i < scrapeIds.length; i += 100) {
+    const batch = scrapeIds.slice(i, i + 100)
+    const { data: rows, error: linksErr } = await supabaseAdmin
+      .from("scrape_contributors")
+      .select("scrape_id, contributor_id, contributions")
+      .in("scrape_id", batch)
     if (linksErr) throw linksErr
     allLinks.push(...((rows ?? []) as Array<{ scrape_id: string; contributor_id: string; contributions: number }>))
   }

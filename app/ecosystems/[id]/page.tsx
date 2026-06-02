@@ -58,6 +58,8 @@ type EcosystemContributor = {
   scrapeTargets: string[]
   totalContributions: number
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
+  listIds?: string[]
+  tracking?: ProjectContributorTracking | null
 }
 
 type ScrapeSummary = { id: string; target: string; type: string }
@@ -105,6 +107,7 @@ function downloadCsv(filename: string, rows: unknown[][]) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const CONTRIBUTOR_SKELETON_ROWS = 9
+const CONTRIBUTOR_PAGE_SIZE = 50
 
 /** Same table grid as loaded contributor rows: rank, avatar + name + link, repos pill, tag row, contributions, contact icons. */
 function ContributorTableSkeleton() {
@@ -193,7 +196,12 @@ export default function EcosystemDetailPage() {
   const [ecosystemLoading, setEcosystemLoading] = useState(true)
   const [contributors, setContributors] = useState<EcosystemContributor[]>([])
   const [contributorsLoading, setContributorsLoading] = useState(true)
+  const [contributorsLoadingMore, setContributorsLoadingMore] = useState(false)
   const [contributorsError, setContributorsError] = useState<string | null>(null)
+  const [projectContributorCount, setProjectContributorCount] = useState(0)
+  const [contributorsTotal, setContributorsTotal] = useState(0)
+  const [multiRepoCount, setMultiRepoCount] = useState(0)
+  const [contributorsHasMore, setContributorsHasMore] = useState(false)
   const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
   const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
   const [selectedScrape, setSelectedScrape] = useState("")
@@ -213,39 +221,92 @@ export default function EcosystemDetailPage() {
   const [savingContributorIds, setSavingContributorIds] = useState<Set<string>>(new Set())
   const [listError, setListError] = useState<string | null>(null)
   const [trackingByContributorId, setTrackingByContributorId] = useState<Record<string, ProjectContributorTracking>>({})
-  const [trackingLoading, setTrackingLoading] = useState(true)
+  const [trackingLoading] = useState(false)
   const [trackingError, setTrackingError] = useState<string | null>(null)
   const [savingTrackingIds, setSavingTrackingIds] = useState<Set<string>>(new Set())
 
-  const load = useCallback(async () => {
-    setContributorsLoading(true)
-    setContributorsError(null)
-    const [ecoRes, scrapesRes, contribRes] = await Promise.all([
-      fetch(`/api/ecosystems/${id}`),
-      fetch("/api/scrapes"),
-      fetch(`/api/ecosystems/${id}/contributors`),
+  const loadProjectShell = useCallback(async () => {
+    setEcosystemLoading(true)
+    const [ecoRes, scrapesRes] = await Promise.all([
+      fetch(`/api/ecosystems/${id}`, { cache: "no-store" }),
+      fetch(`/api/ecosystems/${id}/scrapes`, { cache: "no-store" }),
     ])
-    if (ecoRes.status === 404) {
+    if (ecoRes.status === 404 || scrapesRes.status === 404) {
       setEcosystemLoading(false)
-      setContributorsLoading(false)
       router.push("/ecosystems")
       return
     }
-    const { ecosystem: eco } = await ecoRes.json()
-    const { completed } = await scrapesRes.json()
-    let contribs: EcosystemContributor[] = []
-    if (contribRes.ok) {
-      const body = await contribRes.json()
-      contribs = body.contributors ?? []
-    } else {
-      setContributorsError("Contributor cache could not load. Please retry in a moment.")
-    }
-    setEcosystem(eco)
-    setAllScrapes(completed ?? [])
-    setContributors(contribs)
-    setContributorsLoading(false)
+    const [{ ecosystem: eco }, scrapesBody] = await Promise.all([
+      ecoRes.json(),
+      scrapesRes.json().catch(() => null),
+    ])
+    setEcosystem({
+      ...eco,
+      scrapes: Array.isArray(scrapesBody?.scrapes) ? scrapesBody.scrapes : eco.scrapes ?? [],
+    })
     setEcosystemLoading(false)
   }, [id, router])
+
+  const loadAvailableScrapes = useCallback(async () => {
+    if (!canWrite) return
+    try {
+      const response = await fetch("/api/scrapes/recent?limit=50", { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      setAllScrapes(Array.isArray(data?.completed) ? data.completed : [])
+    } catch {
+      setAllScrapes([])
+    }
+  }, [canWrite])
+
+  const loadContributorPage = useCallback(async (append = false, offsetOverride = 0) => {
+    if (append) {
+      setContributorsLoadingMore(true)
+    } else {
+      setContributorsLoading(true)
+    }
+    setContributorsError(null)
+    const offset = append ? offsetOverride : 0
+    const params = new URLSearchParams({
+      limit: String(CONTRIBUTOR_PAGE_SIZE),
+      offset: String(offset),
+      minRepos: String(minRepos),
+      status: statusFilter,
+      listId: selectedListId,
+    })
+    const query = searchQuery.trim()
+    if (query) params.set("search", query)
+    if (contactFilters.size > 0) params.set("contacts", Array.from(contactFilters).join(","))
+
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/contributors?${params.toString()}`, { cache: "no-store" })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || "Contributor cache request failed")
+      const pageContributors = Array.isArray(body?.contributors) ? (body.contributors as EcosystemContributor[]) : []
+      setContributors((prev) => (append ? [...prev, ...pageContributors] : pageContributors))
+      setContributorsTotal(Number.isFinite(body?.total) ? body.total : pageContributors.length)
+      setProjectContributorCount(Number.isFinite(body?.contributorCount) ? body.contributorCount : pageContributors.length)
+      setMultiRepoCount(Number.isFinite(body?.multiRepoCount) ? body.multiRepoCount : 0)
+      setContributorsHasMore(Boolean(body?.hasMore))
+      setTrackingByContributorId((prev) => {
+        const next = append ? { ...prev } : {}
+        for (const contributor of pageContributors) {
+          if (contributor.tracking) next[contributor.id] = contributor.tracking
+        }
+        return next
+      })
+    } catch {
+      if (!append) {
+        setContributors([])
+        setProjectContributorCount(0)
+        setContributorsTotal(0)
+        setMultiRepoCount(0)
+      }
+      setContributorsError("Contributor cache could not load. Please retry in a moment.")
+    } finally {
+      setContributorsLoading(false)
+      setContributorsLoadingMore(false)
+    }
+  }, [contactFilters, id, minRepos, searchQuery, selectedListId, statusFilter])
 
   const loadProjectLists = useCallback(async () => {
     setListsLoading(true)
@@ -263,111 +324,30 @@ export default function EcosystemDetailPage() {
     }
   }, [id])
 
-  const loadProjectTracking = useCallback(async () => {
-    setTrackingLoading(true)
-    setTrackingError(null)
-    try {
-      const endpoint = `/api/ecosystems/${id}/tracking`
-      const response = await fetch(endpoint, { cache: "no-store" })
-      const data = await response.json().catch(() => null)
-      if (!response.ok) {
-        console.error("[project-tracking] API response failed", {
-          endpoint,
-          method: "GET",
-          status: response.status,
-          responseBody: data,
-        })
-        throw new Error(data?.error || "Project tracking could not load")
-      }
-      const tracking = Array.isArray(data?.tracking) ? (data.tracking as ProjectContributorTracking[]) : []
-      setTrackingByContributorId(
-        Object.fromEntries(tracking.map((item) => [item.contributorId, item]))
-      )
-      if (data?.warning) {
-        console.warn("[project-tracking] GET warning", {
-          endpoint,
-          method: "GET",
-          code: data?.code,
-          warning: data.warning,
-        })
-        setTrackingError(data.warning)
-      }
-    } catch (error) {
-      console.error("[project-tracking] fetch failed", {
-        endpoint: `/api/ecosystems/${id}/tracking`,
-        method: "GET",
-        projectId: id,
-        error,
-      })
-      setTrackingError(error instanceof Error ? error.message : "Project tracking could not load")
-      setTrackingByContributorId({})
-    } finally {
-      setTrackingLoading(false)
-    }
-  }, [id])
-
   useEffect(() => {
     let cancelled = false
-    setEcosystemLoading(true)
-    setContributorsLoading(true)
 
     const run = async () => {
-      setContributorsError(null)
-      fetch("/api/scrapes")
-        .then((r) => r.json())
-        .then((j) => {
-          if (!cancelled) setAllScrapes(j.completed ?? [])
-        })
-        .catch(() => {
-          if (!cancelled) setAllScrapes([])
-        })
-
-      // Metadata first (fast): name + scrape chips are not blocked by contributor aggregation.
-      const ecoRes = await fetch(`/api/ecosystems/${id}`)
-      if (cancelled) return
-      if (ecoRes.status === 404) {
-        setEcosystemLoading(false)
-        setContributorsLoading(false)
-        router.push("/ecosystems")
-        return
-      }
-      const { ecosystem: eco } = await ecoRes.json()
-      if (cancelled) return
-      setEcosystem(eco)
-      setEcosystemLoading(false)
-
-      try {
-        const contribRes = await fetch(`/api/ecosystems/${id}/contributors`)
-        if (cancelled) return
-        if (!contribRes.ok) {
-          throw new Error("Contributor cache request failed")
-        }
-        const body = await contribRes.json()
-        setContributors(body.contributors ?? [])
-        setContributorsError(null)
-      } catch {
-        if (!cancelled) {
-          setContributors([])
-          setContributorsError("Contributor cache could not load. Please retry in a moment.")
-        }
-      } finally {
-        if (!cancelled) setContributorsLoading(false)
-      }
+      await loadProjectShell()
+      if (!cancelled) await loadAvailableScrapes()
     }
 
     void run()
     return () => {
       cancelled = true
     }
-  }, [id, router])
+  }, [loadAvailableScrapes, loadProjectShell])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void loadContributorPage(false)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [loadContributorPage])
 
   useEffect(() => {
     void loadProjectLists()
   }, [loadProjectLists])
-
-  useEffect(() => {
-    void loadProjectTracking()
-  }, [loadProjectTracking])
 
   useEffect(() => {
     if (!ecosystem) return
@@ -396,7 +376,7 @@ export default function EcosystemDetailPage() {
     })
     setSelectedScrape("")
     setAdding(false)
-    await load()
+    await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
   }
 
   async function handleRemoveScrape(scrapeId: string) {
@@ -406,7 +386,7 @@ export default function EcosystemDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scrapeId }),
     })
-    await load()
+    await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
   }
 
   async function handleDeleteEcosystem() {
@@ -493,13 +473,19 @@ export default function EcosystemDetailPage() {
       }
       setProjectLists((prev) =>
         prev.map((list) =>
-          list.id === listId && !list.contributorIds.includes(contributorId)
+          list.id === listId
             ? {
                 ...list,
                 contributorCount: list.contributorCount + 1,
-                contributorIds: [...list.contributorIds, contributorId],
               }
             : list
+        )
+      )
+      setContributors((prev) =>
+        prev.map((contributor) =>
+          contributor.id === contributorId && !(contributor.listIds ?? []).includes(listId)
+            ? { ...contributor, listIds: [...(contributor.listIds ?? []), listId] }
+            : contributor
         )
       )
     } catch (error) {
@@ -566,36 +552,18 @@ export default function EcosystemDetailPage() {
     }
   }
 
-  const uniqueContributors = contributors.length
-  const multiScrapeCount = contributors.filter((c) => c.scrapeCount > 1).length
+  const uniqueContributors = projectContributorCount
   const scrapeRows = ecosystem?.scrapes ?? []
   const maxRepos = Math.max(1, scrapeRows.length)
   const selectedList = projectLists.find((list) => list.id === selectedListId) ?? null
-  const selectedListContributorIds = useMemo(
-    () => new Set(selectedList?.contributorIds ?? []),
-    [selectedList?.contributorIds]
-  )
 
   useEffect(() => {
     setMinRepos((current) => Math.min(maxRepos, Math.max(1, current)))
   }, [maxRepos])
 
   const filteredContributors = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
     return contributors
-      .filter((contributor) => {
-        const tracking = trackingByContributorId[contributor.id] ?? getDefaultProjectTracking(id, contributor.id)
-        if (selectedList && !selectedListContributorIds.has(contributor.id)) return false
-        if (statusFilter !== "all" && tracking.status !== statusFilter) return false
-        if (contributor.scrapeCount < minRepos) return false
-        if (query && !`${contributor.name} ${contributor.username}`.toLowerCase().includes(query)) return false
-        if (contactFilters.has("email") && !contributor.contacts.email?.trim()) return false
-        if (contactFilters.has("linkedin") && !contributor.contacts.linkedin?.trim()) return false
-        if (contactFilters.has("twitter") && !contributor.contacts.twitter?.trim()) return false
-        return true
-      })
-      .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
-  }, [contactFilters, contributors, id, minRepos, searchQuery, selectedList, selectedListContributorIds, statusFilter, trackingByContributorId])
+  }, [contributors])
 
   const toggleContactFilter = useCallback((filter: ContactFilter) => {
     setContactFilters((prev) => {
@@ -700,11 +668,11 @@ export default function EcosystemDetailPage() {
               </>
             )}
           </span>
-          {!contributorsLoading && multiScrapeCount > 0 && (
+          {!contributorsLoading && multiRepoCount > 0 && (
             <>
               <span>·</span>
               <span className="text-primary font-medium">
-                <span className="font-mono">{multiScrapeCount}</span> appear in 2+ scrapes
+                <span className="font-mono">{multiRepoCount}</span> appear in 2+ scrapes
               </span>
             </>
           )}
@@ -835,7 +803,7 @@ export default function EcosystemDetailPage() {
                   }`}
                 >
                   <p className="text-sm font-extrabold">All Contributors</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{contributors.length} total</p>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{projectContributorCount} total</p>
                 </button>
 
                 {projectLists.map((list) => (
@@ -931,15 +899,14 @@ export default function EcosystemDetailPage() {
               <h2 className="text-base font-semibold text-muted-foreground uppercase tracking-wide text-xs">
                 Contributor Intelligence
               </h2>
-              {!contributorsLoading && contributors.length > 0 && (
+              {!contributorsLoading && projectContributorCount > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Showing {filteredContributors.length} of{" "}
-                  {selectedList ? selectedList.contributorCount : contributors.length} contributors
+                  Showing {contributors.length} of {contributorsTotal} contributors
                   {selectedList ? ` in ${selectedList.name}` : ""}
                 </p>
               )}
             </div>
-            {!contributorsLoading && contributors.length > 0 && (
+            {!contributorsLoading && projectContributorCount > 0 && (
               <Button
                 size="sm"
                 variant="outline"
@@ -968,12 +935,17 @@ export default function EcosystemDetailPage() {
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" className="shrink-0 bg-transparent" onClick={load}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 bg-transparent"
+                  onClick={() => loadContributorPage(false)}
+                >
                   Retry
                 </Button>
               </div>
             </div>
-          ) : contributors.length === 0 ? (
+          ) : projectContributorCount === 0 ? (
             <div className="text-center py-16 text-muted-foreground text-sm border border-border rounded-lg bg-card">
               {scrapeRows.length === 0
                 ? "Add scrapes to see contributor intelligence."
@@ -1065,6 +1037,7 @@ export default function EcosystemDetailPage() {
                     : "No contributors match the current filters."}
                 </div>
               ) : (
+                <>
             <div className="overflow-x-auto rounded-lg border border-border bg-card">
               <table className="w-full min-w-[1120px] table-fixed text-sm">
                 <colgroup>
@@ -1359,7 +1332,7 @@ export default function EcosystemDetailPage() {
                                   </div>
                                 ) : (
                                   projectLists.map((list) => {
-                                    const alreadySaved = list.contributorIds.includes(c.id)
+                                    const alreadySaved = c.listIds?.includes(list.id) ?? false
                                     return (
                                       <DropdownMenuItem
                                         key={list.id}
@@ -1408,6 +1381,20 @@ export default function EcosystemDetailPage() {
                 </tbody>
               </table>
             </div>
+              {contributorsHasMore && (
+                <div className="flex justify-center pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-transparent"
+                    disabled={contributorsLoadingMore}
+                    onClick={() => loadContributorPage(true, contributors.length)}
+                  >
+                    {contributorsLoadingMore ? "Loading..." : "Load more contributors"}
+                  </Button>
+                </div>
+              )}
+                </>
               )}
             </div>
           )}

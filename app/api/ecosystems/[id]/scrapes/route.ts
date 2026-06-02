@@ -1,8 +1,34 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { addScrapeToEcosystem, removeScrapeFromEcosystem } from "@/lib/db"
+import { requireAuth } from "@/lib/auth"
+import { addScrapeToEcosystem, getEcosystem, removeScrapeFromEcosystem } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeScrapeId, normalizeUuid, readJsonObject } from "@/lib/validation"
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authError = requireAuth(request)
+  if (authError) return authError
+
+  try {
+    const { teamId } = await resolveTeamContext(request)
+    const { id } = await params
+    const ecosystemId = normalizeUuid(id)
+    if (!ecosystemId) {
+      return NextResponse.json({ error: "Invalid project id" }, { status: 400 })
+    }
+
+    const ecosystem = await getEcosystem(ecosystemId, teamId)
+    if (!ecosystem) return NextResponse.json({ error: "Project not found" }, { status: 404 })
+    return NextResponse.json({ scrapes: ecosystem.scrapes })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    console.error("[ecosystems/[id]/scrapes] GET error:", error)
+    return NextResponse.json({ error: "Failed to fetch project scrapes", scrapes: [] }, { status: 500 })
+  }
+}
 
 export async function POST(
   request: NextRequest,
