@@ -49,6 +49,7 @@ type DueFilter = "all" | "due" | "overdue" | "today" | "upcoming" | "none"
 type StatusFilter = "all" | ProjectOutreachStatus
 
 const ACTIVE_STATUSES = new Set<ProjectOutreachStatus>(["contacted", "replied", "interested", "interviewing"])
+const PIPELINE_PAGE_SIZE = 50
 
 function todayString() {
   return new Date().toISOString().slice(0, 10)
@@ -120,7 +121,11 @@ export function PipelineWorkspace() {
   const { canWrite } = useAuthPermissions()
   const { toast } = useToast()
   const [items, setItems] = useState<PipelineItem[]>([])
+  const [projectOptions, setProjectOptions] = useState<Array<{ id: string; name: string }>>([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<PipelineItem | null>(null)
@@ -129,65 +134,82 @@ export function PipelineWorkspace() {
   const [dueFilter, setDueFilter] = useState<DueFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
 
-  const loadPipeline = useCallback(async () => {
-    setLoading(true)
+  const loadPipeline = useCallback(async (append = false, offsetOverride = 0) => {
+    if (append) setLoadingMore(true)
+    else setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/pipeline", { cache: "no-store" })
+      const params = new URLSearchParams({
+        limit: String(PIPELINE_PAGE_SIZE),
+        offset: String(append ? offsetOverride : 0),
+        project: projectFilter,
+        status: statusFilter,
+        due: dueFilter,
+      })
+      const query = searchQuery.trim()
+      if (query) params.set("search", query)
+      const response = await fetch(`/api/pipeline?${params.toString()}`, { cache: "no-store" })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Pipeline could not load")
-      setItems(Array.isArray(data?.items) ? data.items : [])
+      const nextItems = Array.isArray(data?.items) ? data.items : []
+      setItems((prev) => (append ? [...prev, ...nextItems] : nextItems))
+      setProjectOptions(Array.isArray(data?.projects) ? data.projects : [])
+      setTotalItems(Number.isFinite(data?.total) ? data.total : nextItems.length)
+      setHasMore(Boolean(data?.hasMore))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pipeline could not load")
-      setItems([])
+      if (!append) {
+        setItems([])
+        setTotalItems(0)
+        setHasMore(false)
+      }
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
-  }, [])
+  }, [dueFilter, projectFilter, searchQuery, statusFilter])
 
   useEffect(() => {
-    loadPipeline()
+    const timeout = window.setTimeout(() => {
+      void loadPipeline(false)
+    }, 250)
+    return () => window.clearTimeout(timeout)
   }, [loadPipeline])
 
-  const projectOptions = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string }>()
-    for (const item of items) byId.set(item.project.id, item.project)
-    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [items])
-
-  const filteredItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    return items.filter((item) => {
-      if (projectFilter !== "all" && item.project.id !== projectFilter) return false
-      if (statusFilter !== "all" && item.tracking.status !== statusFilter) return false
-      if (!matchesDueFilter(item, dueFilter)) return false
-      if (!query) return true
-      return (
-        item.contributor.username.toLowerCase().includes(query) ||
-        item.contributor.name.toLowerCase().includes(query) ||
-        item.project.name.toLowerCase().includes(query)
-      )
-    })
-  }, [dueFilter, items, projectFilter, searchQuery, statusFilter])
-
-  const followUpsDue = useMemo(() => filteredItems.filter(isDue).sort(sortByFollowUp), [filteredItems])
+  const followUpsDue = useMemo(() => items.filter(isDue).sort(sortByFollowUp), [items])
   const activeItems = useMemo(
     () =>
-      filteredItems
+      items
         .filter((item) => ACTIVE_STATUSES.has(item.tracking.status) && !isDue(item))
         .sort(sortByFollowUp),
-    [filteredItems]
+    [items]
   )
   const archivedFilteredItems = useMemo(
     () =>
       statusFilter === "archived" || statusFilter === "rejected"
-        ? filteredItems.filter((item) => item.tracking.status === statusFilter).sort(sortByFollowUp)
+        ? items.filter((item) => item.tracking.status === statusFilter).sort(sortByFollowUp)
         : [],
-    [filteredItems, statusFilter]
+    [items, statusFilter]
   )
 
   const dueCount = items.filter(isDue).length
   const activeCount = items.filter((item) => ACTIVE_STATUSES.has(item.tracking.status)).length
+
+  function itemMatchesCurrentView(item: PipelineItem) {
+    if (projectFilter !== "all" && item.project.id !== projectFilter) return false
+    if (statusFilter !== "all" && item.tracking.status !== statusFilter) return false
+    if (statusFilter === "all" && dueFilter === "all") {
+      if (item.tracking.status === "archived" || item.tracking.status === "rejected") return false
+      if (!isDue(item) && !ACTIVE_STATUSES.has(item.tracking.status)) return false
+    }
+    if (!matchesDueFilter(item, dueFilter)) return false
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return true
+    return (
+      item.contributor.username.toLowerCase().includes(query) ||
+      item.contributor.name.toLowerCase().includes(query)
+    )
+  }
 
   async function updateTracking(item: PipelineItem, updates: ProjectTrackingUpdate) {
     if (!canWrite) return null
@@ -203,7 +225,13 @@ export function PipelineWorkspace() {
       if (!response.ok) throw new Error(data?.error || "Pipeline item could not be updated")
       const tracking = data.tracking as ProjectContributorTracking
       const nextItem = { ...item, tracking }
-      setItems((prev) => prev.map((current) => (current.tracking.id === item.tracking.id ? nextItem : current)))
+      const remainsVisible = itemMatchesCurrentView(nextItem)
+      setItems((prev) =>
+        remainsVisible
+          ? prev.map((current) => (current.tracking.id === item.tracking.id ? nextItem : current))
+          : prev.filter((current) => current.tracking.id !== item.tracking.id)
+      )
+      if (!remainsVisible) setTotalItems((current) => Math.max(0, current - 1))
       setPreviewItem((current) => (current?.tracking.id === item.tracking.id ? nextItem : current))
       return tracking
     } catch (err) {
@@ -266,8 +294,8 @@ export function PipelineWorkspace() {
           <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
             <CardContent className="p-5">
               <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Tracked</p>
-              <p className="mt-2 text-3xl font-extrabold text-foreground">{items.length}</p>
-              <p className="mt-1 text-sm font-medium text-muted-foreground">Project contributor records</p>
+              <p className="mt-2 text-3xl font-extrabold text-foreground">{totalItems}</p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">Matching pipeline records</p>
             </CardContent>
           </Card>
         </div>
@@ -283,7 +311,7 @@ export function PipelineWorkspace() {
                     id="pipeline-search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search username, name, project..."
+                    placeholder="Search username or name..."
                     className="bg-white/80 pl-10"
                   />
                 </div>
@@ -327,7 +355,7 @@ export function PipelineWorkspace() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Any date</SelectItem>
+                    <SelectItem value="all">Active + due</SelectItem>
                     <SelectItem value="due">Due or overdue</SelectItem>
                     <SelectItem value="overdue">Overdue</SelectItem>
                     <SelectItem value="today">Due today</SelectItem>
@@ -404,6 +432,26 @@ export function PipelineWorkspace() {
                 onSnooze={snooze}
                 onArchive={archive}
               />
+            )}
+            {hasMore && (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => loadPipeline(true, items.length)}
+                  disabled={loadingMore}
+                  className="bg-white/80"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    `Load more (${items.length} of ${totalItems})`
+                  )}
+                </Button>
+              </div>
             )}
           </>
         )}
