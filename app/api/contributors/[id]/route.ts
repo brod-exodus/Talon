@@ -9,6 +9,8 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
+type ContributorProfileResponse = Awaited<ReturnType<typeof getContributorProfile>>
+
 function normalizeOptionalUrl(value: unknown): string | null | undefined {
   if (value === undefined) return undefined
   if (value == null || value === "") return null
@@ -36,12 +38,37 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { teamId } = await resolveTeamContext(request)
     const contributor = await getContributorProfile(contributorId, teamId)
     if (!contributor) return NextResponse.json({ error: "Contributor not found" }, { status: 404 })
+    if (request.nextUrl.searchParams.get("preview") === "1") {
+      return NextResponse.json({ contributor: toContributorPreview(contributor) })
+    }
     return NextResponse.json({ contributor })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
     console.error("[contributors/[id]] GET error:", error)
     return NextResponse.json({ error: "Failed to fetch contributor" }, { status: 500 })
+  }
+}
+
+function toContributorPreview(contributor: NonNullable<ContributorProfileResponse>) {
+  return {
+    id: contributor.id,
+    username: contributor.username,
+    name: contributor.name,
+    avatar: contributor.avatar,
+    bio: contributor.bio,
+    location: contributor.location,
+    company: contributor.company,
+    contacts: contributor.contacts,
+    projects: contributor.projects,
+    sources: contributor.sources.map((source) => ({
+      scrapeId: source.scrapeId,
+      target: source.target,
+      type: source.type,
+      status: source.status,
+      contributions: source.contributions,
+      projects: source.projects,
+    })),
   }
 }
 

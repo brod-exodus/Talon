@@ -1,9 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { Archive, CalendarClock, CheckCircle2, ExternalLink, Loader2, Search } from "lucide-react"
-import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
+import {
+  ContributorQuickPreview,
+  prefetchContributorPreview,
+  type ContributorPreviewSummary,
+} from "@/components/contributor-quick-preview"
 import {
   PROJECT_OUTREACH_STATUS_OPTIONS,
   ProjectOutreachBadge,
@@ -133,6 +137,31 @@ export function PipelineWorkspace() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [dueFilter, setDueFilter] = useState<DueFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  const cancelPreviewPrefetch = useCallback((contributorId: string) => {
+    const timeout = previewPrefetchTimers.current.get(contributorId)
+    if (!timeout) return
+    clearTimeout(timeout)
+    previewPrefetchTimers.current.delete(contributorId)
+  }, [])
+
+  const schedulePreviewPrefetch = useCallback((item: PipelineItem) => {
+    cancelPreviewPrefetch(item.contributor.id)
+    const timeout = setTimeout(() => {
+      previewPrefetchTimers.current.delete(item.contributor.id)
+      prefetchContributorPreview(item.contributor.id, item.project.id)
+    }, 150)
+    previewPrefetchTimers.current.set(item.contributor.id, timeout)
+  }, [cancelPreviewPrefetch])
+
+  useEffect(() => {
+    const timers = previewPrefetchTimers.current
+    return () => {
+      for (const timeout of timers.values()) clearTimeout(timeout)
+      timers.clear()
+    }
+  }, [])
 
   const loadPipeline = useCallback(async (append = false, offsetOverride = 0) => {
     if (append) setLoadingMore(true)
@@ -400,6 +429,8 @@ export function PipelineWorkspace() {
               savingIds={savingIds}
               empty="No follow-ups due in the current filters."
               onOpenPreview={setPreviewItem}
+              onPrefetchPreview={schedulePreviewPrefetch}
+              onCancelPreviewPrefetch={cancelPreviewPrefetch}
               onUpdateTracking={updateTracking}
               onMarkFollowedUp={markFollowedUp}
               onSnooze={snooze}
@@ -413,6 +444,8 @@ export function PipelineWorkspace() {
               savingIds={savingIds}
               empty="No active contributors match the current filters."
               onOpenPreview={setPreviewItem}
+              onPrefetchPreview={schedulePreviewPrefetch}
+              onCancelPreviewPrefetch={cancelPreviewPrefetch}
               onUpdateTracking={updateTracking}
               onMarkFollowedUp={markFollowedUp}
               onSnooze={snooze}
@@ -427,6 +460,8 @@ export function PipelineWorkspace() {
                 savingIds={savingIds}
                 empty="No contributors match the current filters."
                 onOpenPreview={setPreviewItem}
+                onPrefetchPreview={schedulePreviewPrefetch}
+                onCancelPreviewPrefetch={cancelPreviewPrefetch}
                 onUpdateTracking={updateTracking}
                 onMarkFollowedUp={markFollowedUp}
                 onSnooze={snooze}
@@ -486,6 +521,8 @@ function PipelineSection({
   savingIds,
   empty,
   onOpenPreview,
+  onPrefetchPreview,
+  onCancelPreviewPrefetch,
   onUpdateTracking,
   onMarkFollowedUp,
   onSnooze,
@@ -498,6 +535,8 @@ function PipelineSection({
   savingIds: Set<string>
   empty: string
   onOpenPreview: (item: PipelineItem) => void
+  onPrefetchPreview: (item: PipelineItem) => void
+  onCancelPreviewPrefetch: (contributorId: string) => void
   onUpdateTracking: (item: PipelineItem, updates: ProjectTrackingUpdate) => Promise<ProjectContributorTracking | null>
   onMarkFollowedUp: (item: PipelineItem) => Promise<void>
   onSnooze: (item: PipelineItem, days: number) => Promise<void>
@@ -530,6 +569,8 @@ function PipelineSection({
                 saving={savingIds.has(item.tracking.id)}
                 canWrite={canWrite}
                 onOpenPreview={onOpenPreview}
+                onPrefetchPreview={onPrefetchPreview}
+                onCancelPreviewPrefetch={onCancelPreviewPrefetch}
                 onUpdateTracking={onUpdateTracking}
                 onMarkFollowedUp={onMarkFollowedUp}
                 onSnooze={onSnooze}
@@ -548,6 +589,8 @@ function PipelineRow({
   saving,
   canWrite,
   onOpenPreview,
+  onPrefetchPreview,
+  onCancelPreviewPrefetch,
   onUpdateTracking,
   onMarkFollowedUp,
   onSnooze,
@@ -557,6 +600,8 @@ function PipelineRow({
   saving: boolean
   canWrite: boolean
   onOpenPreview: (item: PipelineItem) => void
+  onPrefetchPreview: (item: PipelineItem) => void
+  onCancelPreviewPrefetch: (contributorId: string) => void
   onUpdateTracking: (item: PipelineItem, updates: ProjectTrackingUpdate) => Promise<ProjectContributorTracking | null>
   onMarkFollowedUp: (item: PipelineItem) => Promise<void>
   onSnooze: (item: PipelineItem, days: number) => Promise<void>
@@ -569,6 +614,10 @@ function PipelineRow({
       role="button"
       tabIndex={0}
       onClick={() => onOpenPreview(item)}
+      onMouseEnter={() => onPrefetchPreview(item)}
+      onMouseLeave={() => onCancelPreviewPrefetch(item.contributor.id)}
+      onFocus={() => onPrefetchPreview(item)}
+      onBlur={() => onCancelPreviewPrefetch(item.contributor.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()

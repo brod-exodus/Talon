@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/dialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { EmailCopyButton } from "@/components/email-copy-button"
-import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
+import {
+  ContributorQuickPreview,
+  prefetchContributorPreview,
+  type ContributorPreviewSummary,
+} from "@/components/contributor-quick-preview"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -367,7 +371,32 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
   // Stable ref so fetchContributors doesn't need contributorCache as a dep
   const cacheRef = useRef(contributorCache)
+  const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   useEffect(() => { cacheRef.current = contributorCache }, [contributorCache])
+
+  const cancelPreviewPrefetch = useCallback((contributorId: string) => {
+    const timeout = previewPrefetchTimers.current.get(contributorId)
+    if (!timeout) return
+    clearTimeout(timeout)
+    previewPrefetchTimers.current.delete(contributorId)
+  }, [])
+
+  const schedulePreviewPrefetch = useCallback((contributorId: string, projectId?: string | null) => {
+    cancelPreviewPrefetch(contributorId)
+    const timeout = setTimeout(() => {
+      previewPrefetchTimers.current.delete(contributorId)
+      prefetchContributorPreview(contributorId, projectId)
+    }, 150)
+    previewPrefetchTimers.current.set(contributorId, timeout)
+  }, [cancelPreviewPrefetch])
+
+  useEffect(() => {
+    const timers = previewPrefetchTimers.current
+    return () => {
+      for (const timeout of timers.values()) clearTimeout(timeout)
+      timers.clear()
+    }
+  }, [])
 
   // ── Fetch the bounded lightweight list ────────────────────────────────────
   const loadScrapes = useCallback(async (offset = 0, append = false) => {
@@ -1013,6 +1042,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3, delay: index * 0.05 }}
+                          onMouseEnter={() => schedulePreviewPrefetch(contributor.id, scrape.projects?.[0]?.id)}
+                          onMouseLeave={() => cancelPreviewPrefetch(contributor.id)}
+                          onFocus={() => schedulePreviewPrefetch(contributor.id, scrape.projects?.[0]?.id)}
+                          onBlur={() => cancelPreviewPrefetch(contributor.id)}
                           className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
                         >
                           <div className="flex items-center justify-between">
@@ -1186,7 +1219,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       projects,
       assigningScrapeIds,
       addScrapeToProject,
+      cancelPreviewPrefetch,
       canWrite,
+      schedulePreviewPrefetch,
     ]
   )
 

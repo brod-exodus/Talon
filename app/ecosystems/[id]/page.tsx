@@ -1,10 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
-import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
+import {
+  ContributorQuickPreview,
+  prefetchContributorPreview,
+  type ContributorPreviewSummary,
+} from "@/components/contributor-quick-preview"
 import {
   getDefaultProjectTracking,
   PROJECT_OUTREACH_STATUS_OPTIONS,
@@ -224,6 +228,31 @@ export default function EcosystemDetailPage() {
   const [trackingLoading] = useState(false)
   const [trackingError, setTrackingError] = useState<string | null>(null)
   const [savingTrackingIds, setSavingTrackingIds] = useState<Set<string>>(new Set())
+  const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  const cancelPreviewPrefetch = useCallback((contributorId: string) => {
+    const timeout = previewPrefetchTimers.current.get(contributorId)
+    if (!timeout) return
+    clearTimeout(timeout)
+    previewPrefetchTimers.current.delete(contributorId)
+  }, [])
+
+  const schedulePreviewPrefetch = useCallback((contributorId: string) => {
+    cancelPreviewPrefetch(contributorId)
+    const timeout = setTimeout(() => {
+      previewPrefetchTimers.current.delete(contributorId)
+      prefetchContributorPreview(contributorId, ecosystem?.id)
+    }, 150)
+    previewPrefetchTimers.current.set(contributorId, timeout)
+  }, [cancelPreviewPrefetch, ecosystem?.id])
+
+  useEffect(() => {
+    const timers = previewPrefetchTimers.current
+    return () => {
+      for (const timeout of timers.values()) clearTimeout(timeout)
+      timers.clear()
+    }
+  }, [])
 
   const loadProjectShell = useCallback(async () => {
     setEcosystemLoading(true)
@@ -1073,6 +1102,10 @@ export default function EcosystemDetailPage() {
                       key={c.id}
                       tabIndex={0}
                       className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted/20 focus-visible:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      onMouseEnter={() => schedulePreviewPrefetch(c.id)}
+                      onMouseLeave={() => cancelPreviewPrefetch(c.id)}
+                      onFocus={() => schedulePreviewPrefetch(c.id)}
+                      onBlur={() => cancelPreviewPrefetch(c.id)}
                       onClick={() =>
                         setPreviewContributor({
                           id: c.id,
