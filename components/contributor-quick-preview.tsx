@@ -127,6 +127,123 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value)
 }
 
+const PREVIEW_CACHE_TTL_MS = 3 * 60 * 1000
+
+type CacheEntry<T> = {
+  value?: T
+  promise?: Promise<T>
+  expiresAt: number
+}
+
+const profileCache = new Map<string, CacheEntry<ContributorPreviewProfile>>()
+const projectListsCache = new Map<string, CacheEntry<ProjectListSummary[]>>()
+
+function nowMs() {
+  return Date.now()
+}
+
+function isFresh<T>(entry: CacheEntry<T> | undefined): entry is CacheEntry<T> & { value: T } {
+  return Boolean(entry?.value && entry.expiresAt > nowMs())
+}
+
+function logPreviewCache(event: string, metadata: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[contributor-preview]", event, metadata)
+  }
+}
+
+async function loadContributorPreviewProfile(contributorId: string): Promise<ContributorPreviewProfile> {
+  const cached = profileCache.get(contributorId)
+  if (isFresh(cached)) {
+    logPreviewCache("profile cache hit", { contributorId })
+    return cached.value
+  }
+  if (cached?.promise) {
+    logPreviewCache("profile request reused", { contributorId })
+    return cached.promise
+  }
+
+  const startedAt = performance.now()
+  logPreviewCache("profile cache miss", { contributorId })
+  const promise = fetch(`/api/contributors/${contributorId}?preview=1`, { cache: "no-store" })
+    .then(async (response) => {
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Contributor could not load")
+      return data.contributor as ContributorPreviewProfile
+    })
+    .then((profile) => {
+      profileCache.set(contributorId, {
+        value: profile,
+        expiresAt: nowMs() + PREVIEW_CACHE_TTL_MS,
+      })
+      logPreviewCache("profile request complete", {
+        contributorId,
+        durationMs: Math.round(performance.now() - startedAt),
+      })
+      return profile
+    })
+    .catch((error) => {
+      profileCache.delete(contributorId)
+      throw error
+    })
+
+  profileCache.set(contributorId, { promise, expiresAt: nowMs() + PREVIEW_CACHE_TTL_MS })
+  return promise
+}
+
+async function loadProjectLists(projectId: string): Promise<ProjectListSummary[]> {
+  const cached = projectListsCache.get(projectId)
+  if (isFresh(cached)) {
+    logPreviewCache("lists cache hit", { projectId })
+    return cached.value
+  }
+  if (cached?.promise) {
+    logPreviewCache("lists request reused", { projectId })
+    return cached.promise
+  }
+
+  const startedAt = performance.now()
+  logPreviewCache("lists cache miss", { projectId })
+  const promise = fetch(`/api/ecosystems/${projectId}/lists?includeContributorIds=1`, { cache: "no-store" })
+    .then(async (response) => {
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Project lists could not load")
+      return Array.isArray(data?.lists) ? (data.lists as ProjectListSummary[]) : []
+    })
+    .then((lists) => {
+      projectListsCache.set(projectId, {
+        value: lists,
+        expiresAt: nowMs() + PREVIEW_CACHE_TTL_MS,
+      })
+      logPreviewCache("lists request complete", {
+        projectId,
+        count: lists.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      })
+      return lists
+    })
+    .catch((error) => {
+      projectListsCache.delete(projectId)
+      throw error
+    })
+
+  projectListsCache.set(projectId, { promise, expiresAt: nowMs() + PREVIEW_CACHE_TTL_MS })
+  return promise
+}
+
+function writeProjectListsCache(projectId: string, lists: ProjectListSummary[]) {
+  projectListsCache.set(projectId, {
+    value: lists,
+    expiresAt: nowMs() + PREVIEW_CACHE_TTL_MS,
+  })
+}
+
+export function prefetchContributorPreview(contributorId: string, projectId?: string | null) {
+  if (!contributorId) return
+  void loadContributorPreviewProfile(contributorId).catch(() => undefined)
+  if (projectId) void loadProjectLists(projectId).catch(() => undefined)
+}
+
 export function ContributorQuickPreview({
   open,
   contributor,
@@ -162,22 +279,15 @@ export function ContributorQuickPreview({
     if (!open || !contributor?.id) return
 
     let cancelled = false
-    const controller = new AbortController()
     const contributorId = contributor.id
 
     async function loadProfile() {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(`/api/contributors/${contributorId}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        })
-        const data = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(data?.error || "Contributor could not load")
-        if (!cancelled) setProfile(data.contributor ?? null)
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return
+        const nextProfile = await loadContributorPreviewProfile(contributorId)
+        if (!cancelled) setProfile(nextProfile)
+      } catch {
         if (!cancelled) setError("Full contributor details are unavailable right now.")
       } finally {
         if (!cancelled) setLoading(false)
@@ -187,7 +297,6 @@ export function ContributorQuickPreview({
     loadProfile()
     return () => {
       cancelled = true
-      controller.abort()
     }
   }, [open, contributor?.id])
 
@@ -217,26 +326,18 @@ export function ContributorQuickPreview({
     }
 
     let cancelled = false
-    const controller = new AbortController()
 
-    async function loadProjectLists() {
+    async function loadLists() {
       setListsLoading(true)
       setListError(null)
       try {
-        const response = await fetch(`/api/ecosystems/${selectedProjectId}/lists?includeContributorIds=1`, {
-          cache: "no-store",
-          signal: controller.signal,
-        })
-        const data = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(data?.error || "Project lists could not load")
+        const lists = await loadProjectLists(selectedProjectId)
         if (cancelled) return
-        const lists = Array.isArray(data?.lists) ? data.lists : []
         setProjectLists(lists)
         setSelectedListId((current) =>
           current && lists.some((list: ProjectListSummary) => list.id === current) ? current : ""
         )
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return
+      } catch {
         if (!cancelled) {
           setProjectLists([])
           setSelectedListId("")
@@ -247,10 +348,9 @@ export function ContributorQuickPreview({
       }
     }
 
-    loadProjectLists()
+    loadLists()
     return () => {
       cancelled = true
-      controller.abort()
     }
   }, [open, selectedProjectId])
 
@@ -316,7 +416,11 @@ export function ContributorQuickPreview({
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "List could not be created")
       const list = data.list as ProjectListSummary
-      setProjectLists((prev) => [list, ...prev])
+      setProjectLists((prev) => {
+        const next = [list, ...prev]
+        writeProjectListsCache(selectedProjectId, next)
+        return next
+      })
       setSelectedListId(list.id)
       setNewListName("")
       toast({ title: "List created", description: list.name })
@@ -347,11 +451,19 @@ export function ContributorQuickPreview({
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Contributor could not be saved")
       const listName = projectLists.find((list) => list.id === selectedListId)?.name ?? "list"
-      setProjectLists((prev) =>
-        prev.map((list) =>
-          list.id === selectedListId ? { ...list, contributorCount: list.contributorCount + 1 } : list
-        )
-      )
+      setProjectLists((prev) => {
+        const next = prev.map((list) => {
+          if (list.id !== selectedListId) return list
+          if (list.contributorIds.includes(display.id)) return list
+          return {
+            ...list,
+            contributorCount: list.contributorCount + 1,
+            contributorIds: [...list.contributorIds, display.id],
+          }
+        })
+        writeProjectListsCache(selectedProjectId, next)
+        return next
+      })
       toast({ title: "Saved to list", description: `${display.name} was saved to ${listName}.` })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Contributor could not be saved"

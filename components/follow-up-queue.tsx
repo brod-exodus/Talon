@@ -1,9 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { CalendarClock, Loader2, RefreshCw } from "lucide-react"
-import { ContributorQuickPreview, type ContributorPreviewSummary } from "@/components/contributor-quick-preview"
+import {
+  ContributorQuickPreview,
+  prefetchContributorPreview,
+  type ContributorPreviewSummary,
+} from "@/components/contributor-quick-preview"
 import {
   ProjectOutreachBadge,
   type ProjectContributorTracking,
@@ -77,6 +81,31 @@ export function FollowUpQueue() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [previewItem, setPreviewItem] = useState<FollowUpQueueItem | null>(null)
+  const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  const cancelPreviewPrefetch = useCallback((contributorId: string) => {
+    const timeout = previewPrefetchTimers.current.get(contributorId)
+    if (!timeout) return
+    clearTimeout(timeout)
+    previewPrefetchTimers.current.delete(contributorId)
+  }, [])
+
+  const schedulePreviewPrefetch = useCallback((item: FollowUpQueueItem) => {
+    cancelPreviewPrefetch(item.contributor.id)
+    const timeout = setTimeout(() => {
+      previewPrefetchTimers.current.delete(item.contributor.id)
+      prefetchContributorPreview(item.contributor.id, item.project.id)
+    }, 150)
+    previewPrefetchTimers.current.set(item.contributor.id, timeout)
+  }, [cancelPreviewPrefetch])
+
+  useEffect(() => {
+    const timers = previewPrefetchTimers.current
+    return () => {
+      for (const timeout of timers.values()) clearTimeout(timeout)
+      timers.clear()
+    }
+  }, [])
 
   const loadFollowUps = useCallback(async () => {
     setLoading(true)
@@ -156,6 +185,10 @@ export function FollowUpQueue() {
                     role="button"
                     tabIndex={0}
                     onClick={() => setPreviewItem(item)}
+                    onMouseEnter={() => schedulePreviewPrefetch(item)}
+                    onMouseLeave={() => cancelPreviewPrefetch(item.contributor.id)}
+                    onFocus={() => schedulePreviewPrefetch(item)}
+                    onBlur={() => cancelPreviewPrefetch(item.contributor.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault()
