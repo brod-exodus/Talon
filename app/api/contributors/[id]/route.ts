@@ -59,7 +59,6 @@ function toContributorPreview(contributor: NonNullable<ContributorProfileRespons
     bio: contributor.bio,
     location: contributor.location,
     company: contributor.company,
-    score: contributor.score,
     contacts: contributor.contacts,
     projects: contributor.projects,
     sources: contributor.sources.map((source) => ({

@@ -18,7 +18,6 @@ import {
   type ProjectOutreachStatus,
   type ProjectTrackingUpdate,
 } from "@/components/project-outreach"
-import { TalonScoreBadge } from "@/components/talon-score-badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -59,7 +58,6 @@ type EcosystemContributor = {
   username: string
   name: string
   avatar: string
-  score?: number | null
   scrapeCount: number
   scrapeTargets: string[]
   totalContributions: number
@@ -616,7 +614,6 @@ export default function EcosystemDetailPage() {
       "Name",
       "Username",
       "GitHub Profile",
-      "Talon Score",
       "Repo Count",
       "Appears In",
       "Total Contributions",
@@ -630,7 +627,6 @@ export default function EcosystemDetailPage() {
       contributor.name,
       contributor.username,
       `https://github.com/${contributor.username}`,
-      contributor.score ?? "",
       contributor.scrapeCount,
       contributor.scrapeTargets.join("; "),
       contributor.totalContributions,
@@ -1072,11 +1068,10 @@ export default function EcosystemDetailPage() {
               ) : (
                 <>
             <div className="overflow-x-auto rounded-lg border border-border bg-card">
-              <table className="w-full min-w-[1180px] table-fixed text-sm">
+              <table className="w-full min-w-[1120px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-12" />
                   <col className="w-[25%]" />
-                  <col className="w-16" />
                   <col className="w-28" />
                   <col className="w-[22%]" />
                   <col className="w-28" />
@@ -1088,7 +1083,6 @@ export default function EcosystemDetailPage() {
                   <tr className="border-b border-border bg-muted/40">
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">#</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Contributor</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Score</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Repos</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Appears In</th>
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Contrib.</th>
@@ -1120,7 +1114,6 @@ export default function EcosystemDetailPage() {
                           avatar: c.avatar,
                           contacts: c.contacts,
                           stats: [
-                            { label: "Talon Score", value: c.score ?? "—" },
                             { label: "Repos", value: c.scrapeCount },
                             { label: "Contributions", value: c.totalContributions.toLocaleString() },
                             { label: "Project", value: ecosystem?.name ?? "Current" },
@@ -1139,7 +1132,6 @@ export default function EcosystemDetailPage() {
                           avatar: c.avatar,
                           contacts: c.contacts,
                           stats: [
-                            { label: "Talon Score", value: c.score ?? "—" },
                             { label: "Repos", value: c.scrapeCount },
                             { label: "Contributions", value: c.totalContributions.toLocaleString() },
                             { label: "Project", value: ecosystem?.name ?? "Current" },
@@ -1182,11 +1174,6 @@ export default function EcosystemDetailPage() {
                             <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         </div>
-                      </td>
-
-                      {/* Talon Score */}
-                      <td className="px-4 py-4">
-                        <TalonScoreBadge score={c.score} />
                       </td>
 
                       {/* Scrape count badge */}

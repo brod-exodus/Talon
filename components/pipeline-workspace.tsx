@@ -16,7 +16,6 @@ import {
   type ProjectOutreachStatus,
   type ProjectTrackingUpdate,
 } from "@/components/project-outreach"
-import { TalonScoreBadge } from "@/components/talon-score-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +32,6 @@ type PipelineItem = {
     username: string
     name: string
     avatar: string
-    score?: number | null
     bio: string | null
     location: string | null
     company: string | null
@@ -639,7 +637,6 @@ function PipelineRow({
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-extrabold text-foreground">{item.contributor.name}</p>
               <span className="font-mono text-xs font-semibold text-muted-foreground">@{item.contributor.username}</span>
-              {item.contributor.score != null && <TalonScoreBadge score={item.contributor.score} />}
               <ProjectOutreachBadge status={item.tracking.status} />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
