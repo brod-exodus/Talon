@@ -203,7 +203,7 @@ export default function EcosystemsPage() {
             {ecosystems.map((eco) => (
               <Card
                 key={eco.id}
-                className="border-border bg-card hover:border-primary/50 transition-all duration-200 hover:shadow-lg hover:shadow-primary/10 group"
+                className="border-border bg-card hover:border-primary/50 transition-all duration-200 hover:shadow-primary/10 group"
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">

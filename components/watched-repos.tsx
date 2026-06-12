@@ -386,7 +386,7 @@ export function WatchedRepos() {
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2, delay: index * 0.04 }}
                 >
-                  <Card className="border-border bg-card hover:border-primary/40 transition-all duration-300 hover:shadow-md hover:shadow-primary/5">
+                  <Card className="border-border bg-card hover:border-primary/40 transition-all duration-300 hover:shadow-primary/5">
                     <CardContent
                       className="cursor-pointer pt-4 pb-4"
                       onClick={() => recordWatchedRepoView(r)}
@@ -408,7 +408,7 @@ export function WatchedRepos() {
                               className={`text-xs ${
                                 r.last_checked_at
                                   ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-                                  : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                  : "border-warning/30 bg-warning/10 text-warning dark:text-warning"
                               }`}
                             >
                               {getMonitoringLabel(r)}

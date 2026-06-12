@@ -479,7 +479,7 @@ export function ContributorQuickPreview({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-auto right-0 top-0 h-screen max-w-xl translate-x-0 translate-y-0 overflow-y-auto rounded-none border-white/70 bg-white/95 p-0 shadow-2xl shadow-indigo-500/20 backdrop-blur-xl sm:rounded-none">
+      <DialogContent className="left-auto right-0 top-0 h-screen max-w-xl translate-x-0 translate-y-0 overflow-y-auto rounded-none border-border bg-card p-0 backdrop-blur-xl sm:rounded-none">
         <div className="p-6">
           <DialogHeader className="pr-8">
             <DialogTitle>Contributor preview</DialogTitle>
@@ -487,16 +487,16 @@ export function ContributorQuickPreview({
           </DialogHeader>
 
           <div className="mt-6 space-y-6">
-            <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
+            <section className="rounded-lg border border-border bg-card p-5 ">
               <div className="flex items-start gap-4">
                 <img
                   src={display.avatar || "/placeholder.svg?height=80&width=80"}
                   alt={display.name}
-                  className="h-16 w-16 rounded-full object-cover ring-2 ring-white"
+                  className="h-16 w-16 rounded-full object-cover ring-2 ring-border"
                 />
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-xl font-extrabold text-foreground">{display.name}</h3>
-                  <p className="font-mono text-sm font-semibold text-muted-foreground">@{display.username}</p>
+                  <p className="font-mono text-sm font-medium text-muted-foreground">@{display.username}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {display.company && (
                       <Badge variant="secondary" className="gap-1">
@@ -505,7 +505,7 @@ export function ContributorQuickPreview({
                       </Badge>
                     )}
                     {display.location && (
-                      <Badge variant="outline" className="gap-1 bg-white/70">
+                      <Badge variant="outline" className="gap-1 bg-card">
                         <MapPin className="h-3 w-3" />
                         {display.location}
                       </Badge>
@@ -526,11 +526,11 @@ export function ContributorQuickPreview({
                     Open Full Profile
                   </Link>
                 </Button>
-                <Button type="button" variant="outline" onClick={copyEmail} disabled={!email} className="bg-white/80">
+                <Button type="button" variant="outline" onClick={copyEmail} disabled={!email} className="bg-card">
                   <Copy className="h-4 w-4" />
                   Copy Email
                 </Button>
-                <Button asChild variant="outline" className="bg-white/80">
+                <Button asChild variant="outline" className="bg-card">
                   <a href={githubUrl} target="_blank" rel="noopener noreferrer">
                     <Github className="h-4 w-4" />
                     Open GitHub
@@ -540,10 +540,10 @@ export function ContributorQuickPreview({
             </section>
 
             {canSaveToList && (
-              <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
+              <section className="rounded-lg border border-border bg-card p-5 ">
                 <div className="flex items-center gap-2">
                   <BookmarkPlus className="h-4 w-4 text-primary" />
-                  <h4 className="text-sm font-extrabold text-foreground">Save to Project list</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Save to Project list</h4>
                 </div>
                 <div className="mt-4 space-y-4">
                   {!currentProject && (
@@ -551,7 +551,7 @@ export function ContributorQuickPreview({
                       <Label>Project</Label>
                       {projectChoices.length > 0 ? (
                         <Select value={selectedProjectId || undefined} onValueChange={setSelectedProjectId}>
-                          <SelectTrigger className="w-full bg-white/80">
+                          <SelectTrigger className="w-full bg-card">
                             <SelectValue placeholder="Choose a Project first" />
                           </SelectTrigger>
                           <SelectContent>
@@ -563,7 +563,7 @@ export function ContributorQuickPreview({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                        <p className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-semibold text-warning">
                           Choose or create a Project before saving contributors to lists.
                         </p>
                       )}
@@ -575,13 +575,13 @@ export function ContributorQuickPreview({
                       <div className="space-y-2">
                         <Label>List</Label>
                         {listsLoading ? (
-                          <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm font-semibold text-primary">
+                          <div className="flex items-center gap-2 rounded-lg border border-border bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Loading lists...
                           </div>
                         ) : projectLists.length > 0 ? (
                           <Select value={selectedListId || undefined} onValueChange={setSelectedListId}>
-                            <SelectTrigger className="w-full bg-white/80">
+                            <SelectTrigger className="w-full bg-card">
                               <SelectValue placeholder="Save to list..." />
                             </SelectTrigger>
                             <SelectContent>
@@ -616,7 +616,7 @@ export function ContributorQuickPreview({
                           variant="outline"
                           onClick={createList}
                           disabled={listSaving || !newListName.trim()}
-                          className="bg-white/80"
+                          className="bg-card"
                         >
                           <Plus className="h-4 w-4" />
                           Create
@@ -636,7 +636,7 @@ export function ContributorQuickPreview({
                   )}
 
                   {listError && (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
                       {listError}
                     </div>
                   )}
@@ -645,12 +645,12 @@ export function ContributorQuickPreview({
             )}
 
             {currentProject && currentProjectTracking && (
-              <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
+              <section className="rounded-lg border border-border bg-card p-5 ">
                 <div className="flex items-center gap-2">
                   <FolderKanban className="h-4 w-4 text-primary" />
-                  <h4 className="text-sm font-extrabold text-foreground">Project outreach</h4>
+                  <h4 className="text-sm font-semibold text-foreground">Project outreach</h4>
                 </div>
-                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                <p className="mt-1 text-xs font-medium text-muted-foreground">
                   Tracking for {currentProject.name}
                 </p>
                 <div className="mt-4">
@@ -678,20 +678,20 @@ export function ContributorQuickPreview({
             <section className="grid gap-3 sm:grid-cols-3">
               {stats.length > 0 ? (
                 stats.map((stat) => (
-                  <div key={stat.label} className="rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm shadow-indigo-500/5">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{stat.label}</p>
+                  <div key={stat.label} className="rounded-lg border border-border bg-card p-4 ">
+                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{stat.label}</p>
                     <p className="mt-2 text-lg font-extrabold text-foreground">{stat.value}</p>
                   </div>
                 ))
               ) : (
-                <div className="rounded-2xl border border-white/70 bg-white/70 p-4 text-sm font-semibold text-muted-foreground sm:col-span-3">
+                <div className="rounded-lg border border-border bg-card p-4 text-sm font-medium text-muted-foreground sm:col-span-3">
                   Contribution stats are not available for this list.
                 </div>
               )}
             </section>
 
-            <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
-              <h4 className="text-sm font-extrabold text-foreground">Contact info</h4>
+            <section className="rounded-lg border border-border bg-card p-5 ">
+              <h4 className="text-sm font-semibold text-foreground">Contact info</h4>
               <div className="mt-3 space-y-2 text-sm">
                 {email && (
                   <a href={`mailto:${email}`} className="flex items-center gap-2 text-primary hover:underline">
@@ -723,8 +723,8 @@ export function ContributorQuickPreview({
               </div>
             </section>
 
-            <section className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
-              <h4 className="text-sm font-extrabold text-foreground">Languages / skills</h4>
+            <section className="rounded-lg border border-border bg-card p-5 ">
+              <h4 className="text-sm font-semibold text-foreground">Languages / skills</h4>
               <div className="mt-3 flex flex-wrap gap-2">
                 {skills.length > 0 ? (
                   skills.map((skill) => (
@@ -739,15 +739,15 @@ export function ContributorQuickPreview({
             </section>
 
             <section className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
-                <h4 className="flex items-center gap-2 text-sm font-extrabold text-foreground">
+              <div className="rounded-lg border border-border bg-card p-5 ">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <GitBranch className="h-4 w-4 text-primary" />
                   Repos
                 </h4>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {repositories.length > 0 ? (
                     repositories.slice(0, 8).map((repo) => (
-                      <Badge key={repo} variant="outline" className="max-w-full bg-white/70 font-mono">
+                      <Badge key={repo} variant="outline" className="max-w-full bg-card font-mono">
                         <span className="truncate">{repo}</span>
                       </Badge>
                     ))
@@ -757,8 +757,8 @@ export function ContributorQuickPreview({
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-sm shadow-indigo-500/5">
-                <h4 className="flex items-center gap-2 text-sm font-extrabold text-foreground">
+              <div className="rounded-lg border border-border bg-card p-5 ">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <FolderKanban className="h-4 w-4 text-primary" />
                   Projects
                 </h4>
@@ -777,13 +777,13 @@ export function ContributorQuickPreview({
             </section>
 
             {loading && (
-              <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm font-semibold text-primary">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading full contributor context...
               </div>
             )}
             {error && (
-              <div className={cn("rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700")}>
+              <div className={cn("rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-semibold text-warning")}>
                 {error}
               </div>
             )}

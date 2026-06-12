@@ -70,7 +70,7 @@ function statusBadgeClass(status: ProjectOutreachStatus) {
   if (status === "not_contacted") return "border-border bg-muted text-muted-foreground"
   if (status === "contacted") return "border-primary/25 bg-primary/10 text-primary"
   if (status === "replied") return "border-secondary/25 bg-secondary/10 text-secondary"
-  if (status === "interested") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+  if (status === "interested") return "border-success/25 bg-success/10 text-success"
   if (status === "interviewing") return "border-primary/35 bg-primary/15 text-primary"
   if (status === "rejected") return "border-destructive/30 bg-destructive/10 text-destructive"
   return "border-border bg-muted text-muted-foreground"
@@ -248,7 +248,7 @@ export function ProjectOutreachForm({
         )}
       </Button>
       {saveError && (
-        <p className="text-xs font-medium text-rose-700">
+        <p className="text-xs font-medium text-destructive">
           {saveError}
         </p>
       )}
