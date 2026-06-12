@@ -792,7 +792,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           transition={{ duration: 0.3 }}
           whileHover={{ y: -2 }}
         >
-          <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+          <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-primary/10">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -813,7 +813,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                         </span>
                       ))
                     ) : (
-                      <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                      <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                         Ungrouped
                       </span>
                     )}
@@ -864,7 +864,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    className="flex-1 shadow-lg shadow-indigo-500/15 transition-all duration-300"
+                    className="flex-1 transition-all duration-300"
                     onClick={() => toggleExpanded(scrape)}
                   >
                     {isExpanded ? (
@@ -1046,12 +1046,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           onMouseLeave={() => cancelPreviewPrefetch(contributor.id)}
                           onFocus={() => schedulePreviewPrefetch(contributor.id, scrape.projects?.[0]?.id)}
                           onBlur={() => cancelPreviewPrefetch(contributor.id)}
-                          className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
+                          className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 "
                         >
                           <div className="flex items-center justify-between">
                             <Link
                               href={`/contributors/${contributor.id}`}
-                              className="flex min-w-0 items-center gap-4 rounded-2xl transition-colors hover:text-primary"
+                              className="flex min-w-0 items-center gap-4 rounded-lg transition-colors hover:text-primary"
                             >
                               <img
                                 src={contributor.avatar || "/placeholder.svg?height=40&width=40"}

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { type ChangeEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react"
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
   AlertTriangle,
@@ -13,7 +13,6 @@ import {
   Database,
   Eye,
   FolderKanban,
-  GitBranch,
   Home,
   Layers,
   Loader2,
@@ -48,6 +47,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { CommandPalette, useCommandPaletteShortcut } from "@/components/command-palette"
 import { AUTH_ME_REFRESH_EVENT, type AuthMe, useAuthMe } from "@/lib/client-permissions"
 import {
   getRecentlyViewedItems,
@@ -75,20 +75,6 @@ const NAV_ITEMS = [
 
 type HealthStatus = "ok" | "warn" | "error" | null
 
-type SearchResult = {
-  id: string
-  title: string
-  subtitle?: string
-  href: string
-}
-
-type SearchGroups = {
-  contributors: SearchResult[]
-  scrapes: SearchResult[]
-  projects: SearchResult[]
-  watchedRepos: SearchResult[]
-}
-
 type ActivityEvent = {
   id: string
   type: string
@@ -105,30 +91,8 @@ const RECENTLY_VIEWED_META = {
   watched_repo: { label: "Watched repo", icon: Eye },
 } as const
 
-const EMPTY_SEARCH_GROUPS: SearchGroups = {
-  contributors: [],
-  scrapes: [],
-  projects: [],
-  watchedRepos: [],
-}
-
-const SEARCH_GROUP_META = [
-  { key: "contributors", label: "Contributors", icon: Users },
-  { key: "scrapes", label: "Scrapes", icon: Database },
-  { key: "projects", label: "Projects", icon: FolderKanban },
-  { key: "watchedRepos", label: "Watched repos", icon: GitBranch },
-] as const
-
 const HEADER_ICON_TRIGGER_CLASS =
   "hidden h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:border-border data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
-
-const GENESIS_TICKER_SEGMENT = [
-  "00000000  04 ff ff 00 1d 01 04 45",
-  "00000010  54 68 65 20 54 69 6d 65",
-  "00000020  The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
-  "00000030  6d 65 72 6b 6c 65 72 6f",
-  "00000040  6f 74 20 7c 20 6e 6f 64 65",
-]
 
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
@@ -155,31 +119,6 @@ function TalonHomeLink() {
     <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center" aria-label="Talon home">
       <TalonLogo markClassName="h-8 w-8 md:h-9 md:w-9" />
     </Link>
-  )
-}
-
-function GenesisTicker() {
-  const tickerContent = (
-    <span className="genesis-ticker-sequence">
-      {GENESIS_TICKER_SEGMENT.map((item, index) => (
-        <span
-          key={`${item}-${index}`}
-          className={index === 2 ? "genesis-ticker-highlight" : undefined}
-        >
-          {item}
-        </span>
-      ))}
-    </span>
-  )
-
-  return (
-    <div className="genesis-ticker" aria-label="Bitcoin Genesis Block homage">
-      <div className="genesis-ticker-track">
-        {tickerContent}
-        {tickerContent}
-        {tickerContent}
-      </div>
-    </div>
   )
 }
 
@@ -217,7 +156,7 @@ function AccountAvatar({
   return (
     <span
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-xs font-extrabold text-primary",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary",
         className
       )}
       aria-hidden="true"
@@ -245,18 +184,13 @@ export function Header() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileSaved, setProfileSaved] = useState(false)
   const [displayNameInput, setDisplayNameInput] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchGroups, setSearchGroups] = useState<SearchGroups>(EMPTY_SEARCH_GROUPS)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
   const [activityError, setActivityError] = useState<string | null>(null)
   const [recentOpen, setRecentOpen] = useState(false)
   const [recentItems, setRecentItems] = useState<RecentlyViewedItem[]>([])
-  const searchRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const activityOpenedByPointerRef = useRef(false)
   const recentOpenedByPointerRef = useRef(false)
@@ -264,6 +198,10 @@ export function Header() {
   const canAdmin = me?.permissions.canAdmin ?? false
   const canWrite = me?.permissions.canWrite ?? false
   const recentScope = getRecentlyViewedScope(me)
+
+  useCommandPaletteShortcut(() => {
+    if (me) setPaletteOpen(true)
+  })
 
   useEffect(() => {
     if (!canAdmin) {
@@ -315,58 +253,6 @@ export function Header() {
       window.removeEventListener("storage", loadRecentItems)
     }
   }, [recentScope])
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!searchRef.current?.contains(event.target as Node)) {
-        setSearchOpen(false)
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown)
-    return () => document.removeEventListener("pointerdown", handlePointerDown)
-  }, [])
-
-  useEffect(() => {
-    const query = searchQuery.trim()
-    if (!me || query.length < 2) {
-      setSearchGroups(EMPTY_SEARCH_GROUPS)
-      setSearchLoading(false)
-      setSearchError(null)
-      return
-    }
-
-    const controller = new AbortController()
-    const timeout = window.setTimeout(async () => {
-      setSearchLoading(true)
-      setSearchError(null)
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        })
-        const data = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(data?.error || "Search failed")
-        setSearchGroups({
-          contributors: data?.groups?.contributors ?? [],
-          scrapes: data?.groups?.scrapes ?? [],
-          projects: data?.groups?.projects ?? [],
-          watchedRepos: data?.groups?.watchedRepos ?? [],
-        })
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return
-        setSearchGroups(EMPTY_SEARCH_GROUPS)
-        setSearchError("Search is unavailable right now.")
-      } finally {
-        if (!controller.signal.aborted) setSearchLoading(false)
-      }
-    }, 250)
-
-    return () => {
-      controller.abort()
-      window.clearTimeout(timeout)
-    }
-  }, [me, searchQuery])
 
   useEffect(() => {
     if (!activityOpen || !me) return
@@ -480,29 +366,6 @@ export function Header() {
     }
   }
 
-  function getSearchResultCount() {
-    return SEARCH_GROUP_META.reduce((count, group) => count + searchGroups[group.key].length, 0)
-  }
-
-  function handleSearchNavigate(href: string) {
-    setSearchOpen(false)
-    setSearchQuery("")
-    setSearchGroups(EMPTY_SEARCH_GROUPS)
-    router.push(href)
-  }
-
-  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
-      setSearchOpen(false)
-      return
-    }
-    if (event.key !== "Enter") return
-    const firstResult = SEARCH_GROUP_META.flatMap((group) => searchGroups[group.key])[0]
-    if (!firstResult) return
-    event.preventDefault()
-    handleSearchNavigate(firstResult.href)
-  }
-
   const roleLabel = me ? (me.actor === "user" ? ROLE_LABELS[me.role] : "Break-glass admin") : null
   const identityLabel = getIdentityLabel(me)
   const secondaryIdentityLabel = !me
@@ -514,8 +377,6 @@ export function Header() {
   const displayNameChanged =
     me?.actor === "user" &&
     displayNameInput.trim().replace(/\s+/g, " ") !== (me.displayName || getEmailFallback(me.email))
-  const trimmedSearchQuery = searchQuery.trim()
-  const searchResultCount = getSearchResultCount()
 
   function renderAccountMenu(trigger: ReactNode, align: "start" | "end" = "end") {
     return (
@@ -527,7 +388,7 @@ export function Header() {
         <DropdownMenuLabel className="flex min-w-0 items-center gap-3">
           <AccountAvatar me={me} identityLabel={identityLabel} className="h-10 w-10" />
           <span className="min-w-0 space-y-1">
-            <span className="block truncate text-sm font-bold">{identityLabel}</span>
+            <span className="block truncate text-sm font-semibold">{identityLabel}</span>
             <span className="block truncate text-xs font-normal text-muted-foreground">{secondaryIdentityLabel}</span>
           </span>
         </DropdownMenuLabel>
@@ -569,7 +430,7 @@ export function Header() {
           align="end"
           className="w-56 rounded-lg border-border bg-popover shadow-none"
         >
-          <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Quick actions
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -626,19 +487,19 @@ export function Header() {
           className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
-            <span className="text-sm font-extrabold text-foreground">Recent activity</span>
+            <span className="text-sm font-semibold text-foreground">Recent activity</span>
             {activityLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {activityError ? (
-            <div className="px-3 py-5 text-sm font-semibold text-rose-600">{activityError}</div>
+            <div className="px-3 py-5 text-sm font-semibold text-destructive">{activityError}</div>
           ) : activityLoading && activityEvents.length === 0 ? (
-            <div className="flex items-center gap-3 px-3 py-5 text-sm font-semibold text-muted-foreground">
+            <div className="flex items-center gap-3 px-3 py-5 text-sm font-medium text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               Loading activity...
             </div>
           ) : activityEvents.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
+            <div className="px-3 py-6 text-center text-sm font-medium text-muted-foreground">
               No recent activity yet.
             </div>
           ) : (
@@ -656,13 +517,13 @@ export function Header() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center justify-between gap-3">
-                        <span className="truncate text-sm font-extrabold text-foreground">{event.title}</span>
-                        <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                        <span className="truncate text-sm font-semibold text-foreground">{event.title}</span>
+                        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
                           {formatActivityTime(event.createdAt)}
                         </span>
                       </span>
                       {event.description && (
-                        <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                        <span className="mt-0.5 block truncate text-xs font-medium text-muted-foreground">
                           {event.description}
                         </span>
                       )}
@@ -705,12 +566,12 @@ export function Header() {
           }}
           className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
-          <DropdownMenuLabel className="px-3 py-2 text-sm font-extrabold text-foreground">
+          <DropdownMenuLabel className="px-3 py-2 text-sm font-semibold text-foreground">
             Recently viewed
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {recentItems.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm font-semibold text-muted-foreground">
+            <div className="px-3 py-6 text-center text-sm font-medium text-muted-foreground">
               No recent items yet.
             </div>
           ) : (
@@ -729,12 +590,12 @@ export function Header() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center justify-between gap-3">
-                        <span className="truncate text-sm font-extrabold text-foreground">{item.title}</span>
-                        <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                        <span className="truncate text-sm font-semibold text-foreground">{item.title}</span>
+                        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
                           {formatActivityTime(item.viewedAt)}
                         </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                      <span className="mt-0.5 block truncate text-xs font-medium text-muted-foreground">
                         {item.subtitle ?? meta.label}
                       </span>
                     </span>
@@ -756,7 +617,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-[#0a0e14]/90 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
         <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
@@ -770,96 +631,41 @@ export function Header() {
             </Button>
             <TalonHomeLink />
           </div>
-          <div ref={searchRef} className="relative hidden flex-1 justify-center lg:flex">
-            <div className="relative w-full max-w-xl">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value)
-                  setSearchOpen(true)
-                }}
-                onFocus={() => setSearchOpen(true)}
-                onKeyDown={handleSearchKeyDown}
-                placeholder="Search contributors, repos, projects..."
-                className="h-10 rounded-md pl-10 pr-10 font-mono text-sm placeholder:text-muted-foreground/70 focus-visible:ring-primary/20"
-              />
-              {searchLoading && (
-                <Loader2 className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
-              )}
-              {searchOpen && trimmedSearchQuery.length > 0 && (
-                <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-lg border border-border bg-popover shadow-none">
-                  {trimmedSearchQuery.length < 2 ? (
-                    <div className="px-4 py-5 text-sm font-semibold text-muted-foreground">
-                      Type at least 2 characters to search Talon.
-                    </div>
-                  ) : searchError ? (
-                    <div className="px-4 py-5 text-sm font-semibold text-rose-600">{searchError}</div>
-                  ) : searchLoading && searchResultCount === 0 ? (
-                    <div className="flex items-center gap-3 px-4 py-5 text-sm font-semibold text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      Searching...
-                    </div>
-                  ) : searchResultCount === 0 ? (
-                    <div className="px-4 py-5 text-sm font-semibold text-muted-foreground">
-                      No results found for &quot;{trimmedSearchQuery}&quot;.
-                    </div>
-                  ) : (
-                    <div className="max-h-[28rem] overflow-y-auto py-2">
-                      {SEARCH_GROUP_META.map((group) => {
-                        const results = searchGroups[group.key]
-                        if (results.length === 0) return null
-                        const Icon = group.icon
-                        return (
-                          <div key={group.key} className="py-2">
-                            <div className="flex items-center gap-2 px-4 pb-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
-                              <Icon className="h-3.5 w-3.5" />
-                              {group.label}
-                            </div>
-                            <div className="space-y-1 px-2">
-                              {results.map((result) => (
-                                <button
-                                  key={`${group.key}-${result.id}`}
-                                  type="button"
-                                  onClick={() => handleSearchNavigate(result.href)}
-                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-primary/10 focus:bg-primary/10 focus:outline-none"
-                                >
-                                  <span className="min-w-0">
-                                    <span className="block truncate text-sm font-extrabold text-foreground">
-                                      {result.title}
-                                    </span>
-                                    {result.subtitle && (
-                                      <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
-                                        {result.subtitle}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 font-mono text-[10px] font-bold text-primary">
-                                    Open
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="hidden flex-1 justify-center lg:flex">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              disabled={!me}
+              className="flex h-10 w-full max-w-xl cursor-pointer items-center gap-3 rounded-md border border-input bg-transparent px-4 text-left font-mono text-sm text-muted-foreground/70 transition hover:border-border hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-50"
+              aria-label="Open command palette"
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">Search or jump to...</span>
+              <kbd className="rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
-                className="hidden items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/15 sm:inline-flex"
+                className="hidden items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 font-mono text-xs font-bold text-warning transition-colors hover:bg-warning/15 sm:inline-flex"
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Ops attention
               </Link>
             )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="lg:hidden"
+              disabled={!me}
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open command palette"
+            >
+              <Search className="h-5 w-5" />
+            </Button>
             {renderQuickActions()}
             {renderRecentlyViewedMenu()}
             {renderActivityMenu()}
@@ -867,12 +673,12 @@ export function Header() {
           </div>
         </div>
         {mobileOpen && (
-          <nav className="grid gap-1 border-t border-border bg-[#0a0e14] p-3 lg:hidden">
+          <nav className="grid gap-1 border-t border-border bg-background p-3 lg:hidden">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
                 onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-300"
+                className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-semibold text-warning"
               >
                 <AlertTriangle className="h-4 w-4" />
                 Ops attention
@@ -887,7 +693,7 @@ export function Header() {
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all",
+                    "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all",
                     active ? "border border-primary/30 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -900,6 +706,8 @@ export function Header() {
         )}
       </header>
 
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} canWrite={canWrite} />
+
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent className="rounded-lg border-border bg-card shadow-none sm:max-w-md">
           <DialogHeader>
@@ -908,10 +716,10 @@ export function Header() {
           </DialogHeader>
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-lg border border-border bg-muted p-4">
-              <AccountAvatar me={me} identityLabel={identityLabel} className="h-20 w-20 text-xl ring-2 ring-white" />
+              <AccountAvatar me={me} identityLabel={identityLabel} className="h-20 w-20 text-xl ring-2 ring-border" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-extrabold text-foreground">{identityLabel}</p>
-                <p className="truncate text-sm font-semibold text-muted-foreground">{secondaryIdentityLabel}</p>
+                <p className="truncate text-base font-semibold text-foreground">{identityLabel}</p>
+                <p className="truncate text-sm font-medium text-muted-foreground">{secondaryIdentityLabel}</p>
                 {roleLabel && (
                   <Badge variant="secondary" className="mt-2">
                     {roleLabel}
@@ -921,13 +729,13 @@ export function Header() {
             </div>
 
             {profileError && (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
                 {profileError}
               </div>
             )}
 
             {profileSaved && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold text-success">
                 Profile saved.
               </div>
             )}
@@ -984,7 +792,7 @@ export function Header() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-semibold text-muted-foreground">
+              <div className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-medium text-muted-foreground">
                 Profile photos are available for team user accounts.
               </div>
             )}
@@ -996,7 +804,7 @@ export function Header() {
         </DialogContent>
       </Dialog>
 
-      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-[#0a0e14] p-4 lg:flex lg:flex-col">
+      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-background p-4 lg:flex lg:flex-col">
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
@@ -1006,7 +814,7 @@ export function Header() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all duration-200",
+                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200",
                   active
                     ? "border border-primary/30 bg-primary/10 text-primary"
                     : "text-muted-foreground hover:translate-x-1 hover:bg-muted hover:text-foreground"
@@ -1019,7 +827,6 @@ export function Header() {
           })}
         </nav>
         <div className="mt-auto">
-          {pathname === "/" && <GenesisTicker />}
           {renderAccountMenu(
             <button
               type="button"
@@ -1029,7 +836,7 @@ export function Header() {
             >
               <AccountAvatar me={me} identityLabel={identityLabel} className="h-11 w-11" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-extrabold text-foreground">{identityLabel}</span>
+                <span className="block truncate text-sm font-semibold text-foreground">{identityLabel}</span>
                 <span className="mt-1 flex flex-wrap items-center gap-2">
                   {roleLabel && (
                     <Badge variant="secondary" className="text-[10px]">

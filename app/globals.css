@@ -31,6 +31,8 @@
   --chart-5: 348 83% 58%;
   --success: 160 74% 44%;
   --success-foreground: 0 0% 100%;
+  --warning: 38 92% 56%;
+  --warning-foreground: 215 33% 6%;
   --radius: 0.5rem;
   --font-inter: "Inter", sans-serif;
   --font-jetbrains: "JetBrains Mono", monospace;
@@ -65,6 +67,8 @@
   --color-chart-5: hsl(var(--chart-5));
   --color-success: hsl(var(--success));
   --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: var(--radius);
@@ -84,17 +88,6 @@
     @apply min-h-screen bg-background text-foreground font-sans antialiased;
     background: #0a0e14;
     color: #c9d1d9;
-  }
-
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background-image: radial-gradient(circle, rgba(48, 54, 61, 0.5) 1px, transparent 1px);
-    background-size: 40px 40px;
-    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent 74%);
   }
 
   ::selection {
@@ -152,13 +145,16 @@
 
   .prism-main {
     @apply relative z-10 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8;
-    background-image: radial-gradient(circle, rgba(48, 54, 61, 0.35) 1px, transparent 1px);
-    background-size: 40px 40px;
   }
 
   .prism-main-narrow {
     @apply relative z-10 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8;
-    background-image: radial-gradient(circle, rgba(48, 54, 61, 0.35) 1px, transparent 1px);
+  }
+
+  /* Dot-grid texture: reserved for empty-state surfaces and the login page —
+     never behind data tables. */
+  .grid-texture {
+    background-image: radial-gradient(circle, rgba(48, 54, 61, 0.45) 1px, transparent 1px);
     background-size: 40px 40px;
   }
 
@@ -168,161 +164,6 @@
 
   .prism-table-shell {
     @apply overflow-hidden rounded-lg border border-border bg-card shadow-none;
-  }
-
-  .grid-bg,
-  .abyss-grid {
-    background-image: radial-gradient(circle, rgba(48, 54, 61, 0.45) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
-
-  .genesis-ticker {
-    height: 2rem;
-    margin-bottom: 0.75rem;
-    overflow: hidden;
-    border-right: 1px solid #30363d;
-    border-left: 1px solid #30363d;
-    border-top: 1px solid #30363d;
-    border-bottom: 1px solid #30363d;
-    border-radius: 0.5rem;
-    background: rgba(10, 14, 20, 0.95);
-    color: #8b949e;
-    font-family: var(--font-jetbrains);
-    font-size: 10px;
-    line-height: 2rem;
-    mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
-  }
-
-  .genesis-ticker-track {
-    display: flex;
-    width: max-content;
-    min-width: 200%;
-    gap: 2.5rem;
-    opacity: 0.58;
-    animation: genesis-ticker-scroll 92s linear infinite;
-    will-change: transform;
-  }
-
-  .genesis-ticker:hover .genesis-ticker-track {
-    animation-play-state: paused;
-    opacity: 0.78;
-  }
-
-  .genesis-ticker-sequence {
-    display: inline-flex;
-    flex: 0 0 auto;
-    gap: 2.5rem;
-    white-space: nowrap;
-  }
-
-  .genesis-ticker-highlight {
-    color: rgba(34, 211, 238, 0.74);
-  }
-
-  @keyframes genesis-ticker-scroll {
-    from {
-      transform: translateX(0);
-    }
-
-    to {
-      transform: translateX(-33.333%);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .genesis-ticker-track {
-      animation: none;
-      transform: none;
-    }
-  }
-
-  @media (min-width: 640px) {
-    .genesis-ticker {
-      font-size: 11px;
-    }
-  }
-
-  .rounded-xl,
-  .rounded-2xl,
-  .rounded-3xl {
-    border-radius: 0.5rem !important;
-  }
-
-  .bg-white,
-  .bg-white\/45,
-  .bg-white\/50,
-  .bg-white\/55,
-  .bg-white\/60,
-  .bg-white\/65,
-  .bg-white\/70,
-  .bg-white\/75,
-  .bg-white\/80,
-  .bg-white\/90,
-  .bg-white\/95 {
-    background-color: hsl(var(--card)) !important;
-  }
-
-  .hover\:bg-white:hover,
-  .hover\:bg-white\/65:hover,
-  .hover\:bg-white\/70:hover,
-  .hover\:bg-white\/80:hover,
-  .hover\:bg-indigo-50\/60:hover,
-  .hover\:bg-indigo-50\/80:hover {
-    background-color: hsl(var(--muted)) !important;
-  }
-
-  .focus\:bg-indigo-50:focus,
-  .focus\:bg-indigo-50\/80:focus {
-    background-color: hsl(var(--muted)) !important;
-  }
-
-  .border-white\/60,
-  .border-white\/70,
-  .border-white\/80 {
-    border-color: hsl(var(--border)) !important;
-  }
-
-  .ring-white,
-  .ring-white\/80,
-  .ring-indigo-100 {
-    --tw-ring-color: hsl(var(--border)) !important;
-  }
-
-  .shadow-indigo-500\/5,
-  .shadow-indigo-500\/10,
-  .shadow-indigo-500\/15,
-  .shadow-indigo-500\/20,
-  .shadow-indigo-500\/25,
-  .shadow-xl,
-  .shadow-2xl {
-    --tw-shadow-color: transparent !important;
-    box-shadow: none !important;
-  }
-
-  .bg-indigo-50,
-  .bg-indigo-50\/50,
-  .bg-indigo-50\/60,
-  .bg-indigo-50\/70,
-  .bg-indigo-50\/80,
-  .bg-primary\/10,
-  .bg-primary\/15 {
-    background-color: rgba(34, 211, 238, 0.1) !important;
-  }
-
-  .bg-rose-50,
-  .bg-rose-50\/70,
-  .bg-destructive\/5 {
-    background-color: rgba(244, 63, 94, 0.1) !important;
-  }
-
-  .bg-emerald-50,
-  .bg-emerald-50\/70 {
-    background-color: rgba(16, 185, 129, 0.1) !important;
-  }
-
-  .bg-amber-50,
-  .bg-amber-50\/80 {
-    background-color: rgba(245, 158, 11, 0.1) !important;
   }
 
   .font-mono,

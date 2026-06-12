@@ -51,7 +51,7 @@ function statusBadge(job: ScrapeJobSummary) {
     return <Badge variant="outline" className="border-muted-foreground/30 bg-muted/40 text-muted-foreground">Canceled</Badge>
   }
   if (job.status === "queued" && job.attempts > 0) {
-    return <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-400">Retrying</Badge>
+    return <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">Retrying</Badge>
   }
   if (job.status === "queued") {
     return <Badge variant="outline">Queued</Badge>

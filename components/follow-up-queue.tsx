@@ -137,22 +137,22 @@ export function FollowUpQueue() {
 
   return (
     <>
-      <Card className="overflow-hidden border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
+      <Card className="overflow-hidden border-border bg-card backdrop-blur-xl">
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Outreach</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Outreach</p>
             <CardTitle className="mt-1 flex items-center gap-2 text-2xl font-extrabold">
               <CalendarClock className="h-5 w-5 text-primary" />
               Follow-Ups Due
             </CardTitle>
             {!loading && (
-              <p className="mt-1 text-sm font-semibold text-muted-foreground">
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
                 {followUps.length} due today or overdue
               </p>
             )}
           </div>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={loadFollowUps} disabled={loading} className="bg-white/70">
+            <Button type="button" variant="outline" size="sm" onClick={loadFollowUps} disabled={loading} className="bg-card">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Refresh
             </Button>
@@ -163,18 +163,18 @@ export function FollowUpQueue() {
         </CardHeader>
         <CardContent className="space-y-3">
           {error && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
               {error}
             </div>
           )}
 
           {loading ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-5 text-sm font-semibold text-primary">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-primary/10 px-4 py-5 text-sm font-semibold text-primary">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading due follow-ups...
             </div>
           ) : followUps.length === 0 ? (
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-5 text-sm font-semibold text-emerald-700">
+            <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-5 text-sm font-semibold text-success">
               No follow-ups due. You&apos;re clear.
             </div>
           ) : (
@@ -195,22 +195,22 @@ export function FollowUpQueue() {
                         setPreviewItem(item)
                       }
                     }}
-                    className="w-full cursor-pointer rounded-3xl border border-white/70 bg-white/75 p-4 text-left shadow-sm shadow-indigo-500/5 transition hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md hover:shadow-indigo-500/10"
+                    className="w-full cursor-pointer rounded-lg border border-border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/20 "
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex min-w-0 items-start gap-3">
                         <img
                           src={item.contributor.avatar || "/placeholder.svg?height=48&width=48"}
                           alt={item.contributor.name}
-                          className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white"
+                          className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-border"
                         />
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-extrabold text-foreground">{item.contributor.name}</p>
-                            <span className="font-mono text-xs font-semibold text-muted-foreground">@{item.contributor.username}</span>
+                            <p className="truncate text-sm font-semibold text-foreground">{item.contributor.name}</p>
+                            <span className="font-mono text-xs font-medium text-muted-foreground">@{item.contributor.username}</span>
                             <ProjectOutreachBadge status={item.tracking.status} />
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
                             <Link
                               href={`/ecosystems/${item.project.id}`}
                               onClick={(event) => event.stopPropagation()}
@@ -219,7 +219,7 @@ export function FollowUpQueue() {
                               {item.project.name}
                             </Link>
                             <span>/</span>
-                            <Badge variant={item.tracking.nextFollowUpAt === todayString() ? "secondary" : "outline"} className="bg-white/70">
+                            <Badge variant={item.tracking.nextFollowUpAt === todayString() ? "secondary" : "outline"} className="bg-card">
                               {dueLabel(item.tracking.nextFollowUpAt)}: {formatDate(item.tracking.nextFollowUpAt)}
                             </Badge>
                           </div>
@@ -231,14 +231,14 @@ export function FollowUpQueue() {
                         </div>
                       </div>
 
-                      <Button asChild size="sm" variant="outline" className="w-fit bg-white/80" onClick={(event) => event.stopPropagation()}>
+                      <Button asChild size="sm" variant="outline" className="w-fit bg-card" onClick={(event) => event.stopPropagation()}>
                         <Link href="/pipeline">Work in Pipeline</Link>
                       </Button>
                     </div>
                   </div>
                 ))}
               {followUps.length > previewItems.length && (
-                <Button asChild variant="outline" className="w-full bg-white/80">
+                <Button asChild variant="outline" className="w-full bg-card">
                   <Link href="/pipeline">View all {followUps.length} follow-ups</Link>
                 </Button>
               )}

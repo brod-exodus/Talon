@@ -1029,7 +1029,7 @@ export default function SettingsPage() {
                                 <p className="text-xs text-muted-foreground">{roleDescription}</p>
                               )}
                               {member.authStatus !== "active" && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                <p className="text-xs text-warning dark:text-warning">
                                   {AUTH_STATUS_COPY[member.authStatus].description}
                                 </p>
                               )}
@@ -1318,7 +1318,7 @@ export default function SettingsPage() {
                               event.outcome === "failure"
                                 ? "text-destructive"
                                 : event.outcome === "blocked"
-                                  ? "text-amber-600 dark:text-amber-400"
+                                  ? "text-warning dark:text-warning"
                                   : "text-muted-foreground"
                             }`}
                           >
