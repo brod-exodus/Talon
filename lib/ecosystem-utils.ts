@@ -7,7 +7,6 @@ export type EcosystemAggregateContributor = {
   twitter: string | null
   linkedin: string | null
   website: string | null
-  talon_score?: number | null
 }
 
 export type EcosystemAggregateLink = {
@@ -21,16 +20,10 @@ export type EcosystemAggregateOutput = {
   username: string
   name: string
   avatar: string
-  score: number | null
   scrapeCount: number
   scrapeTargets: string[]
   totalContributions: number
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
-}
-
-/** True when cached project contributor rows predate Talon Score (no score key). */
-export function ecosystemCacheRowsMissingScore(rows: Array<Record<string, unknown>>): boolean {
-  return rows.length > 0 && !("score" in rows[0])
 }
 
 export type EcosystemContributorCacheFreshnessInput = {
@@ -109,7 +102,6 @@ export function aggregateEcosystemContributors(
       username: contributor.github_username,
       name: contributor.name ?? contributor.github_username,
       avatar: contributor.avatar_url ?? "",
-      score: contributor.talon_score ?? null,
       scrapeCount: agg.scrapeIdSet.size,
       scrapeTargets: Array.from(agg.scrapeIdSet).map((scrapeId) => targetMap.get(scrapeId) ?? scrapeId),
       totalContributions: agg.totalContributions,
@@ -122,10 +114,5 @@ export function aggregateEcosystemContributors(
     })
   }
 
-  return aggregated.sort(
-    (a, b) =>
-      (b.score ?? -1) - (a.score ?? -1) ||
-      b.scrapeCount - a.scrapeCount ||
-      b.totalContributions - a.totalContributions
-  )
+  return aggregated.sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
 }

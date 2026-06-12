@@ -1,8 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase"
 import { recordActivityEvent } from "@/lib/activity"
-import { aggregateEcosystemContributors, ecosystemCacheRowsMissingScore } from "@/lib/ecosystem-utils"
-import { shouldRecomputeTalonScore, type TalonScoreBreakdown } from "@/lib/talon-score"
-import { recomputeTalonScoresWith } from "@/lib/talon-score-recompute"
+import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
@@ -49,9 +47,6 @@ export type ContributorRow = {
   reminder_note?: string | null
   reminder_date?: string | null
   reminder_updated_at?: string | null
-  talon_score?: number | null
-  talon_score_breakdown?: TalonScoreBreakdown | null
-  talon_score_computed_at?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -194,7 +189,6 @@ export function toAppContributor(c: ContributorWithContributions): {
   name: string
   avatar: string
   contributions: number
-  score: number | null
   bio?: string
   location?: string
   company?: string
@@ -210,7 +204,6 @@ export function toAppContributor(c: ContributorWithContributions): {
     name: c.name ?? c.github_username,
     avatar: c.avatar_url ?? "",
     contributions: c.contributions,
-    score: c.talon_score ?? null,
     bio: c.bio ?? undefined,
     location: c.location ?? undefined,
     company: c.company ?? undefined,
@@ -829,17 +822,6 @@ export async function getScrapeContributorStats(id: string): Promise<{
   return { contributorTotal: links.length, contactInfoCount }
 }
 
-/**
- * Recompute and persist Talon Scores for the given contributors. Thin wrapper
- * around the client-agnostic orchestration in lib/talon-score-recompute.ts,
- * which the standalone backfill script also uses.
- */
-export async function recomputeTalonScores(contributorIds: string[], teamId?: string): Promise<void> {
-  if (contributorIds.length === 0) return
-  const resolvedTeamId = await resolveTeamId(teamId)
-  await recomputeTalonScoresWith(supabaseAdmin, contributorIds, resolvedTeamId)
-}
-
 export async function completeScrape(
   id: string,
   contributors: ScrapeContributorProfile[]
@@ -865,22 +847,6 @@ export async function completeScrape(
     })
     .eq("id", id)
   if (error) throw error
-
-  // Refresh Talon Scores before rebuilding project caches so the cached rows
-  // snapshot fresh scores. Scoring must never fail a scrape.
-  try {
-    const { data: scoreLinks, error: scoreLinkError } = await supabaseAdmin
-      .from("scrape_contributors")
-      .select("contributor_id")
-      .eq("scrape_id", id)
-    if (scoreLinkError) throw scoreLinkError
-    await recomputeTalonScores(
-      (scoreLinks ?? []).map((link) => link.contributor_id),
-      resolvedTeamId
-    )
-  } catch (scoreError) {
-    console.warn("[talon-score] Recompute failed during scrape completion; continuing.", scoreError)
-  }
 
   const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
     .from("ecosystem_scrapes")
@@ -1404,11 +1370,6 @@ export type ContributorProfile = {
   }
   notes: string | null
   notesUpdatedAt: string | null
-  score: {
-    value: number | null
-    breakdown: TalonScoreBreakdown | null
-    computedAt: string | null
-  }
   reminder: {
     note: string | null
     date: string | null
@@ -1458,7 +1419,6 @@ export type ProjectPipelineItem = {
     username: string
     name: string
     avatar: string
-    score: number | null
     bio: string | null
     location: string | null
     company: string | null
@@ -1514,7 +1474,7 @@ export async function getContributorProfile(id: string, teamId?: string): Promis
   const { data: contributor, error: contributorError } = await supabaseAdmin
     .from("contributors")
     .select(
-      "id, team_id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, outreach_notes, outreach_notes_updated_at, reminder_note, reminder_date, reminder_updated_at, talon_score, talon_score_breakdown, talon_score_computed_at, created_at, updated_at"
+      "id, team_id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, outreach_notes, outreach_notes_updated_at, reminder_note, reminder_date, reminder_updated_at, created_at, updated_at"
     )
     .eq("id", id)
     .eq("team_id", resolvedTeamId)
@@ -1596,45 +1556,6 @@ export async function getContributorProfile(id: string, teamId?: string): Promis
     })
     .filter((source): source is ContributorProfile["sources"][number] => source !== null)
 
-  // Lazily refresh the Talon Score when it is missing or older than the
-  // newest completed scrape containing this contributor.
-  let scoreFields = {
-    talon_score: row.talon_score ?? null,
-    talon_score_breakdown: row.talon_score_breakdown ?? null,
-    talon_score_computed_at: row.talon_score_computed_at ?? null,
-  }
-  const latestCompletedSourceAt = sources.reduce<string | null>((latest, source) => {
-    if (source.status !== "completed" || !source.completedAt) return latest
-    return latest == null || source.completedAt > latest ? source.completedAt : latest
-  }, null)
-  if (
-    shouldRecomputeTalonScore({
-      score: scoreFields.talon_score,
-      computedAt: scoreFields.talon_score_computed_at,
-      latestCompletedSourceAt,
-    })
-  ) {
-    try {
-      await recomputeTalonScores([id], resolvedTeamId)
-      const { data: refreshed, error: refreshError } = await supabaseAdmin
-        .from("contributors")
-        .select("talon_score, talon_score_breakdown, talon_score_computed_at")
-        .eq("id", id)
-        .eq("team_id", resolvedTeamId)
-        .maybeSingle()
-      if (refreshError) throw refreshError
-      if (refreshed) {
-        scoreFields = {
-          talon_score: refreshed.talon_score ?? null,
-          talon_score_breakdown: refreshed.talon_score_breakdown ?? null,
-          talon_score_computed_at: refreshed.talon_score_computed_at ?? null,
-        }
-      }
-    } catch (scoreError) {
-      console.warn("[talon-score] Lazy recompute failed; serving stored score.", scoreError)
-    }
-  }
-
   return {
     id: row.id,
     username: row.github_username,
@@ -1652,11 +1573,6 @@ export async function getContributorProfile(id: string, teamId?: string): Promis
     },
     notes: row.outreach_notes,
     notesUpdatedAt: row.outreach_notes_updated_at ?? null,
-    score: {
-      value: scoreFields.talon_score,
-      breakdown: scoreFields.talon_score_breakdown,
-      computedAt: scoreFields.talon_score_computed_at,
-    },
     reminder: {
       note: row.reminder_note ?? null,
       date: row.reminder_date ?? null,
@@ -1777,7 +1693,6 @@ export type EcosystemContributor = {
   username: string
   name: string
   avatar: string
-  score: number | null
   scrapeCount: number
   scrapeTargets: string[]
   totalContributions: number
@@ -2192,8 +2107,8 @@ async function hydrateProjectTrackingItems(
       .from("contributors")
       .select(
         options.lightweight
-          ? "id, github_username, name, avatar_url, talon_score"
-          : "id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, talon_score"
+          ? "id, github_username, name, avatar_url"
+          : "id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website"
       )
       .eq("team_id", teamId)
       .in("id", contributorIds),
@@ -2228,7 +2143,6 @@ async function hydrateProjectTrackingItems(
         username: contributor.github_username,
         name: contributor.name ?? contributor.github_username,
         avatar: contributor.avatar_url ?? "",
-        score: contributor.talon_score ?? null,
         bio: options.lightweight ? null : contributor.bio,
         location: options.lightweight ? null : contributor.location,
         company: options.lightweight ? null : contributor.company,
@@ -2577,12 +2491,7 @@ export async function getEcosystemContributorPage({
       if (filters.has("twitter") && !contributor.contacts.twitter?.trim()) return false
       return true
     })
-    .sort(
-      (a, b) =>
-        (b.score ?? -1) - (a.score ?? -1) ||
-        b.scrapeCount - a.scrapeCount ||
-        b.totalContributions - a.totalContributions
-    )
+    .sort((a, b) => b.scrapeCount - a.scrapeCount || b.totalContributions - a.totalContributions)
 
   const page = filtered.slice(safeOffset, safeOffset + safeLimit)
   const pageContributorIds = page.map((contributor) => contributor.id)
@@ -2669,9 +2578,7 @@ export async function getOrRecomputeEcosystemContributors(
   const resolvedTeamId = await resolveTeamId(teamId)
   try {
     const cached = await getCachedEcosystemContributors(ecosystemId, resolvedTeamId)
-    // Caches written before migration 022 lack the score field; rebuild once
-    // so the rows pick up Talon Scores.
-    if (cached && !ecosystemCacheRowsMissingScore(cached.contributors)) return cached
+    if (cached) return cached
   } catch (error) {
     console.warn("[project-contributors-cache] Cache read failed; computing directly.", error)
     return computeEcosystemContributorsWithoutCache(ecosystemId, resolvedTeamId)

@@ -54,11 +54,6 @@ type ContributorPreviewProfile = {
   bio: string | null
   location: string | null
   company: string | null
-  score?: {
-    value: number | null
-    breakdown: unknown
-    computedAt: string | null
-  } | null
   contacts: ContactInfo
   projects: Array<{ id: string; name: string }>
   sources: Array<{
@@ -387,7 +382,6 @@ export function ContributorQuickPreview({
     const base = contributor?.stats ?? []
     if (!profile) return base
     return [
-      { label: "Talon Score", value: profile.score?.value ?? "—" },
       { label: "Repos", value: profile.sources.length },
       { label: "Contributions", value: formatNumber(totalContributions ?? 0) },
       { label: "Projects", value: projects.length },
