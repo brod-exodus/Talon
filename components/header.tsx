@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { type ChangeEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -56,6 +55,7 @@ import {
   RECENTLY_VIEWED_EVENT,
   type RecentlyViewedItem,
 } from "@/lib/recently-viewed"
+import { TalonLogo } from "@/components/talon-logo"
 import { cn } from "@/lib/utils"
 
 const ROLE_LABELS = {
@@ -150,18 +150,10 @@ function getActivityIcon(type: string) {
   return CircleDot
 }
 
-function TalonMark() {
+function TalonHomeLink() {
   return (
     <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center" aria-label="Talon home">
-      <Image
-        src="/talon-header-logo.png"
-        alt="Talon"
-        width={320}
-        height={116}
-        priority
-        unoptimized
-        className="h-10 w-auto shrink-0 object-contain md:h-11"
-      />
+      <TalonLogo markClassName="h-8 w-8 md:h-9 md:w-9" />
     </Link>
   )
 }
@@ -776,7 +768,7 @@ export function Header() {
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <TalonMark />
+            <TalonHomeLink />
           </div>
           <div ref={searchRef} className="relative hidden flex-1 justify-center lg:flex">
             <div className="relative w-full max-w-xl">

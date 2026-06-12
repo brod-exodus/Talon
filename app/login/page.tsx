@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import Image from "next/image"
+import { TalonLogo } from "@/components/talon-logo"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -50,16 +50,8 @@ export default function LoginPage() {
     <main className="relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
       <Card className="w-full max-w-md overflow-hidden">
         <CardHeader>
-          <div className="mb-2 flex flex-col items-start gap-2">
-            <Image
-              src="/talon-header-logo.png"
-              alt="Talon"
-              width={190}
-              height={59}
-              priority
-              unoptimized
-              className="h-12 w-auto object-contain"
-            />
+          <div className="mb-2 flex flex-col items-start gap-3">
+            <TalonLogo tagline markClassName="h-11 w-11" wordmarkClassName="text-[1.6rem]" />
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
           </div>
           <CardDescription>
