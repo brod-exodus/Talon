@@ -21,14 +21,17 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Header } from "@/components/header"
+import { TalonScoreTooltipBody } from "@/components/talon-score-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
 import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
+import type { TalonScoreBreakdown } from "@/lib/talon-score"
 
 type ContributorProfile = {
   id: string
@@ -47,6 +50,11 @@ type ContributorProfile = {
   }
   notes: string | null
   notesUpdatedAt: string | null
+  score: {
+    value: number | null
+    breakdown: TalonScoreBreakdown | null
+    computedAt: string | null
+  }
   reminder: {
     note: string | null
     date: string | null
@@ -257,6 +265,33 @@ export default function ContributorProfilePage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm md:w-72">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="col-span-2 cursor-default rounded-2xl border border-primary/25 bg-primary/10 p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Talon Score</p>
+                        <p className="mt-1 text-2xl font-extrabold text-primary">
+                          {contributor.score.value != null ? (
+                            <>
+                              {contributor.score.value}
+                              <span className="text-sm font-bold text-muted-foreground"> / 100</span>
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </p>
+                        {contributor.score.value != null && (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${contributor.score.value}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    {contributor.score.breakdown && (
+                      <TooltipContent>
+                        <TalonScoreTooltipBody breakdown={contributor.score.breakdown} />
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                   <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Sources</p>
                     <p className="mt-1 text-2xl font-extrabold">{contributor.sources.length}</p>
