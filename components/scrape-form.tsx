@@ -109,14 +109,17 @@ export function ScrapeForm() {
     [projects, selectedProjectId]
   )
 
-  const handleCreateProject = useCallback(async () => {
-    if (!canWrite || !newProjectName.trim()) return
+  const createProject = useCallback(async (name: string): Promise<ProjectOption> => {
+    const trimmedName = name.trim()
+    const existingProject = projects.find((project) => project.name.toLowerCase() === trimmedName.toLowerCase())
+    if (existingProject) return existingProject
+
     setProjectSaving(true)
     try {
       const response = await fetch("/api/ecosystems", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newProjectName.trim() }),
+        body: JSON.stringify({ name: trimmedName }),
       })
       const project = await response.json()
       if (!response.ok) {
@@ -124,6 +127,16 @@ export function ScrapeForm() {
       }
       const nextProject = { id: project.id, name: project.name }
       setProjects((prev) => [nextProject, ...prev])
+      return nextProject
+    } finally {
+      setProjectSaving(false)
+    }
+  }, [projects])
+
+  const handleCreateProject = useCallback(async () => {
+    if (!canWrite || !newProjectName.trim()) return
+    try {
+      const nextProject = await createProject(newProjectName)
       setSelectedProjectId(nextProject.id)
       setNewProjectName("")
       setCreatingProject(false)
@@ -134,10 +147,8 @@ export function ScrapeForm() {
         description: error instanceof Error ? error.message : "Try again in a moment.",
         variant: "destructive",
       })
-    } finally {
-      setProjectSaving(false)
     }
-  }, [canWrite, newProjectName, toast])
+  }, [canWrite, createProject, newProjectName, toast])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -166,6 +177,18 @@ export function ScrapeForm() {
       setIsLoading(true)
 
       try {
+        let scrapeProjectId = selectedProjectId === "none" ? undefined : selectedProjectId
+        let scrapeProjectName = selectedProject?.name ?? ""
+
+        if (creatingProject && newProjectName.trim()) {
+          const nextProject = await createProject(newProjectName)
+          scrapeProjectId = nextProject.id
+          scrapeProjectName = nextProject.name
+          setSelectedProjectId(nextProject.id)
+          setNewProjectName("")
+          setCreatingProject(false)
+        }
+
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -174,7 +197,7 @@ export function ScrapeForm() {
             target: target.trim(),
             token,
             minContributions,
-            projectId: selectedProjectId === "none" ? undefined : selectedProjectId,
+            projectId: scrapeProjectId,
           }),
         })
 
@@ -196,7 +219,7 @@ export function ScrapeForm() {
         const data = await response.json()
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
-        const projectMsg = selectedProject ? ` Added to ${selectedProject.name}.` : ""
+        const projectMsg = scrapeProjectName ? ` Added to ${scrapeProjectName}.` : ""
         toast({
           title: "Scrape queued",
           description: `Queued ${target} for processing.${projectMsg}${rateLimitMsg}`,
@@ -214,7 +237,7 @@ export function ScrapeForm() {
         setIsLoading(false)
       }
     },
-    [canWrite, type, target, minContributions, selectedProjectId, selectedProject, toast],
+    [canWrite, type, target, minContributions, selectedProjectId, selectedProject, creatingProject, newProjectName, createProject, toast],
   )
 
   const getPlaceholder = () => {
@@ -427,7 +450,7 @@ export function ScrapeForm() {
         <Button
           type="submit"
           className="w-full"
-          disabled={!canWrite || !target || isLoading}
+          disabled={!canWrite || !target || isLoading || projectSaving}
         >
           {isLoading ? "Starting..." : "Start Scrape"}
         </Button>

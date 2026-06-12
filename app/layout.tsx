@@ -8,13 +8,10 @@ export const metadata: Metadata = {
   description: "Discover, monitor, and organize GitHub contributors across recruiting projects.",
   icons: {
     icon: [
-      { url: "/talon-logo.png?v=3", sizes: "any", type: "image/png" },
+      { url: "/talon-logo.svg?v=4", type: "image/svg+xml" },
+      { url: "/talon-logo.png?v=4", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/talon-logo.png?v=3", sizes: "180x180", type: "image/png" }],
-    other: [
-      { rel: "icon", url: "/talon-logo.png?v=3", sizes: "192x192", type: "image/png" },
-      { rel: "icon", url: "/talon-logo.png?v=3", sizes: "512x512", type: "image/png" },
-    ],
+    apple: [{ url: "/talon-logo.png?v=4", sizes: "180x180", type: "image/png" }],
   },
 }
 
