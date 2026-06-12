@@ -45,8 +45,10 @@ If Settings cannot load recent security events, confirm migration `007` has been
 `db/migrations/022_talon_score.sql` adds `talon_score`, `talon_score_breakdown`, and `talon_score_computed_at` to `contributors`, plus the `get_talon_score_inputs` and `apply_talon_scores` functions. Scores recompute automatically when a scrape completes and lazily when a contributor profile is read, but existing contributors will show `—` in lists until they are backfilled:
 
 ```bash
-node --experimental-strip-types --conditions react-server --env-file=.env.local scripts/backfill-talon-scores.ts
+pnpm backfill:scores
 ```
+
+The script builds its own service-role Supabase client from `.env.local` (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`), so it runs outside Next.js without touching `server-only` modules.
 
 The backfill is idempotent (only rows with `talon_score IS NULL` are scored) and safe to run while the app is live. Project contributor caches written before migration 022 rebuild themselves on first read.
 
