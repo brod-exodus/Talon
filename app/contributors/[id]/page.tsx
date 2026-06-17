@@ -214,21 +214,21 @@ export default function ContributorProfilePage() {
         ) : contributor ? (
           <div className="space-y-6">
             {error && (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
                 {error}
               </div>
             )}
 
-            <section className="rounded-3xl border border-white/70 bg-white/75 p-6 shadow-xl shadow-indigo-500/10 backdrop-blur-xl">
+            <section className="rounded-lg border border-border bg-card p-6 shadow-none ">
               <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                 <div className="flex min-w-0 gap-4">
                   <img
                     src={contributor.avatar || "/placeholder.svg?height=96&width=96"}
                     alt={contributor.name}
-                    className="h-20 w-20 shrink-0 rounded-3xl object-cover ring-1 ring-indigo-100"
+                    className="h-20 w-20 shrink-0 rounded-lg object-cover ring-1 ring-border"
                   />
                   <div className="min-w-0">
-                    <h1 className="truncate text-3xl font-extrabold tracking-tight text-foreground">
+                    <h1 className="truncate text-3xl font-bold tracking-tight text-foreground">
                       {contributor.name}
                     </h1>
                     <a
@@ -257,11 +257,11 @@ export default function ContributorProfilePage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm md:w-72">
-                  <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                  <div className="rounded-lg border border-border bg-card p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Sources</p>
                     <p className="mt-1 text-2xl font-extrabold">{contributor.sources.length}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                  <div className="rounded-lg border border-border bg-card p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Contribs</p>
                     <p className="mt-1 text-2xl font-extrabold">{totalContributions.toLocaleString()}</p>
                   </div>
@@ -286,7 +286,7 @@ export default function ContributorProfilePage() {
                           value={notesInput}
                           onChange={(event) => setNotesInput(event.target.value)}
                           placeholder="No notes yet"
-                          className="min-h-32 w-full rounded-2xl border border-input bg-white/80 px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="min-h-32 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <Button disabled={saving} onClick={() => saveProfile({ notes: notesInput || null })}>
                           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -312,7 +312,7 @@ export default function ContributorProfilePage() {
                     ) : (
                       <div className="space-y-3">
                         {contributor.sources.map((source) => (
-                          <div key={source.scrapeId} className="rounded-2xl border border-border bg-white/70 p-4">
+                          <div key={source.scrapeId} className="rounded-lg border border-border bg-card p-4">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div>
                                 <p className="font-mono text-sm font-bold text-foreground">{source.target}</p>
@@ -353,7 +353,7 @@ export default function ContributorProfilePage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {contributor.reminder.date || contributor.reminder.note ? (
-                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                      <div className="rounded-lg border border-primary/20 bg-primary/10 p-4">
                         <p className="flex items-center gap-2 text-sm font-extrabold text-foreground">
                           <Calendar className="h-4 w-4 text-primary" />
                           {formatDate(contributor.reminder.date) ?? "Reminder"}
@@ -375,7 +375,7 @@ export default function ContributorProfilePage() {
                             type="date"
                             value={reminderDateInput}
                             onChange={(event) => setReminderDateInput(event.target.value)}
-                            className="bg-white/80"
+                            className="bg-card"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -385,7 +385,7 @@ export default function ContributorProfilePage() {
                             value={reminderNoteInput}
                             onChange={(event) => setReminderNoteInput(event.target.value)}
                             placeholder="Follow up about Staff Solana role"
-                            className="bg-white/80"
+                            className="bg-card"
                           />
                         </div>
                         <div className="flex gap-2">
@@ -403,7 +403,7 @@ export default function ContributorProfilePage() {
                           </Button>
                           <Button
                             variant="outline"
-                            className="bg-white/80"
+                            className="bg-card"
                             disabled={saving}
                             onClick={() => saveProfile({ reminderDate: null, reminderNote: null })}
                           >
@@ -433,7 +433,7 @@ export default function ContributorProfilePage() {
                             href={entry.href}
                             target={entry.href.startsWith("mailto:") ? undefined : "_blank"}
                             rel={entry.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
-                            className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-white/70 px-3 py-2.5 text-sm transition-colors hover:border-primary/30 hover:bg-indigo-50/60"
+                            className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-sm transition-colors hover:border-primary/30 hover:bg-primary/10"
                           >
                             <Icon className="h-4 w-4 shrink-0 text-primary" />
                             <span className="min-w-0">
@@ -455,12 +455,12 @@ export default function ContributorProfilePage() {
                             value={linkedinInput}
                             onChange={(event) => setLinkedinInput(event.target.value)}
                             placeholder="https://www.linkedin.com/in/..."
-                            className="bg-white/80"
+                            className="bg-card"
                           />
                           <Button
                             variant="outline"
                             disabled={saving}
-                            className="bg-white/80"
+                            className="bg-card"
                             onClick={() => saveProfile({ linkedin: linkedinInput || null })}
                           >
                             <Pencil className="h-4 w-4" />
@@ -502,7 +502,7 @@ export default function ContributorProfilePage() {
 
 function EmptyLine({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-dashed border-border bg-white/50 px-4 py-3 text-sm font-semibold text-muted-foreground">
+    <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-3 text-sm font-semibold text-muted-foreground">
       <Icon className="h-4 w-4" />
       {text}
     </div>
@@ -512,9 +512,9 @@ function EmptyLine({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
 function ContributorProfileSkeleton() {
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-white/70 bg-white/75 p-6 shadow-xl shadow-indigo-500/10 backdrop-blur-xl">
+      <section className="rounded-lg border border-border bg-card p-6 shadow-none ">
         <div className="flex gap-4">
-          <Skeleton className="h-20 w-20 rounded-3xl" />
+          <Skeleton className="h-20 w-20 rounded-lg" />
           <div className="flex-1 space-y-3">
             <Skeleton className="h-9 w-72" />
             <Skeleton className="h-4 w-40" />
@@ -523,8 +523,8 @@ function ContributorProfileSkeleton() {
         </div>
       </section>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Skeleton className="h-80 rounded-3xl" />
-        <Skeleton className="h-80 rounded-3xl" />
+        <Skeleton className="h-80 rounded-lg" />
+        <Skeleton className="h-80 rounded-lg" />
       </div>
     </div>
   )

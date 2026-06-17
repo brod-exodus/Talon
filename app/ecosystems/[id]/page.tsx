@@ -677,7 +677,7 @@ export default function EcosystemDetailPage() {
         </div>
 
         {/* ── Stats bar ────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-8 flex-wrap">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground mb-8 flex-wrap">
           <span>
             {ecosystemLoading ? (
               <Skeleton className="h-4 w-24 inline-block align-middle" />
@@ -808,40 +808,40 @@ export default function EcosystemDetailPage() {
             )}
           </div>
 
-          <div className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-sm shadow-indigo-500/5 backdrop-blur-md">
+          <div className="rounded-lg border border-border bg-card p-3 shadow-none ">
             {listError && (
-              <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
                 {listError}
               </div>
             )}
             {listsLoading ? (
               <div className="flex gap-3 overflow-hidden">
-                <Skeleton className="h-20 w-44 rounded-2xl" />
-                <Skeleton className="h-20 w-44 rounded-2xl" />
-                <Skeleton className="h-20 w-44 rounded-2xl" />
+                <Skeleton className="h-20 w-44 rounded-lg" />
+                <Skeleton className="h-20 w-44 rounded-lg" />
+                <Skeleton className="h-20 w-44 rounded-lg" />
               </div>
             ) : (
               <div className="flex gap-3 overflow-x-auto pb-1">
                 <button
                   type="button"
                   onClick={() => setSelectedListId("all")}
-                  className={`min-w-44 cursor-pointer rounded-2xl border px-4 py-3 text-left transition-all ${
+                  className={`min-w-44 cursor-pointer rounded-lg border px-4 py-3 text-left transition-all ${
                     selectedListId === "all"
-                      ? "border-primary/35 bg-white text-foreground shadow-sm shadow-indigo-500/10 ring-1 ring-primary/15"
-                      : "border-white/70 bg-white/70 text-foreground hover:border-primary/20 hover:bg-white"
+                      ? "border-primary/40 bg-primary/10 text-foreground ring-1 ring-primary/20"
+                      : "border-border bg-card text-foreground hover:border-primary/20 hover:bg-muted/40"
                   }`}
                 >
-                  <p className="text-sm font-extrabold">All Contributors</p>
+                  <p className="text-sm font-semibold">All Contributors</p>
                   <p className="mt-1 text-xs font-semibold text-muted-foreground">{projectContributorCount} total</p>
                 </button>
 
                 {projectLists.map((list) => (
                   <div
                     key={list.id}
-                    className={`min-w-52 rounded-2xl border px-4 py-3 transition-all ${
+                    className={`min-w-52 rounded-lg border px-4 py-3 transition-all ${
                       selectedListId === list.id
-                        ? "border-primary/35 bg-white shadow-sm shadow-indigo-500/10 ring-1 ring-primary/15"
-                        : "border-white/70 bg-white/70 hover:border-primary/20 hover:bg-white"
+                        ? "border-primary/40 bg-primary/10 ring-1 ring-primary/20"
+                        : "border-border bg-card hover:border-primary/20 hover:bg-muted/40"
                     }`}
                   >
                     {renamingListId === list.id ? (
@@ -860,7 +860,7 @@ export default function EcosystemDetailPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 bg-white/80"
+                            className="h-7 bg-card"
                             onClick={() => {
                               setRenamingListId(null)
                               setRenameListName("")
@@ -873,7 +873,7 @@ export default function EcosystemDetailPage() {
                     ) : (
                       <>
                         <button type="button" className="w-full cursor-pointer text-left" onClick={() => setSelectedListId(list.id)}>
-                          <p className="truncate text-sm font-extrabold text-foreground">{list.name}</p>
+                          <p className="truncate text-sm font-semibold text-foreground">{list.name}</p>
                           <p className="mt-1 text-xs font-semibold text-muted-foreground">
                             {list.contributorCount} contributor{list.contributorCount === 1 ? "" : "s"}
                           </p>
@@ -883,7 +883,7 @@ export default function EcosystemDetailPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 bg-white/80 text-xs"
+                              className="h-7 bg-card text-xs"
                               onClick={() => {
                                 setRenamingListId(list.id)
                                 setRenameListName(list.name)
@@ -895,7 +895,7 @@ export default function EcosystemDetailPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 bg-white/80 text-xs text-destructive hover:text-destructive"
+                              className="h-7 bg-card text-xs text-destructive hover:text-destructive"
                               onClick={() => deleteProjectList(list.id, list.name)}
                             >
                               <Trash2 className="h-3 w-3" />
@@ -909,8 +909,8 @@ export default function EcosystemDetailPage() {
                 ))}
 
                 {projectLists.length === 0 && (
-                  <div className="min-w-72 rounded-2xl border border-dashed border-primary/20 bg-indigo-50/50 px-4 py-3">
-                    <p className="text-sm font-extrabold text-foreground">No lists yet</p>
+                  <div className="min-w-72 rounded-lg border border-dashed border-primary/20 bg-primary/10 px-4 py-3">
+                    <p className="text-sm font-semibold text-foreground">No lists yet</p>
                     <p className="mt-1 text-xs font-semibold text-muted-foreground">
                       Create your first recruiting list for strong fits, outreach, or interview follow-up.
                     </p>
@@ -952,8 +952,8 @@ export default function EcosystemDetailPage() {
           {contributorsLoading ? (
             <ContributorTableSkeleton />
           ) : contributorsError ? (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   <div>
@@ -1055,7 +1055,7 @@ export default function EcosystemDetailPage() {
                 </div>
               </div>
               {trackingError && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
                   {trackingError}
                 </div>
               )}
@@ -1142,12 +1142,12 @@ export default function EcosystemDetailPage() {
                       }}
                     >
                       {/* Rank */}
-                      <td className="px-4 py-4 text-right font-mono text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
                         {idx + 1}
                       </td>
 
                       {/* Avatar + name */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <Link
                             href={`/contributors/${c.id}`}
@@ -1177,7 +1177,7 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Scrape count badge */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <span
                           className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
                             c.scrapeCount > 1
@@ -1190,7 +1190,7 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Scrape target tags */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex min-w-0 flex-wrap gap-1.5" title={c.scrapeTargets.join(", ")}>
                           {visibleTargets.map((t) => (
                             <span
@@ -1209,12 +1209,12 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Total contributions */}
-                      <td className="px-4 py-4 text-right font-mono text-xs text-muted-foreground">
+                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
                         {c.totalContributions.toLocaleString()}
                       </td>
 
                       {/* Outreach status */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex min-w-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
                           {canWrite ? (
                             <Select
@@ -1224,7 +1224,7 @@ export default function EcosystemDetailPage() {
                               }
                               disabled={trackingSaving || trackingLoading}
                             >
-                              <SelectTrigger className="h-8 w-40 shrink-0 bg-white/80 text-xs">
+                              <SelectTrigger className="h-8 w-40 shrink-0 bg-card text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1254,10 +1254,10 @@ export default function EcosystemDetailPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent
                                 align="end"
-                                className="w-96 rounded-2xl border-white/70 bg-white/95 p-4 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+                                className="w-96 rounded-lg border-border bg-popover p-3 shadow-none "
                                 onClick={(event) => event.stopPropagation()}
                               >
-                                <DropdownMenuLabel className="px-0 text-xs font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+                                <DropdownMenuLabel className="px-0 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                                   Project outreach
                                 </DropdownMenuLabel>
                                 <div className="mt-3">
@@ -1278,7 +1278,7 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Contact info */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex min-w-0 items-center gap-2">
                           {c.contacts.email?.trim() && (
                             <a
@@ -1333,7 +1333,7 @@ export default function EcosystemDetailPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center" onClick={(event) => event.stopPropagation()}>
                           {canWrite && (
                             <DropdownMenu>
@@ -1352,10 +1352,10 @@ export default function EcosystemDetailPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent
                                 align="end"
-                                className="w-72 rounded-2xl border-white/70 bg-white/95 p-2 shadow-xl shadow-indigo-500/10 backdrop-blur-xl"
+                                className="w-72 rounded-lg border-border bg-popover p-2 shadow-none "
                                 onClick={(event) => event.stopPropagation()}
                               >
-                                <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.14em] text-muted-foreground">
+                                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                                   Save to list
                                 </DropdownMenuLabel>
                                 <DropdownMenuSeparator />

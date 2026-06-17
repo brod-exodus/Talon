@@ -55,6 +55,7 @@ import {
   RECENTLY_VIEWED_EVENT,
   type RecentlyViewedItem,
 } from "@/lib/recently-viewed"
+import { CommandPalette } from "@/components/command-palette"
 import { TalonLogo } from "@/components/talon-logo"
 import { cn } from "@/lib/utils"
 
@@ -122,14 +123,6 @@ const SEARCH_GROUP_META = [
 const HEADER_ICON_TRIGGER_CLASS =
   "hidden h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:border-border data-[state=open]:bg-muted data-[state=open]:text-foreground lg:inline-flex"
 
-const GENESIS_TICKER_SEGMENT = [
-  "00000000  04 ff ff 00 1d 01 04 45",
-  "00000010  54 68 65 20 54 69 6d 65",
-  "00000020  The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
-  "00000030  6d 65 72 6b 6c 65 72 6f",
-  "00000040  6f 74 20 7c 20 6e 6f 64 65",
-]
-
 function formatActivityTime(value: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
   if (seconds < 60) return "Just now"
@@ -155,31 +148,6 @@ function TalonHomeLink() {
     <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center" aria-label="Talon home">
       <TalonLogo markClassName="h-8 w-8 md:h-9 md:w-9" />
     </Link>
-  )
-}
-
-function GenesisTicker() {
-  const tickerContent = (
-    <span className="genesis-ticker-sequence">
-      {GENESIS_TICKER_SEGMENT.map((item, index) => (
-        <span
-          key={`${item}-${index}`}
-          className={index === 2 ? "genesis-ticker-highlight" : undefined}
-        >
-          {item}
-        </span>
-      ))}
-    </span>
-  )
-
-  return (
-    <div className="genesis-ticker" aria-label="Bitcoin Genesis Block homage">
-      <div className="genesis-ticker-track">
-        {tickerContent}
-        {tickerContent}
-        {tickerContent}
-      </div>
-    </div>
   )
 }
 
@@ -217,7 +185,7 @@ function AccountAvatar({
   return (
     <span
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-xs font-extrabold text-primary",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-xs font-semibold text-primary",
         className
       )}
       aria-hidden="true"
@@ -527,7 +495,7 @@ export function Header() {
         <DropdownMenuLabel className="flex min-w-0 items-center gap-3">
           <AccountAvatar me={me} identityLabel={identityLabel} className="h-10 w-10" />
           <span className="min-w-0 space-y-1">
-            <span className="block truncate text-sm font-bold">{identityLabel}</span>
+            <span className="block truncate text-sm font-medium">{identityLabel}</span>
             <span className="block truncate text-xs font-normal text-muted-foreground">{secondaryIdentityLabel}</span>
           </span>
         </DropdownMenuLabel>
@@ -569,7 +537,7 @@ export function Header() {
           align="end"
           className="w-56 rounded-lg border-border bg-popover shadow-none"
         >
-          <DropdownMenuLabel className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Quick actions
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -626,7 +594,7 @@ export function Header() {
           className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2">
-            <span className="text-sm font-extrabold text-foreground">Recent activity</span>
+            <span className="text-sm font-semibold text-foreground">Recent activity</span>
             {activityLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -656,7 +624,7 @@ export function Header() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center justify-between gap-3">
-                        <span className="truncate text-sm font-extrabold text-foreground">{event.title}</span>
+                        <span className="truncate text-sm font-semibold text-foreground">{event.title}</span>
                         <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
                           {formatActivityTime(event.createdAt)}
                         </span>
@@ -705,7 +673,7 @@ export function Header() {
           }}
           className="w-96 rounded-lg border-border bg-popover p-2 shadow-none"
         >
-          <DropdownMenuLabel className="px-3 py-2 text-sm font-extrabold text-foreground">
+          <DropdownMenuLabel className="px-3 py-2 text-sm font-semibold text-foreground">
             Recently viewed
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -729,7 +697,7 @@ export function Header() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center justify-between gap-3">
-                        <span className="truncate text-sm font-extrabold text-foreground">{item.title}</span>
+                        <span className="truncate text-sm font-semibold text-foreground">{item.title}</span>
                         <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
                           {formatActivityTime(item.viewedAt)}
                         </span>
@@ -756,7 +724,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-[#0a0e14]/90 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border bg-[#0a0e14]/90 ">
         <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
@@ -813,7 +781,7 @@ export function Header() {
                         const Icon = group.icon
                         return (
                           <div key={group.key} className="py-2">
-                            <div className="flex items-center gap-2 px-4 pb-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+                            <div className="flex items-center gap-2 px-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                               <Icon className="h-3.5 w-3.5" />
                               {group.label}
                             </div>
@@ -826,7 +794,7 @@ export function Header() {
                                   className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-primary/10 focus:bg-primary/10 focus:outline-none"
                                 >
                                   <span className="min-w-0">
-                                    <span className="block truncate text-sm font-extrabold text-foreground">
+                                    <span className="block truncate text-sm font-semibold text-foreground">
                                       {result.title}
                                     </span>
                                     {result.subtitle && (
@@ -835,7 +803,7 @@ export function Header() {
                                       </span>
                                     )}
                                   </span>
-                                  <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 font-mono text-[10px] font-bold text-primary">
+                                  <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 font-mono text-[10px] font-medium text-primary">
                                     Open
                                   </span>
                                 </button>
@@ -854,12 +822,13 @@ export function Header() {
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
-                className="hidden items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/15 sm:inline-flex"
+                className="hidden items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 font-mono text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/15 sm:inline-flex"
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Ops attention
               </Link>
             )}
+            <CommandPalette canWrite={canWrite} />
             {renderQuickActions()}
             {renderRecentlyViewedMenu()}
             {renderActivityMenu()}
@@ -867,12 +836,12 @@ export function Header() {
           </div>
         </div>
         {mobileOpen && (
-          <nav className="grid gap-1 border-t border-border bg-[#0a0e14] p-3 lg:hidden">
+          <nav className="grid gap-1 border-t border-border bg-background p-3 lg:hidden">
             {canAdmin && healthStatus && healthStatus !== "ok" && (
               <Link
                 href="/settings"
                 onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-300"
+                className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-300"
               >
                 <AlertTriangle className="h-4 w-4" />
                 Ops attention
@@ -887,7 +856,7 @@ export function Header() {
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all",
+                    "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all",
                     active ? "border border-primary/30 bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -908,9 +877,9 @@ export function Header() {
           </DialogHeader>
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-lg border border-border bg-muted p-4">
-              <AccountAvatar me={me} identityLabel={identityLabel} className="h-20 w-20 text-xl ring-2 ring-white" />
+              <AccountAvatar me={me} identityLabel={identityLabel} className="h-20 w-20 text-xl ring-2 ring-border" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-extrabold text-foreground">{identityLabel}</p>
+                <p className="truncate text-base font-semibold text-foreground">{identityLabel}</p>
                 <p className="truncate text-sm font-semibold text-muted-foreground">{secondaryIdentityLabel}</p>
                 {roleLabel && (
                   <Badge variant="secondary" className="mt-2">
@@ -921,13 +890,13 @@ export function Header() {
             </div>
 
             {profileError && (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
                 {profileError}
               </div>
             )}
 
             {profileSaved && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              <div className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-300">
                 Profile saved.
               </div>
             )}
@@ -996,7 +965,7 @@ export function Header() {
         </DialogContent>
       </Dialog>
 
-      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-[#0a0e14] p-4 lg:flex lg:flex-col">
+      <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-72 border-r border-border bg-background p-4 lg:flex lg:flex-col">
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
@@ -1006,7 +975,7 @@ export function Header() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all duration-200",
+                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200",
                   active
                     ? "border border-primary/30 bg-primary/10 text-primary"
                     : "text-muted-foreground hover:translate-x-1 hover:bg-muted hover:text-foreground"
@@ -1019,7 +988,6 @@ export function Header() {
           })}
         </nav>
         <div className="mt-auto">
-          {pathname === "/" && <GenesisTicker />}
           {renderAccountMenu(
             <button
               type="button"
@@ -1029,7 +997,7 @@ export function Header() {
             >
               <AccountAvatar me={me} identityLabel={identityLabel} className="h-11 w-11" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-extrabold text-foreground">{identityLabel}</span>
+                <span className="block truncate text-sm font-semibold text-foreground">{identityLabel}</span>
                 <span className="mt-1 flex flex-wrap items-center gap-2">
                   {roleLabel && (
                     <Badge variant="secondary" className="text-[10px]">

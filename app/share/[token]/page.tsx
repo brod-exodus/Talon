@@ -146,7 +146,7 @@ export default function SharePage() {
   return (
     <div className="relative z-10 min-h-screen text-foreground">
       {/* ── Sticky header ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-10 border-b border-white/70 bg-white/80 shadow-lg shadow-indigo-500/5 backdrop-blur-xl">
+      <header className="sticky top-0 z-10 border-b border-border bg-card shadow-none ">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <div>
             <p className="mb-0.5 text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">
@@ -231,7 +231,7 @@ export default function SharePage() {
               return (
                 <div
                   key={contributor.username}
-                  className="glass-panel-subtle flex flex-col gap-3 rounded-2xl p-4 transition-colors hover:border-primary/30"
+                  className="glass-panel-subtle flex flex-col gap-3 rounded-lg p-4 transition-colors hover:border-primary/30"
                 >
                   {/* Row 1: avatar + name + GitHub */}
                   <div className="flex items-center justify-between">

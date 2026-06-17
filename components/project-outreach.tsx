@@ -7,16 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getProjectOutreachStatusBadgeClass, getProjectOutreachStatusLabel } from "@/lib/status-styles"
 import { cn } from "@/lib/utils"
+import type { ProjectOutreachStatus } from "@/lib/validation"
 
-export type ProjectOutreachStatus =
-  | "not_contacted"
-  | "contacted"
-  | "replied"
-  | "interested"
-  | "interviewing"
-  | "rejected"
-  | "archived"
+export type { ProjectOutreachStatus } from "@/lib/validation"
 
 export type ProjectContributorTracking = {
   id: string
@@ -47,10 +42,6 @@ export type ProjectTrackingUpdate = {
   nextFollowUpAt?: string | null
 }
 
-export function getProjectOutreachStatusLabel(status: ProjectOutreachStatus) {
-  return PROJECT_OUTREACH_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? "Not Contacted"
-}
-
 export function getDefaultProjectTracking(projectId: string, contributorId: string): ProjectContributorTracking {
   const now = new Date(0).toISOString()
   return {
@@ -66,15 +57,6 @@ export function getDefaultProjectTracking(projectId: string, contributorId: stri
   }
 }
 
-function statusBadgeClass(status: ProjectOutreachStatus) {
-  if (status === "not_contacted") return "border-border bg-muted text-muted-foreground"
-  if (status === "contacted") return "border-primary/25 bg-primary/10 text-primary"
-  if (status === "replied") return "border-secondary/25 bg-secondary/10 text-secondary"
-  if (status === "interested") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
-  if (status === "interviewing") return "border-primary/35 bg-primary/15 text-primary"
-  if (status === "rejected") return "border-destructive/30 bg-destructive/10 text-destructive"
-  return "border-border bg-muted text-muted-foreground"
-}
 
 export function ProjectOutreachBadge({
   status,
@@ -84,7 +66,7 @@ export function ProjectOutreachBadge({
   className?: string
 }) {
   return (
-    <Badge variant="outline" className={cn(statusBadgeClass(status), className)}>
+    <Badge variant="outline" className={cn(getProjectOutreachStatusBadgeClass(status), className)}>
       {getProjectOutreachStatusLabel(status)}
     </Badge>
   )
@@ -169,7 +151,7 @@ export function ProjectOutreachForm({
               value={status}
               onChange={(event) => setStatus(event.target.value as ProjectOutreachStatus)}
               disabled={disabled}
-              className="h-10 w-full cursor-pointer rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none transition focus-visible:border-primary/70 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-9 w-full cursor-pointer rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none transition focus-visible:border-primary/70 focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {PROJECT_OUTREACH_STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -248,7 +230,7 @@ export function ProjectOutreachForm({
         )}
       </Button>
       {saveError && (
-        <p className="text-xs font-medium text-rose-700">
+        <p className="text-xs font-medium text-destructive">
           {saveError}
         </p>
       )}
