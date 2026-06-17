@@ -283,7 +283,7 @@ export function ScrapeForm() {
             <Rocket className="h-5 w-5" />
           </div>
           <div>
-            <CardTitle className="text-xl font-extrabold">Start New Scrape</CardTitle>
+            <CardTitle className="text-xl font-semibold">Start New Scrape</CardTitle>
             <CardDescription>Discover contributors with contact information.</CardDescription>
           </div>
         </div>
@@ -301,7 +301,7 @@ export function ScrapeForm() {
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="type" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <Label htmlFor="type" className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Source Type
           </Label>
           <Select value={type} onValueChange={(value) => setType(value as ScrapeSourceType)} disabled={!canWrite}>
@@ -316,7 +316,7 @@ export function ScrapeForm() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="target" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <Label htmlFor="target" className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {getLabel()}
           </Label>
           <Input
@@ -330,7 +330,7 @@ export function ScrapeForm() {
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="minContributions" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <Label htmlFor="minContributions" className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Minimum Contributions
           </Label>
           <Input
@@ -347,7 +347,7 @@ export function ScrapeForm() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="project" className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">
+          <Label htmlFor="project" className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Project
           </Label>
           <Select
@@ -476,7 +476,7 @@ export function ScrapeForm() {
             <Search className="h-5 w-5" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-extrabold">
+            <DialogTitle className="text-xl font-semibold">
               {invalidTargetError?.type === "repository" ? "Repository not found" : "Organization not found"}
             </DialogTitle>
             <DialogDescription className="mt-2 leading-relaxed">

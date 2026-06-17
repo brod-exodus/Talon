@@ -186,7 +186,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Activity className="w-5 h-5 text-primary" />
-        <h2 className="text-2xl font-extrabold tracking-tight">Active Scrapes</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Active Scrapes</h2>
       </div>
 
       <div className="space-y-4">
@@ -201,7 +201,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-xl font-extrabold tracking-tight">{scrape.target}</CardTitle>
+                    <CardTitle className="text-xl font-semibold tracking-tight">{scrape.target}</CardTitle>
                     <CardDescription className="flex items-center gap-2">
                       <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
                         {scrape.type}

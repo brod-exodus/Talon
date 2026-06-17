@@ -573,7 +573,7 @@ export default function SettingsPage() {
       <main className="prism-main-narrow">
         <div className="mb-8">
           <p className="prism-section-title">Admin</p>
-          <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Settings</h1>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight">Settings</h1>
           <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
             Configure Talon&apos;s GitHub access, verify rate limits, and test notification plumbing.
           </p>

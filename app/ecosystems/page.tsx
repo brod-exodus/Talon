@@ -126,7 +126,7 @@ export default function EcosystemsPage() {
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
             <p className="prism-section-title">Library</p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-tight">Projects</h1>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight">Projects</h1>
             <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
               Group scrapes by role, search, or market map without cluttering the dashboard.
             </p>
@@ -203,7 +203,7 @@ export default function EcosystemsPage() {
             {ecosystems.map((eco) => (
               <Card
                 key={eco.id}
-                className="border-border bg-card hover:border-primary/50 transition-all duration-200 hover:shadow-lg hover:shadow-primary/10 group"
+                className="border-border bg-card hover:border-primary/50 transition-all duration-200 hover:bg-muted/30 group"
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">

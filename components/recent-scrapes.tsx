@@ -792,7 +792,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           transition={{ duration: 0.3 }}
           whileHover={{ y: -2 }}
         >
-          <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10">
+          <Card className="border-border bg-card hover:border-primary/50 transition-all duration-300 hover:bg-muted/30">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -864,7 +864,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    className="flex-1 shadow-lg shadow-indigo-500/15 transition-all duration-300"
+                    className="flex-1 shadow-lg shadow-none transition-all duration-300"
                     onClick={() => toggleExpanded(scrape)}
                   >
                     {isExpanded ? (
@@ -1022,7 +1022,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           {[1, 2, 3].map((i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card"
+                              className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card"
                             >
                               <Skeleton className="w-10 h-10 rounded-full shrink-0" />
                               <div className="flex-1 space-y-2">
@@ -1046,12 +1046,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           onMouseLeave={() => cancelPreviewPrefetch(contributor.id)}
                           onFocus={() => schedulePreviewPrefetch(contributor.id, scrape.projects?.[0]?.id)}
                           onBlur={() => cancelPreviewPrefetch(contributor.id)}
-                          className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
+                          className="flex flex-col gap-3 p-3 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
                         >
                           <div className="flex items-center justify-between">
                             <Link
                               href={`/contributors/${contributor.id}`}
-                              className="flex min-w-0 items-center gap-4 rounded-2xl transition-colors hover:text-primary"
+                              className="flex min-w-0 items-center gap-3 rounded-lg transition-colors hover:text-primary"
                             >
                               <img
                                 src={contributor.avatar || "/placeholder.svg?height=40&width=40"}
@@ -1183,7 +1183,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
                       {/* Empty state: loaded but no results */}
                       {!isLoadingContributors && contributors !== null && sorted.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">
+                        <p className="text-sm text-muted-foreground text-center py-3">
                           {contributorSearch.trim() && filteredByToggles.length > 0
                             ? "No contributors match your search."
                             : activeFilters.size > 0
@@ -1374,14 +1374,14 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           <TabsContent value="repositories" className="space-y-4 mt-6">
             {repoScrapes.length === 0
               ? <EmptyState type="repository" />
-              : <div className="grid grid-cols-1 gap-4">{repoScrapes.map(renderScrapeCard)}</div>
+              : <div className="grid grid-cols-1 gap-3">{repoScrapes.map(renderScrapeCard)}</div>
             }
           </TabsContent>
 
           <TabsContent value="organizations" className="space-y-4 mt-6">
             {orgScrapes.length === 0
               ? <EmptyState type="organization" />
-              : <div className="grid grid-cols-1 gap-4">{orgScrapes.map(renderScrapeCard)}</div>
+              : <div className="grid grid-cols-1 gap-3">{orgScrapes.map(renderScrapeCard)}</div>
             }
           </TabsContent>
         </Tabs>

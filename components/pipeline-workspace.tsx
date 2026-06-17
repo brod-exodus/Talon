@@ -11,11 +11,11 @@ import {
 import {
   PROJECT_OUTREACH_STATUS_OPTIONS,
   ProjectOutreachBadge,
-  getProjectOutreachStatusLabel,
   type ProjectContributorTracking,
   type ProjectOutreachStatus,
   type ProjectTrackingUpdate,
 } from "@/components/project-outreach"
+import { getProjectOutreachStatusLabel } from "@/lib/status-styles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -304,34 +304,34 @@ export function PipelineWorkspace() {
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
-            <CardContent className="p-5">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Due</p>
-              <p className="mt-2 text-3xl font-extrabold text-foreground">{dueCount}</p>
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card className="border-border bg-card shadow-none ">
+            <CardContent className="p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Due</p>
+              <p className="mt-2 text-3xl font-semibold text-foreground">{dueCount}</p>
               <p className="mt-1 text-sm font-medium text-muted-foreground">Follow-ups due today or overdue</p>
             </CardContent>
           </Card>
-          <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
-            <CardContent className="p-5">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Active</p>
-              <p className="mt-2 text-3xl font-extrabold text-foreground">{activeCount}</p>
+          <Card className="border-border bg-card shadow-none ">
+            <CardContent className="p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Active</p>
+              <p className="mt-2 text-3xl font-semibold text-foreground">{activeCount}</p>
               <p className="mt-1 text-sm font-medium text-muted-foreground">Contacted through interviewing</p>
             </CardContent>
           </Card>
-          <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
-            <CardContent className="p-5">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Tracked</p>
-              <p className="mt-2 text-3xl font-extrabold text-foreground">{totalItems}</p>
+          <Card className="border-border bg-card shadow-none ">
+            <CardContent className="p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Tracked</p>
+              <p className="mt-2 text-3xl font-semibold text-foreground">{totalItems}</p>
               <p className="mt-1 text-sm font-medium text-muted-foreground">Matching pipeline records</p>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
-          <CardContent className="p-5">
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto] lg:items-end">
+        <Card className="border-border bg-card shadow-none ">
+          <CardContent className="p-3">
+            <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto] lg:items-end">
               <div className="space-y-2">
                 <Label htmlFor="pipeline-search">Search</Label>
                 <div className="relative">
@@ -341,14 +341,14 @@ export function PipelineWorkspace() {
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search username or name..."
-                    className="bg-white/80 pl-10"
+                    className="bg-card pl-10"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Project</Label>
                 <Select value={projectFilter} onValueChange={setProjectFilter}>
-                  <SelectTrigger className="bg-white/80">
+                  <SelectTrigger className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -364,7 +364,7 @@ export function PipelineWorkspace() {
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-                  <SelectTrigger className="bg-white/80">
+                  <SelectTrigger className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -380,7 +380,7 @@ export function PipelineWorkspace() {
               <div className="space-y-2">
                 <Label>Due date</Label>
                 <Select value={dueFilter} onValueChange={(value) => setDueFilter(value as DueFilter)}>
-                  <SelectTrigger className="bg-white/80">
+                  <SelectTrigger className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,7 +393,7 @@ export function PipelineWorkspace() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="button" variant="outline" onClick={resetFilters} className="bg-white/80">
+              <Button type="button" variant="outline" onClick={resetFilters} className="bg-card">
                 Reset
               </Button>
             </div>
@@ -401,20 +401,20 @@ export function PipelineWorkspace() {
         </Card>
 
         {error && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center gap-2 rounded-3xl border border-indigo-100 bg-indigo-50/70 px-5 py-8 text-sm font-semibold text-primary">
+          <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-4 py-6 text-sm font-semibold text-primary">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading pipeline...
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-3xl border border-white/70 bg-white/80 px-6 py-16 text-center shadow-sm shadow-indigo-500/5">
+          <div className="rounded-lg border border-border bg-card px-5 py-10 text-center shadow-none">
             <CalendarClock className="mx-auto h-10 w-10 text-primary" />
-            <h2 className="mt-4 text-xl font-extrabold text-foreground">No active pipeline items yet.</h2>
+            <h2 className="mt-4 text-xl font-semibold text-foreground">No active pipeline items yet.</h2>
             <p className="mx-auto mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
               Add contributors to Projects and set outreach statuses to start tracking follow-ups.
             </p>
@@ -475,7 +475,7 @@ export function PipelineWorkspace() {
                   variant="outline"
                   onClick={() => loadPipeline(true, items.length)}
                   disabled={loadingMore}
-                  className="bg-white/80"
+                  className="bg-card"
                 >
                   {loadingMore ? (
                     <>
@@ -543,11 +543,11 @@ function PipelineSection({
   onArchive: (item: PipelineItem) => Promise<void>
 }) {
   return (
-    <Card className="border-white/70 bg-white/80 shadow-sm shadow-indigo-500/5 backdrop-blur-xl">
+    <Card className="border-border bg-card shadow-none ">
       <CardHeader>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="text-2xl font-extrabold">{title}</CardTitle>
+            <CardTitle className="text-2xl font-semibold">{title}</CardTitle>
             <p className="mt-1 text-sm font-medium text-muted-foreground">{description}</p>
           </div>
           <Badge variant="secondary" className="w-fit">
@@ -557,7 +557,7 @@ function PipelineSection({
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-white/60 px-4 py-8 text-center text-sm font-semibold text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-border bg-muted/40 px-4 py-8 text-center text-sm font-semibold text-muted-foreground">
             {empty}
           </div>
         ) : (
@@ -624,18 +624,18 @@ function PipelineRow({
           onOpenPreview(item)
         }
       }}
-      className="cursor-pointer rounded-3xl border border-white/70 bg-white/75 p-4 shadow-sm shadow-indigo-500/5 transition hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md hover:shadow-indigo-500/10"
+      className="cursor-pointer rounded-lg border border-border bg-card p-3 shadow-none transition hover:-translate-y-0.5 hover:border-primary/20 hover:bg-muted/30"
     >
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
         <div className="flex min-w-0 items-start gap-3">
           <img
             src={item.contributor.avatar || "/placeholder.svg?height=48&width=48"}
             alt={item.contributor.name}
-            className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white"
+            className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-border"
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-extrabold text-foreground">{item.contributor.name}</p>
+              <p className="truncate text-sm font-semibold text-foreground">{item.contributor.name}</p>
               <span className="font-mono text-xs font-semibold text-muted-foreground">@{item.contributor.username}</span>
               <ProjectOutreachBadge status={item.tracking.status} />
             </div>
@@ -674,7 +674,7 @@ function PipelineRow({
           <div>
             <span className="text-foreground">Next follow-up:</span> {formatDate(item.tracking.nextFollowUpAt)}
             {item.tracking.nextFollowUpAt && (
-              <Badge variant="outline" className="ml-2 bg-white/70">
+              <Badge variant="outline" className="ml-2 bg-card">
                 {dueLabel(item.tracking.nextFollowUpAt)}
               </Badge>
             )}
@@ -689,7 +689,7 @@ function PipelineRow({
               onValueChange={(value) => onUpdateTracking(item, { status: value as ProjectOutreachStatus })}
               disabled={saving}
             >
-              <SelectTrigger className="h-9 bg-white/80">
+              <SelectTrigger className="h-9 bg-card">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -711,13 +711,13 @@ function PipelineRow({
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Followed Up
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => onSnooze(item, 3)} disabled={saving} className="bg-white/80">
+            <Button type="button" size="sm" variant="outline" onClick={() => onSnooze(item, 3)} disabled={saving} className="bg-card">
               Snooze 3d
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => onSnooze(item, 7)} disabled={saving} className="bg-white/80">
+            <Button type="button" size="sm" variant="outline" onClick={() => onSnooze(item, 7)} disabled={saving} className="bg-card">
               Snooze 1w
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => onArchive(item)} disabled={saving} className="bg-white/80">
+            <Button type="button" size="sm" variant="outline" onClick={() => onArchive(item)} disabled={saving} className="bg-card">
               <Archive className="h-4 w-4" />
               Archive
             </Button>

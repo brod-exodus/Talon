@@ -144,7 +144,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {visibleChecks.length === 0 && (
-          <div className="flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50/70 p-3">
+          <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50/70 p-3">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium text-foreground">All checks healthy</p>
@@ -153,7 +153,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
           </div>
         )}
         {visibleChecks.map(([key, check]) => (
-          <div key={key} className="flex items-start gap-3 rounded-2xl border border-border bg-white/45 p-3">
+          <div key={key} className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3">
             {statusIcon(check.status)}
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium text-foreground">{formatLabel(key)}</p>

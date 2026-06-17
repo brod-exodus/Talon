@@ -47,12 +47,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
+    <main className="talon-grid-bg relative z-10 flex min-h-screen items-center justify-center px-6 py-12">
       <Card className="w-full max-w-md overflow-hidden">
         <CardHeader>
           <div className="mb-2 flex flex-col items-start gap-3">
-            <TalonLogo tagline markClassName="h-11 w-11" wordmarkClassName="text-[1.6rem]" />
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">Team access</p>
+            <TalonLogo markClassName="h-11 w-11" wordmarkClassName="text-[1.6rem]" />
           </div>
           <CardDescription>
             {mode === "signin"

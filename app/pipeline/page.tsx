@@ -10,7 +10,7 @@ export default function PipelinePage() {
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="prism-section-title">Pipeline</p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Outreach workflow
             </h1>
             <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
