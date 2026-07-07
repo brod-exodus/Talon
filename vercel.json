@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/watched-repos/check", "schedule": "0 9 * * *" }
+    { "path": "/api/watched-repos/check", "schedule": "0 9 * * *" },
+    { "path": "/api/keepalive", "schedule": "0 3 * * *" }
   ]
 }
