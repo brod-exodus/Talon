@@ -24,11 +24,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // .in() query that getScrape() runs against the contributors table.
     if (pageParam !== null) {
       const page = Math.max(1, parseInt(pageParam, 10) || 1)
+      const pageSizeParam = request.nextUrl.searchParams.get("pageSize")
+      const pageSize = Math.min(500, Math.max(1, parseInt(pageSizeParam ?? "", 10) || 100))
       const scrape = await getScrapeMetadata(scrapeId, teamId)
       if (!scrape) {
         return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
       }
-      const pageData = await getScrapeContributorsPage(scrapeId, page, undefined, teamId)
+      const pageData = await getScrapeContributorsPage(scrapeId, page, pageSize, teamId)
       return NextResponse.json({
         id: scrape.id,
         type: scrape.type,
