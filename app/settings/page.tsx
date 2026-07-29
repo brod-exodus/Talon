@@ -6,13 +6,11 @@ import { HealthPanel } from "@/components/health-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole, ClipboardCheck } from "lucide-react"
-import { clearStoredGithubToken, getStoredGithubToken, storeGithubToken } from "@/lib/client-secrets"
 import { useAuthMe } from "@/lib/client-permissions"
 import { type AuthRole } from "@/lib/auth-token"
 
@@ -133,12 +131,10 @@ export default function SettingsPage() {
   const me = useAuthMe()
   const canWrite = me?.permissions.canWrite ?? false
   const canAdmin = me?.permissions.canAdmin ?? false
-  const [token, setToken] = useState("")
-  const [rememberToken, setRememberToken] = useState(false)
   const [slackWebhook, setSlackWebhook] = useState("")
-  const [saved, setSaved] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
-  const [error, setError] = useState("")
+  const [githubError, setGithubError] = useState("")
+  const [githubLoading, setGithubLoading] = useState(false)
   const [slackError, setSlackError] = useState("")
   const [rateLimit, setRateLimit] = useState<{ limit: number; remaining: number } | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -167,12 +163,7 @@ export default function SettingsPage() {
   const [deploymentChecklist, setDeploymentChecklist] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    const stored = getStoredGithubToken()
-    if (stored.token) {
-      setToken(stored.token)
-      setRememberToken(stored.persisted)
-      if (canWrite) void checkRateLimit(stored.token)
-    }
+    if (canWrite) void checkRateLimit()
     if (canAdmin) {
       void loadTeamMembers()
       void loadAuditEvents()
@@ -225,71 +216,20 @@ export default function SettingsPage() {
     }
   }
 
-  async function checkRateLimit(tokenToCheck: string) {
+  async function checkRateLimit() {
+    setGithubLoading(true)
+    setGithubError("")
     try {
-      const response = await fetch("/api/rate-limit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tokenToCheck }),
-      })
+      const response = await fetch("/api/rate-limit", { cache: "no-store" })
       const data = await response.json()
-      if (data.limit) {
-        setRateLimit(data)
-      }
-    } catch (err) {
-      console.error("Failed to check rate limit:", err)
-    }
-  }
-
-  async function handleSave() {
-    if (!canWrite) {
-      setError("Your current role cannot save GitHub tokens.")
-      return
-    }
-
-    if (!token.trim()) {
-      setError("Please enter a GitHub token")
-      return
-    }
-
-    if (!token.startsWith("ghp_") && !token.startsWith("github_pat_")) {
-      setError("Invalid token format. GitHub tokens start with 'ghp_' or 'github_pat_'")
-      return
-    }
-
-    try {
-      const response = await fetch("/api/rate-limit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError("Invalid token. Please check and try again.")
-        return
-      }
-
-      storeGithubToken(token, rememberToken)
+      if (!response.ok) throw new Error(data.error || "Failed to verify GitHub access")
       setRateLimit(data)
-      setSaved(true)
-      setError("")
-
-      setTimeout(() => setSaved(false), 3000)
-    } catch {
-      setError("Failed to verify token. Please try again.")
+    } catch (err) {
+      setRateLimit(null)
+      setGithubError(err instanceof Error ? err.message : "Failed to verify GitHub access")
+    } finally {
+      setGithubLoading(false)
     }
-  }
-
-  function handleClear() {
-    if (!canWrite) return
-    clearStoredGithubToken()
-    setToken("")
-    setRememberToken(false)
-    setRateLimit(null)
-    setSaved(false)
-    setError("")
   }
 
   function updateDeploymentChecklist(itemId: string, checked: boolean) {
@@ -584,7 +524,7 @@ export default function SettingsPage() {
             <Alert>
               <Shield className="h-4 w-4" />
               <AlertDescription>
-                Viewer access is read-only. GitHub token, Slack, and security-event settings require a recruiter or admin role.
+                Viewer access is read-only. GitHub diagnostics, Slack, and security-event settings require a recruiter or admin role.
               </AlertDescription>
             </Alert>
           )}
@@ -717,58 +657,26 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Key className="w-5 h-5" />
-                GitHub Personal Access Token
+                GitHub API Access
               </CardTitle>
               <CardDescription>
-                Talon uses your token to start scrapes and unlock GitHub&apos;s authenticated rate limits.
+                Talon uses the server-managed GitHub token configured in Vercel for durable scrape jobs.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <Alert>
                 <Shield className="h-4 w-4" />
                 <AlertDescription>
-                  By default, Talon stores your token only for the current browser tab. Turn on
-                  &quot;Remember on this browser&quot; if you want it persisted in local browser storage.
+                  GitHub credentials never enter browser storage or scrape-job state. Update
+                  <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">GITHUB_TOKEN</code>
+                  in the deployment environment, then redeploy Talon.
                 </AlertDescription>
               </Alert>
 
-              <div className="space-y-2">
-                <Label htmlFor="token">Token</Label>
-                <Input
-                  id="token"
-                  type="password"
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  disabled={!canWrite}
-                  className="font-mono"
-                />
-                <p className="text-sm text-muted-foreground">
-                  The token is sent to Talon&apos;s server routes when you start a scrape or verify rate limits.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border p-4">
-                <div>
-                  <p className="text-sm font-medium">Remember on this browser</p>
-                  <p className="text-xs text-muted-foreground">
-                    Stores the token in local browser storage instead of the current tab session.
-                  </p>
-                </div>
-                <Switch checked={rememberToken} onCheckedChange={setRememberToken} disabled={!canWrite} />
-              </div>
-
-              {error && (
+              {githubError && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {saved && (
-                <Alert>
-                  <CheckCircle2 className="h-4 w-4" />
-                  <AlertDescription>Token saved successfully.</AlertDescription>
+                  <AlertDescription>{githubError}</AlertDescription>
                 </Alert>
               )}
 
@@ -789,55 +697,10 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <div className="flex gap-3">
-                <Button onClick={handleSave} className="flex-1" disabled={!canWrite}>
-                  Verify & Save Token
-                </Button>
-                <Button onClick={handleClear} variant="outline" disabled={!canWrite}>
-                  Clear
-                </Button>
-              </div>
-
-              <div className="pt-6 border-t">
-                <h3 className="font-semibold mb-3">How to get a GitHub token:</h3>
-                <ol className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-foreground">1.</span>
-                    <span>
-                      Go to{" "}
-                      <a
-                        href="https://github.com/settings/tokens"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline inline-flex items-center gap-1"
-                      >
-                        GitHub Settings → Developer settings → Personal access tokens
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-foreground">2.</span>
-                    <span>Click &quot;Generate new token (classic)&quot;</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-foreground">3.</span>
-                    <span>Give it a name like &quot;Talon local&quot;</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-foreground">4.</span>
-                    <span>
-                      Select scopes: <code className="text-xs bg-muted px-1 py-0.5 rounded">public_repo</code>,{" "}
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded">read:org</code>, and{" "}
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded">read:user</code>
-                    </span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-semibold text-foreground">5.</span>
-                    <span>Generate and paste the token here</span>
-                  </li>
-                </ol>
-              </div>
+              <Button onClick={() => void checkRateLimit()} className="w-full" disabled={!canWrite || githubLoading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${githubLoading ? "animate-spin" : ""}`} />
+                {githubLoading ? "Checking GitHub..." : "Check GitHub Access"}
+              </Button>
             </CardContent>
           </Card>
 

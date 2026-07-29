@@ -77,8 +77,8 @@ Tech Stack
 Architecture Highlights
 
 Secure Credential Model
-- Browser-managed GitHub tokens
-- Optional local persistence
+- Server-managed GitHub token
+- No GitHub credentials in browser storage or job state
 - Protected server-side routes
 - Supabase RLS enabled by default
 - Service-role restricted backend access
@@ -101,7 +101,7 @@ Authenticated admins can verify:
 
 Typical Workflow
 
-1. Add a GitHub token in Settings
+1. Configure the deployment GitHub token
 2. Start a repository or organization analysis
 3. Allow Talon workers to process contributor data
 4. Review enriched contributor intelligence
@@ -152,7 +152,7 @@ Key principles:
 - Protected admin session enforcement
 - Service-role restricted backend operations
 - Cron authorization via bearer token
-- Browser GitHub tokens not persisted into worker queues
+- GitHub credentials remain server-side and are never persisted into worker queues
 
 Roadmap
 
