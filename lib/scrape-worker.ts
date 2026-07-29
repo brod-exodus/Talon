@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto"
-import { cancelScrapeJob, claimNextScrapeJob, failScrapeJob, recordScrapeJobEvent, succeedScrapeJob } from "@/lib/db"
+import {
+  cancelScrapeJob,
+  claimNextScrapeJob,
+  failScrapeJob,
+  recoverStaleScrapeJobs,
+  recordScrapeJobEvent,
+  requeueScrapeJob,
+  succeedScrapeJob,
+} from "@/lib/db"
 import { GitHubApiError } from "@/lib/github"
 import { runScrapeJob, ScrapeJobCanceledError } from "@/lib/scrape-runner"
 
@@ -14,9 +22,17 @@ export type ScrapeWorkerResult = {
 export async function runScrapeWorker(
   maxJobs = 1,
   teamId?: string
-): Promise<{ workerId: string; results: ScrapeWorkerResult[] }> {
+): Promise<{ workerId: string; recoveredStaleJobs: number; results: ScrapeWorkerResult[] }> {
   const workerId = `worker-${randomUUID()}`
-  await recordScrapeJobEvent(null, null, "worker_started", "Scrape worker invocation started", { workerId }, teamId)
+  const recoveredStaleJobs = await recoverStaleScrapeJobs(undefined, teamId)
+  await recordScrapeJobEvent(
+    null,
+    null,
+    "worker_started",
+    "Scrape worker invocation started",
+    { workerId, recoveredStaleJobs },
+    teamId
+  )
   const results: ScrapeWorkerResult[] = []
 
   for (let i = 0; i < maxJobs; i++) {
@@ -29,8 +45,9 @@ export async function runScrapeWorker(
         type: job.type,
         target: job.target,
       })
-      await runScrapeJob(job)
-      const status = await succeedScrapeJob(job.id)
+      const completed = await runScrapeJob(job)
+      const status = completed ? await succeedScrapeJob(job.id) : "queued"
+      if (!completed) await requeueScrapeJob(job.id, job.scrape_id)
       results.push({ jobId: job.id, scrapeId: job.scrape_id, teamId: job.team_id, status })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown scrape job error"
@@ -46,5 +63,5 @@ export async function runScrapeWorker(
     }
   }
 
-  return { workerId, results }
+  return { workerId, recoveredStaleJobs, results }
 }

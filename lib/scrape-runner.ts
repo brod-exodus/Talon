@@ -5,7 +5,6 @@ import {
   getScrapeContributorUsernames,
   getScrapeJobControl,
   persistScrapeContributors,
-  failScrape,
   recordScrapeJobEvent,
   updateScrapeProgress,
   updateScrapeJobState,
@@ -14,13 +13,16 @@ import {
   type ScrapeContributorProfile,
 } from "@/lib/db"
 import { createGitHubClient, extractContactsFromBio, extractSocialContacts, GitHubApiError } from "@/lib/github"
+import {
+  planHydrationStep,
+  planOrganizationDiscoveryStep,
+  SCRAPE_HYDRATION_BATCH_SIZE,
+} from "@/lib/scrape-step"
 
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
   repoIndex?: number
 }
-
-const BATCH_SIZE = 10
 
 export class ScrapeJobCanceledError extends Error {
   constructor(message = "Scrape canceled") {
@@ -104,10 +106,10 @@ async function hydrateCandidates(
   candidates: Array<{ login: string; contributions: number }>,
   progressBase = 0,
   progressSpan = 100
-): Promise<void> {
+): Promise<boolean> {
   const githubClient = createGitHubClient()
   const alreadyLinked = await getScrapeContributorUsernames(job.scrape_id)
-  const remaining = candidates.filter((candidate) => !alreadyLinked.has(candidate.login))
+  const step = planHydrationStep(candidates, alreadyLinked, SCRAPE_HYDRATION_BATCH_SIZE)
 
   await updateScrapeJobState(job.id, {
     ...((job.state ?? {}) as ScrapeJobState),
@@ -118,43 +120,43 @@ async function hydrateCandidates(
     alreadyLinked: alreadyLinked.size,
   })
 
-  for (let batchStart = 0; batchStart < remaining.length; batchStart += BATCH_SIZE) {
-    await ensureNotCanceled(job.id)
+  if (!step.batch.length) return true
 
-    const batch = remaining.slice(batchStart, batchStart + BATCH_SIZE)
-    const processed = alreadyLinked.size + Math.min(batchStart + BATCH_SIZE, remaining.length)
-    const progress = progressBase + Math.round((processed / Math.max(candidates.length, 1)) * progressSpan)
+  await ensureNotCanceled(job.id)
+  const batch = step.batch
+  const processed = step.processedAfterStep
+  const progress = progressBase + Math.round((processed / Math.max(candidates.length, 1)) * progressSpan)
 
-    await updateScrapeProgress(job.scrape_id, {
-      current: processed,
+  await updateScrapeProgress(job.scrape_id, {
+    current: processed,
+    total: candidates.length,
+    progress: Math.min(99, progress),
+    current_user_login: batch[0]?.login ?? null,
+  })
+
+  const batchResults = await Promise.allSettled(
+    batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions))
+  )
+  const fulfilled = batchResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+  const rejected = batchResults.find((result) => result.status === "rejected")
+
+  if (fulfilled.length) {
+    await persistScrapeContributors(job.scrape_id, fulfilled)
+    await recordScrapeJobEvent(job.id, job.scrape_id, "contributors_persisted", "Persisted hydrated contributors", {
+      count: fulfilled.length,
+      processed,
       total: candidates.length,
-      progress: Math.min(99, progress),
-      current_user_login: batch[0]?.login ?? null,
     })
-
-    const batchResults = await Promise.allSettled(
-      batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions))
-    )
-    const fulfilled = batchResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
-    const rejected = batchResults.find((result) => result.status === "rejected")
-
-    if (fulfilled.length) {
-      await persistScrapeContributors(job.scrape_id, fulfilled)
-      for (const contributor of fulfilled) alreadyLinked.add(contributor.username)
-      await recordScrapeJobEvent(job.id, job.scrape_id, "contributors_persisted", "Persisted hydrated contributors", {
-        count: fulfilled.length,
-        processed,
-        total: candidates.length,
-      })
-    }
-
-    if (rejected?.status === "rejected") {
-      throw rejected.reason instanceof Error ? rejected.reason : new Error("Contributor hydration failed")
-    }
   }
+
+  if (rejected?.status === "rejected") {
+    throw rejected.reason instanceof Error ? rejected.reason : new Error("Contributor hydration failed")
+  }
+
+  return step.completesHydration
 }
 
-async function scrapeOrganization(job: ScrapeJobRow) {
+async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   const scrapeId = job.scrape_id
   const org = job.target
   const minContributions = job.min_contributions
@@ -162,35 +164,28 @@ async function scrapeOrganization(job: ScrapeJobRow) {
   const allRepos = await githubClient.getOrgRepos(org)
 
   if (!allRepos?.length) {
-    await failScrape(scrapeId, `No repositories found for organization "${org}". Please check the organization name.`)
-    return
+    throw new Error(`No repositories found for organization "${org}". Please check the organization name.`)
   }
 
   const repos = allRepos.filter((repo) => !repo.fork && !repo.archived)
   if (!repos.length) {
-    await failScrape(scrapeId, `No non-forked repositories found for organization "${org}".`)
-    return
+    throw new Error(`No non-forked repositories found for organization "${org}".`)
   }
 
   const initialState = (job.state ?? {}) as ScrapeJobState
-  const contribSumMap = await getScrapeJobContributionMap(job.id)
-  const startRepoIndex = initialState.phase === "hydrate" ? repos.length : initialState.repoIndex ?? 0
-  await recordScrapeJobEvent(job.id, job.scrape_id, "discover_started", "Organization repository discovery started", {
-    repositories: repos.length,
-    startRepoIndex,
-  })
-
-  for (let i = startRepoIndex; i < repos.length; i++) {
+  const discovery = planOrganizationDiscoveryStep(repos.length, initialState.repoIndex ?? 0)
+  if (initialState.phase !== "hydrate" && discovery.hasRepository) {
     await ensureNotCanceled(job.id)
 
-    const repo = repos[i]
+    const repo = repos[discovery.repoIndex]
     await updateScrapeProgress(scrapeId, {
-      current: i + 1,
+      current: discovery.nextRepoIndex,
       total: repos.length,
-      progress: Math.round(((i + 1) / repos.length) * 50),
+      progress: Math.round((discovery.nextRepoIndex / repos.length) * 50),
       current_user_login: null,
     })
 
+    const contribSumMap = await getScrapeJobContributionMap(job.id)
     const contributors = await githubClient.getRepoContributors(repo.full_name)
     const changedTotals: Array<{ login: string; contributions: number }> = []
     for (const contributor of contributors) {
@@ -200,68 +195,76 @@ async function scrapeOrganization(job: ScrapeJobRow) {
     }
     await upsertScrapeJobContributionTotals(job.id, changedTotals)
     await updateScrapeJobState(job.id, {
-      phase: "discover",
-      repoIndex: i + 1,
+      phase: discovery.completesDiscovery ? "hydrate" : "discover",
+      repoIndex: discovery.nextRepoIndex,
     })
     await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
       repository: repo.full_name,
-      repoIndex: i + 1,
+      repoIndex: discovery.nextRepoIndex,
       repositories: repos.length,
       contributorCount: contributors.length,
     })
+    return false
   }
 
   const logins = await getScrapeJobContributionCandidates(job.id, minContributions)
-
-  await hydrateCandidates(
+  const hydrated = await hydrateCandidates(
     { ...job, state: { phase: "hydrate", repoIndex: repos.length } },
     logins,
     50,
     50
   )
+  if (!hydrated) return false
   await ensureNotCanceled(job.id)
   await completeScrape(scrapeId, [])
+  return true
 }
 
-async function scrapeRepository(job: ScrapeJobRow) {
+async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
   const scrapeId = job.scrape_id
   const repo = job.target
   const minContributions = job.min_contributions
-  const githubClient = createGitHubClient()
-  const contributors = await githubClient.getRepoContributors(repo)
+  const state = (job.state ?? {}) as ScrapeJobState
+  if (state.phase !== "hydrate") {
+    const githubClient = createGitHubClient()
+    const contributors = await githubClient.getRepoContributors(repo)
 
-  if (!contributors?.length) {
-    await failScrape(scrapeId, `No contributors found for repository "${repo}". Please check the repository name.`)
-    return
+    if (!contributors?.length) {
+      throw new Error(`No contributors found for repository "${repo}". Please check the repository name.`)
+    }
+
+    const candidates = contributors
+      .filter((contributor) => contributor.contributions >= minContributions)
+      .map((contributor) => ({ login: contributor.login, contributions: contributor.contributions }))
+    await upsertScrapeJobContributionTotals(job.id, candidates)
+    await updateScrapeJobState(job.id, { phase: "hydrate" })
+    await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
+      repository: repo,
+      contributorCount: contributors.length,
+      candidates: candidates.length,
+    })
+    return false
   }
 
-  const candidates = contributors
-    .filter((contributor) => contributor.contributions >= minContributions)
-    .map((contributor) => ({ login: contributor.login, contributions: contributor.contributions }))
-
-  await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
-    repository: repo,
-    contributorCount: contributors.length,
-    candidates: candidates.length,
-  })
-  await hydrateCandidates(job, candidates)
+  const candidates = await getScrapeJobContributionCandidates(job.id, minContributions)
+  const hydrated = await hydrateCandidates(job, candidates)
+  if (!hydrated) return false
   await ensureNotCanceled(job.id)
   await completeScrape(scrapeId, [])
+  return true
 }
 
-export async function runScrapeJob(job: ScrapeJobRow): Promise<void> {
+export async function runScrapeJob(job: ScrapeJobRow): Promise<boolean> {
   if (!process.env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN is required for durable scrape jobs")
   }
 
   if (job.type === "organization") {
-    await scrapeOrganization(job)
-    return
+    return await scrapeOrganization(job)
   }
 
   if (job.type === "repository") {
-    await scrapeRepository(job)
-    return
+    return await scrapeRepository(job)
   }
 
   throw new Error(`Unknown scrape type: ${job.type}`)
