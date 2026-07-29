@@ -30,6 +30,11 @@ Describe how to quickly roll this back if the deploy is unhealthy.
 - [ ] None
 - [ ] `db/migrations/_____`
 
+## Environment Changes
+
+- [ ] None
+- [ ] Variables added or changed (names only): `_____`
+
 ## Smoke Checks
 
 - [ ] Start scrape: queued -> running -> completed
@@ -37,3 +42,9 @@ Describe how to quickly roll this back if the deploy is unhealthy.
 - [ ] Delete scrape updates immediately
 - [ ] Watched repo `Check Now` updates `last checked`
 - [ ] Share link works in private window
+
+## Smoke Result
+
+Record the deployment URL, timestamp, operator, and result:
+
+`_____`
