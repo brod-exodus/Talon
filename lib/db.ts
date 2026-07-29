@@ -471,6 +471,57 @@ export async function getScrapeJobControl(id: string): Promise<Pick<ScrapeJobRow
   return data as Pick<ScrapeJobRow, "status" | "cancel_requested"> | null
 }
 
+export async function recoverStaleScrapeJobs(
+  staleAfterMs = 10 * 60 * 1000,
+  teamId?: string
+): Promise<number> {
+  const cutoff = new Date(Date.now() - staleAfterMs).toISOString()
+  let query = supabaseAdmin
+    .from("scrape_jobs")
+    .select("*")
+    .eq("status", "running")
+    .lt("locked_at", cutoff)
+  if (teamId) query = query.eq("team_id", teamId)
+  const { data, error } = await query
+  if (error) throw error
+
+  let recovered = 0
+  for (const job of (data ?? []) as ScrapeJobRow[]) {
+    if (job.cancel_requested) {
+      await cancelScrapeJob(job.id, "Canceled while recovering a stale worker lock", job.team_id)
+      recovered++
+      continue
+    }
+
+    const now = new Date().toISOString()
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("scrape_jobs")
+      .update({
+        status: "queued",
+        attempts: 0,
+        run_after: now,
+        locked_at: null,
+        locked_by: null,
+        last_error: "Recovered after worker lock expired",
+        updated_at: now,
+      })
+      .eq("id", job.id)
+      .eq("status", "running")
+      .lt("locked_at", cutoff)
+      .select("id")
+      .maybeSingle()
+    if (updateError) throw updateError
+    if (!updated) continue
+    recovered++
+    await recordScrapeJobEvent(job.id, job.scrape_id, "stale_lock_recovered", "Recovered expired worker lock", {
+      previousWorkerId: job.locked_by,
+      previousLockedAt: job.locked_at,
+    })
+  }
+
+  return recovered
+}
+
 export async function cancelScrapeJob(
   id: string,
   reason = "Scrape canceled",
@@ -544,6 +595,25 @@ export async function failScrapeJob(
     maxAttempts: job.max_attempts,
   })
   return terminal ? "failed" : "queued"
+}
+
+export async function requeueScrapeJob(id: string, scrapeId: string): Promise<void> {
+  const now = new Date().toISOString()
+  const { error } = await supabaseAdmin
+    .from("scrape_jobs")
+    .update({
+      status: "queued",
+      attempts: 0,
+      run_after: now,
+      locked_at: null,
+      locked_by: null,
+      last_error: null,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .eq("status", "running")
+  if (error) throw error
+  await recordScrapeJobEvent(id, scrapeId, "step_completed", "Scrape step completed; job requeued")
 }
 
 export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promise<ScrapeJobSummary[]> {
