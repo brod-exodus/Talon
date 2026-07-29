@@ -30,6 +30,8 @@ Security hardening migrations include:
 ```text
 db/migrations/007_security_events.sql
 db/migrations/010_service_role_rls_lockdown.sql
+db/migrations/024_system_runs.sql
+db/migrations/025_contactable_scrape_contributors_rpc.sql
 ```
 
 They create or enforce:
@@ -70,11 +72,13 @@ Useful actions to check during incident response:
 
 If a scrape is stuck:
 
-1. Check the active scrape card for the job status and latest error.
-2. Use Retry if the scrape is failed or retry scheduled.
-3. Use Cancel if the scrape is running too long or has clearly bad input.
-4. Check Settings security events for `scrape_worker.run` and `scrape.retry`.
-5. Check Vercel function logs for `/api/scrape`, `/api/scrape-jobs/run`, and `/api/scrape-jobs/[id]/retry`.
+1. Open Settings Health and inspect queue depth, oldest queued age, stale locks, and the last successful worker run.
+2. Confirm the `talon-scrape-worker` Supabase Cron job is active and has recent successful executions.
+3. Check the active scrape card for the job status and latest error.
+4. Use Retry if the scrape is failed or retry scheduled.
+5. Use Cancel if the scrape is running too long or has clearly bad input.
+6. Check Settings security events for `scrape_worker.run` and `scrape.retry`.
+7. Check Vercel function logs for `/api/scrape`, `/api/scrape-jobs/run`, and `/api/scrape-jobs/[id]/retry`.
 
 ## Watched Repo Recovery
 

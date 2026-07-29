@@ -9,6 +9,7 @@
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "smoke:local": "bash ./scripts/smoke-local.sh",
+    "smoke:production": "bash ./scripts/smoke-production.sh",
     "typecheck": "tsc --noEmit",
     "verify": "pnpm lint && pnpm typecheck && pnpm test",
     "start": "next start",

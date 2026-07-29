@@ -1,167 +1,190 @@
-Talon README
+# Talon
 
-Talon
+Talon is a contributor-intelligence platform for technical recruiting and
+ecosystem discovery. It finds the engineers actually building public software,
+enriches their GitHub profiles with contact signals, and turns open-source
+activity into a searchable sourcing workflow.
 
-Talon is a contributor intelligence platform for technical recruiting and ecosystem discovery. It analyzes GitHub contributors across repositories and organizations, enriches contributor profiles with contact and ecosystem intelligence, and helps teams identify high-signal engineers through open source activity.
+![Talon logo](public/talon-logo.png)
 
-Talon is designed to move technical sourcing beyond resumes and LinkedIn profiles by mapping the contributor graph itself:
-- open source participation
-- cross-repo overlap
-- maintainer influence
-- contribution depth
-- ecosystem relationships
-- contributor migration patterns
+## The product
 
-Why Talon Exists
+Recruiting tools usually begin with resumes, LinkedIn profiles, or keyword
+matching. Talon begins with contribution activity:
 
-Traditional recruiting workflows rely heavily on:
-- LinkedIn profiles
-- resumes
-- inbound applicants
-- keyword matching
+- Analyze a GitHub repository or organization.
+- Rank contributors by contribution depth.
+- Enrich public profiles with email, LinkedIn, X, website, bio, company, and
+  location signals.
+- Group related scrapes into technical ecosystems.
+- Track outreach status, notes, reminders, and follow-ups.
+- Watch repositories for newly active contributors.
 
-Talon approaches technical recruiting from a different angle:
-- who is actually building
-- where they contribute
-- which ecosystems they participate in
-- how communities overlap
-- how contributors move between projects over time
+The deployed portfolio version is operator-controlled. It demonstrates the
+complete workflow without presenting itself as a billing-ready customer SaaS.
 
-This allows recruiting teams to surface high-signal technical talent earlier and build stronger ecosystem-level sourcing strategies.
+## Architecture
 
-Core Capabilities
+```mermaid
+flowchart LR
+    UI["Next.js UI"] --> API["Authenticated API routes"]
+    API --> Queue["Supabase scrape_jobs"]
+    Cron["Supabase Cron"] --> Worker["Bounded worker endpoint"]
+    Worker --> Queue
+    Worker --> GitHub["GitHub REST API"]
+    Worker --> Data["Contributors and scrape results"]
+    Data --> UI
+    Vercel["Vercel daily cron"] --> Keepalive["Supabase keepalive"]
+    API --> Ops["System runs and health diagnostics"]
+    Worker --> Ops
+    Keepalive --> Ops
+```
 
-Contributor Discovery
-Analyze GitHub organizations and repositories to surface contributors across technical ecosystems.
+Starting a scrape only validates the target and creates a durable job. Supabase
+Cron invokes one bounded step per minute. Repository discovery, organization
+repository scanning, and contributor hydration persist their cursors between
+invocations, so work can resume after a timeout without duplicating
+contributors.
 
-Contributor Intelligence
-Enrich contributor profiles with:
-- email signals
-- Twitter/X
-- LinkedIn
-- websites
-- bios
-- company data
-- contribution metadata
+## Engineering decisions
 
-Ecosystem Mapping
-Group repositories and scrapes into ecosystems to identify:
-- cross-repo contributor overlap
-- maintainer clusters
-- contributor density
-- ecosystem relationships
+### Durable background work
 
-Outreach Tracking
-Track recruiting workflows directly inside Talon:
-- outreach status
-- recruiter notes
-- contributor state
-- project assignment
+Vercel request duration is not treated as a job runner. Each worker invocation
+does one repository-discovery step or one ten-profile hydration batch, persists
+progress, and requeues unfinished work. Locks older than ten minutes are
+recovered automatically.
 
-Watched Repositories
-Monitor repositories over time and detect newly appearing contributors automatically.
+### Server-managed credentials
 
-Durable Scrape Infrastructure
-Queue-based scraping architecture with resumable jobs, retries, cancellation support, and worker diagnostics.
+`GITHUB_TOKEN`, Supabase keys, and cron credentials remain server-side. Tokens
+never enter browser storage, scrape-job state, operational details, or API
+responses.
 
-Tech Stack
+### Free-tier operations
 
-- Next.js 15
-- React 19
-- TypeScript
-- Supabase
-- Tailwind CSS
-- shadcn/ui
+The portfolio deployment favors free infrastructure:
+
+- Supabase Cron and `pg_net` schedule bounded worker requests.
+- Vercel Cron performs a daily external keepalive.
+- `system_runs` preserves operational outcomes beyond Vercel Hobby log
+  retention.
+- The admin Health panel reports scheduler freshness, queue age, stale locks,
+  failures, database connectivity, and GitHub rate limits.
+
+The tradeoff is throughput: one bounded job step runs per scheduled invocation.
+This is appropriate for a portfolio deployment, not a formal high-volume SLA.
+
+### Idempotency and recovery
+
+Contributor totals use job-scoped upserts. Persisted contributors are skipped
+when a hydration step resumes. GitHub rate-limit failures use delayed retries,
+manual cancellation is checked between steps, and terminal failures remain
+visible with their recent job events.
+
+## Stack
+
+- Next.js 15, React 19, TypeScript
+- Supabase Postgres, Auth, RLS, Vault, Cron, and `pg_net`
 - GitHub REST API
+- Tailwind CSS and shadcn/ui
+- Vercel
+- Node test runner, ESLint, and GitHub Actions
 
-Architecture Highlights
+## Local setup
 
-Secure Credential Model
-- Server-managed GitHub token
-- No GitHub credentials in browser storage or job state
-- Protected server-side routes
-- Supabase RLS enabled by default
-- Service-role restricted backend access
+Requirements: Node.js 22 and pnpm 9.
 
-Durable Worker System
-Scrape jobs are:
-- queued
-- resumable
-- cancellable
-- retryable
-- event-tracked
-
-Health Diagnostics
-Authenticated admins can verify:
-- environment configuration
-- database connectivity
-- GitHub token validity
-- rate limit availability
-- Slack integration state
-
-Typical Workflow
-
-1. Configure the deployment GitHub token
-2. Start a repository or organization analysis
-3. Allow Talon workers to process contributor data
-4. Review enriched contributor intelligence
-5. Track outreach and recruiter notes
-6. Group repositories into ecosystems
-7. Watch repositories for new contributors over time
-
-Setup
-
-Install dependencies:
-
+```bash
 pnpm install
-
-Configure environment variables:
-
 cp .env.example .env.local
+```
 
-Start the development server:
+Configure:
 
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+TALON_ADMIN_PASSWORD
+TALON_SESSION_SECRET
+CRON_SECRET
+GITHUB_TOKEN
+```
+
+Apply every SQL migration in `db/migrations` in numeric order, then start Talon:
+
+```bash
 pnpm dev
+```
 
-Open:
-http://localhost:3000
+Open [http://localhost:3000](http://localhost:3000).
 
-Environment Variables
+For Production, configure the bounded worker by following
+[docs/supabase-worker-schedule.md](docs/supabase-worker-schedule.md).
 
-Required
+## Reproducible demonstration
 
-- NEXT_PUBLIC_SUPABASE_URL
-- NEXT_PUBLIC_SUPABASE_ANON_KEY
-- SUPABASE_SERVICE_ROLE_KEY
-- TALON_ADMIN_PASSWORD
-- TALON_SESSION_SECRET
-- CRON_SECRET
-- GITHUB_TOKEN
+1. Sign in as the operator.
+2. In Settings, confirm GitHub and database checks are healthy.
+3. Start a repository scrape for `vercel/next.js` with a minimum contribution
+   threshold appropriate to the desired demo size.
+4. Observe the job move through queued and running states while the browser is
+   closed or refreshed.
+5. Open the completed scrape, filter contributors by contact channel, inspect a
+   contributor, update outreach state, and export CSV.
+6. Open Settings again to show the worker run history and healthy queue.
 
-Optional
+Only public GitHub data should be used in portfolio demonstrations. Do not
+publish recruiter notes, private repositories, secrets, or personal contact
+exports.
 
-- SLACK_WEBHOOK_URL
+## Quality and release workflow
 
-Security Model
+```bash
+pnpm verify
+pnpm build
+```
 
-Talon is designed with server-side protection and restrictive database policies by default.
+CI runs whitespace checks, lint, TypeScript, tests, and the production build on
+every pull request. Production changes use `.github/pull_request_template.md`
+to document ownership, rollback, migrations, environment changes, and smoke
+results.
 
-Key principles:
-- Supabase RLS enabled
-- No broad anonymous database access
-- Protected admin session enforcement
-- Service-role restricted backend operations
-- Cron authorization via bearer token
-- GitHub credentials remain server-side and are never persisted into worker queues
+Local read-only smoke:
 
-Roadmap
+```bash
+ADMIN_PASSWORD="..." pnpm smoke:local
+```
 
-- Contributor Intelligence Scoring
-- Relationship Mapping
-- Contributor Migration Tracking
-- Ecosystem Graph Visualization
-- AI-Assisted Recruiting Workflows
-- Maintainer Influence Analysis
-- Cross-Ecosystem Discovery
-- Recruiting Team Collaboration
-- Advanced Talent Intelligence Analytics
+Production end-to-end scrape smoke:
+
+```bash
+BASE_URL="https://your-domain.example" \
+ADMIN_PASSWORD="..." \
+SMOKE_REPO="vercel/next.js" \
+pnpm smoke:production
+```
+
+The production smoke creates a real public-repository scrape and waits for the
+scheduled worker to complete it.
+
+## Operations and security
+
+- [Operations runbook](docs/ops.md)
+- [Supabase worker schedule](docs/supabase-worker-schedule.md)
+- [Production follow-ups](PRODUCTION_TODO.md)
+- [Multi-user design notes](docs/multi-user-phase2.md)
+
+Supabase RLS is enabled for private tables, server routes use the service role,
+sessions are signed and HTTP-only, login attempts are rate limited, cron routes
+require bearer authentication, and audit metadata intentionally excludes
+secrets.
+
+## Deliberately deferred
+
+Billing, self-serve customer onboarding, formal SLAs, high-volume worker
+parallelism, and advanced contributor scoring are outside this portfolio
+release. The next product experiments are relationship mapping, ecosystem graph
+visualization, contributor migration tracking, and AI-assisted recruiting
+workflows.
