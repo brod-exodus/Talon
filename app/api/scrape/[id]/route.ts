@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
-import { getScrapeMetadata, getScrapeContributorsPage, deleteScrape } from "@/lib/db"
+import {
+  getContactableScrapeContributorsPage,
+  getScrapeMetadata,
+  getScrapeContributorsPage,
+  deleteScrape,
+} from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeScrapeId } from "@/lib/validation"
@@ -26,11 +31,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const page = Math.max(1, parseInt(pageParam, 10) || 1)
       const pageSizeParam = request.nextUrl.searchParams.get("pageSize")
       const pageSize = Math.min(500, Math.max(1, parseInt(pageSizeParam ?? "", 10) || 100))
+      const contactableOnly = request.nextUrl.searchParams.get("contactableOnly") === "true"
       const scrape = await getScrapeMetadata(scrapeId, teamId)
       if (!scrape) {
         return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
       }
-      const pageData = await getScrapeContributorsPage(scrapeId, page, pageSize, teamId)
+      const pageData = contactableOnly
+        ? await getContactableScrapeContributorsPage(scrapeId, page, pageSize, teamId)
+        : await getScrapeContributorsPage(scrapeId, page, pageSize, teamId, true)
       return NextResponse.json({
         id: scrape.id,
         type: scrape.type,
