@@ -32,7 +32,6 @@ import {
   Trash2,
   Check,
   Download,
-  FileSpreadsheet,
   Inbox,
   Share2,
   Copy,
@@ -50,6 +49,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
 import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
+import { setBoundedMapEntry } from "@/lib/bounded-cache"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +99,8 @@ type ProjectSummary = {
 const RECENT_SCRAPES_PAGE_SIZE = 10
 const CONTRIBUTOR_FETCH_PAGE_SIZE = 500
 const CONTRIBUTOR_RENDER_BATCH_SIZE = 50
+const CONTRIBUTOR_CACHE_LIMIT = 5
+const LIST_PREFETCH_DELAY_MS = 250
 
 type CompletedScrapeTab = "repositories" | "organizations"
 
@@ -358,6 +360,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
   const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
+  const [contributorErrors, setContributorErrors] = useState<Set<string>>(new Set())
   const [retryingJobs, setRetryingJobs] = useState<Set<string>>(new Set())
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
@@ -374,8 +377,15 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   // Stable ref so fetchContributors doesn't need contributorCache as a dep
   const cacheRef = useRef(contributorCache)
   const contributorFetchesRef = useRef(new Map<string, Promise<void>>())
+  const listPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   useEffect(() => { cacheRef.current = contributorCache }, [contributorCache])
+
+  const writeContributorCache = useCallback((scrapeId: string, contributors: Contributor[]) => {
+    const next = setBoundedMapEntry(cacheRef.current, scrapeId, contributors, CONTRIBUTOR_CACHE_LIMIT)
+    cacheRef.current = next
+    setContributorCache(next)
+  }, [])
 
   const cancelPreviewPrefetch = useCallback((contributorId: string) => {
     const timeout = previewPrefetchTimers.current.get(contributorId)
@@ -395,9 +405,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
   useEffect(() => {
     const timers = previewPrefetchTimers.current
+    const listTimers = listPrefetchTimers.current
     return () => {
       for (const timeout of timers.values()) clearTimeout(timeout)
       timers.clear()
+      for (const timeout of listTimers.values()) clearTimeout(timeout)
+      listTimers.clear()
     }
   }, [])
 
@@ -464,6 +477,11 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     if (contributorFetchesRef.current.has(scrapeId)) return contributorFetchesRef.current.get(scrapeId)
 
     setLoadingExpansions((prev) => new Set(prev).add(scrapeId))
+    setContributorErrors((prev) => {
+      const next = new Set(prev)
+      next.delete(scrapeId)
+      return next
+    })
     const request = (async () => {
       try {
         const all: Contributor[] = []
@@ -472,18 +490,19 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           const params = new URLSearchParams({
             page: String(page),
             pageSize: String(CONTRIBUTOR_FETCH_PAGE_SIZE),
+            contactableOnly: "true",
           })
           const res = await fetch(`/api/scrape/${scrapeId}?${params.toString()}`)
           if (!res.ok) throw new Error("Failed to load contributors")
           const data = await res.json()
           all.push(...(data.contributors ?? []))
+          writeContributorCache(scrapeId, [...all])
           if (!data.hasMore) break
           page++
         }
-        cacheRef.current = new Map(cacheRef.current).set(scrapeId, all)
-        setContributorCache((prev) => new Map(prev).set(scrapeId, all))
       } catch (err) {
         console.error("[v0] Failed to fetch contributors:", err)
+        setContributorErrors((prev) => new Set(prev).add(scrapeId))
         toast({ title: "Error", description: "Failed to load contributors", variant: "destructive" })
       } finally {
         contributorFetchesRef.current.delete(scrapeId)
@@ -496,7 +515,33 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     })()
     contributorFetchesRef.current.set(scrapeId, request)
     return request
-  }, [toast])
+  }, [toast, writeContributorCache])
+
+  const scheduleListPrefetch = useCallback((scrapeId: string) => {
+    if (cacheRef.current.has(scrapeId) || contributorFetchesRef.current.has(scrapeId)) return
+    const existing = listPrefetchTimers.current.get(scrapeId)
+    if (existing) clearTimeout(existing)
+    const timeout = setTimeout(() => {
+      listPrefetchTimers.current.delete(scrapeId)
+      void fetchContributors(scrapeId)
+    }, LIST_PREFETCH_DELAY_MS)
+    listPrefetchTimers.current.set(scrapeId, timeout)
+  }, [fetchContributors])
+
+  const cancelListPrefetch = useCallback((scrapeId: string) => {
+    const timeout = listPrefetchTimers.current.get(scrapeId)
+    if (!timeout) return
+    clearTimeout(timeout)
+    listPrefetchTimers.current.delete(scrapeId)
+  }, [])
+
+  const retryContributors = useCallback((scrapeId: string) => {
+    const next = new Map(cacheRef.current)
+    next.delete(scrapeId)
+    cacheRef.current = next
+    setContributorCache(next)
+    void fetchContributors(scrapeId)
+  }, [fetchContributors])
 
   // ── Toggle expand, triggering fetch on first open ─────────────────────────
   const toggleExpanded = useCallback(
@@ -596,16 +641,6 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const csv = buildCsvContent(withContacts)
       triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.csv`, "text/csv")
       toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to CSV`, duration: 3000 })
-    },
-    [toast]
-  )
-
-  const exportToExcel = useCallback(
-    (scrape: CompletedScrapeSummary, contributors: Contributor[]) => {
-      const withContacts = contributors.filter(hasContactInfo)
-      const csv = buildCsvContent(withContacts)
-      triggerDownload(csv, `${scrape.target.replace(/\//g, "-")}-contributors.xlsx`, "text/csv")
-      toast({ title: "Exported!", description: `Downloaded ${withContacts.length} contributors to Excel`, duration: 3000 })
     },
     [toast]
   )
@@ -782,6 +817,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     (scrape: CompletedScrapeSummary) => {
       const isExpanded = expandedScrapes.has(scrape.id)
       const isLoadingContributors = loadingExpansions.has(scrape.id)
+      const hasContributorError = contributorErrors.has(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
       const contactInfoCount = withContacts !== null ? withContacts.length : scrape.contactInfoCount
@@ -891,8 +927,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                   <Button
                     className="flex-1 shadow-lg shadow-none transition-all duration-300"
                     onClick={() => toggleExpanded(scrape)}
-                    onMouseEnter={() => { void fetchContributors(scrape.id) }}
-                    onFocus={() => { void fetchContributors(scrape.id) }}
+                    onMouseEnter={() => scheduleListPrefetch(scrape.id)}
+                    onMouseLeave={() => cancelListPrefetch(scrape.id)}
+                    onFocus={() => scheduleListPrefetch(scrape.id)}
+                    onBlur={() => cancelListPrefetch(scrape.id)}
                   >
                     {isExpanded ? (
                       <><ChevronUp className="w-4 h-4 mr-2" />Hide Contributors</>
@@ -919,12 +957,6 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                         className="cursor-pointer"
                       >
                         <Download className="w-4 h-4 mr-2" />CSV
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => contributors && exportToExcel(scrape, contributors)}
-                        className="cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-4 h-4 mr-2" />Excel
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -984,7 +1016,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       className="mt-4 space-y-3"
                     >
                       {/* Filter / sort controls — visible once loaded */}
-                      {!isLoadingContributors && contributors !== null && (
+                      {contributors !== null && (
                         <div className="flex flex-col gap-2 pb-3 border-b border-border">
                           <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -1046,7 +1078,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {/* Scrollable list */}
                       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                       {/* Loading skeleton while fetching contributor details */}
-                      {isLoadingContributors && (
+                      {isLoadingContributors && contributors === null && (
                         <div className="space-y-3">
                           {[1, 2, 3].map((i) => (
                             <div
@@ -1065,7 +1097,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       )}
 
                       {/* Contributor rows */}
-                      {!isLoadingContributors && visibleContributors.map((contributor) => (
+                      {visibleContributors.map((contributor) => (
                         <motion.div
                           key={contributor.username}
                           initial={{ opacity: 0, x: -20 }}
@@ -1209,6 +1241,24 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           )}
                         </motion.div>
                       ))}
+                      {isLoadingContributors && contributors !== null && (
+                        <p className="py-2 text-center text-xs text-muted-foreground">Loading more contributors…</p>
+                      )}
+                      {hasContributorError && (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+                          <p className="font-medium text-destructive">Contributor loading stopped before completion.</p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="mt-2"
+                            onClick={() => retryContributors(scrape.id)}
+                          >
+                            <RotateCw className="mr-2 h-3.5 w-3.5" />
+                            Retry loading
+                          </Button>
+                        </div>
+                      )}
 
                       {!isLoadingContributors && visibleContributors.length < sorted.length && (
                         <Button
@@ -1244,17 +1294,19 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     [
       expandedScrapes,
       loadingExpansions,
+      contributorErrors,
       contributorCache,
       cardSettings,
       visibleContributorCounts,
       toggleExpanded,
-      fetchContributors,
+      scheduleListPrefetch,
+      cancelListPrefetch,
+      retryContributors,
       toggleFilter,
       updateSort,
       handleShare,
       requestDeleteScrape,
       exportToCSV,
-      exportToExcel,
       updateContributorOutreach,
       defaultCardSettings,
       setContributorSearch,

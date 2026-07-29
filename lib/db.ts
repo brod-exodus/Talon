@@ -106,6 +106,8 @@ type ScrapeContributorPageRow = {
   contributor_total: number
 }
 
+type ContactableScrapeContributorPageRow = Omit<ScrapeContributorPageRow, "bio" | "location" | "company">
+
 export type ScrapeJobRow = {
   id: string
   team_id: string
@@ -1334,7 +1336,8 @@ export async function getScrapeContributorsPage(
   scrapeId: string,
   page: number,
   pageSize = PAGE_SIZE,
-  teamId?: string
+  teamId?: string,
+  authorizationVerified = false
 ): Promise<{
   contributors: ReturnType<typeof toAppContributor>[]
   contributorTotal: number
@@ -1345,14 +1348,16 @@ export async function getScrapeContributorsPage(
   const safePage = Math.max(1, Math.floor(page))
   const resolvedTeamId = await resolveTeamId(teamId)
   const offset = (safePage - 1) * safePageSize
-  const { data: scrape, error: scrapeError } = await supabaseAdmin
-    .from("scrapes")
-    .select("id")
-    .eq("id", scrapeId)
-    .eq("team_id", resolvedTeamId)
-    .maybeSingle()
-  if (scrapeError) throw scrapeError
-  if (!scrape) return { contributors: [], contributorTotal: 0, page: safePage, hasMore: false }
+  if (!authorizationVerified) {
+    const { data: scrape, error: scrapeError } = await supabaseAdmin
+      .from("scrapes")
+      .select("id")
+      .eq("id", scrapeId)
+      .eq("team_id", resolvedTeamId)
+      .maybeSingle()
+    if (scrapeError) throw scrapeError
+    if (!scrape) return { contributors: [], contributorTotal: 0, page: safePage, hasMore: false }
+  }
 
   const { data, error } = await supabaseAdmin.rpc("get_scrape_contributors_page", {
     p_scrape_id: scrapeId,
@@ -1390,6 +1395,60 @@ export async function getScrapeContributorsPage(
     contributorTotal,
     page: safePage,
     hasMore,
+  }
+}
+
+export async function getContactableScrapeContributorsPage(
+  scrapeId: string,
+  page: number,
+  pageSize = PAGE_SIZE,
+  teamId?: string
+): Promise<{
+  contributors: ReturnType<typeof toAppContributor>[]
+  contributorTotal: number
+  page: number
+  hasMore: boolean
+}> {
+  const safePageSize = Math.min(500, Math.max(1, Math.floor(pageSize)))
+  const safePage = Math.max(1, Math.floor(page))
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const offset = (safePage - 1) * safePageSize
+  const { data, error } = await supabaseAdmin.rpc("get_contactable_scrape_contributors_page", {
+    p_scrape_id: scrapeId,
+    p_limit: safePageSize,
+    p_offset: offset,
+  })
+  if (error) throw error
+
+  const rows = (data ?? []) as ContactableScrapeContributorPageRow[]
+  const contributorTotal = rows[0]?.contributor_total ?? 0
+  const contributors = rows.map((row) =>
+    toAppContributor({
+      id: row.contributor_id,
+      team_id: resolvedTeamId,
+      github_username: row.github_username,
+      name: row.name,
+      avatar_url: row.avatar_url,
+      bio: null,
+      location: null,
+      company: null,
+      email: row.email,
+      twitter: row.twitter,
+      linkedin: row.linkedin,
+      website: row.website,
+      contacted: row.contacted,
+      contacted_date: row.contacted_date,
+      outreach_notes: row.outreach_notes,
+      status: row.status,
+      contributions: row.contributions,
+    })
+  )
+
+  return {
+    contributors,
+    contributorTotal,
+    page: safePage,
+    hasMore: offset + rows.length < contributorTotal,
   }
 }
 
