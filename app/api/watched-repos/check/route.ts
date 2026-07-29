@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { createGitHubClient, extractContactsFromBio, extractSocialContacts } from "@/lib/github"
 import { upsertContributor } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
+import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
 
 type WatchedRepo = {
   id: string
@@ -62,6 +63,10 @@ export async function POST(request: NextRequest) {
   const githubToken = process.env.GITHUB_TOKEN
 
   const now = new Date()
+  const systemRunId = await startSystemRun("watched_repos", {
+    trigger: isCronRequest ? "cron" : "manual",
+    teamSlug: requestTeamSlug,
+  })
 
   try {
     // Fetch all active watched repos that are due for a check
@@ -245,8 +250,14 @@ export async function POST(request: NextRequest) {
         errors: results.filter((result) => result.error).length,
       },
     })
+    await finishSystemRun(systemRunId, results.some((result) => result.error) ? "failure" : "success", {
+      checked: dueRepos.length,
+      errors: results.filter((result) => result.error).length,
+      newContributors: results.reduce((sum, result) => sum + result.newContributors, 0),
+    })
     return NextResponse.json({ checked: dueRepos.length, results })
   } catch (error) {
+    await finishSystemRun(systemRunId, "failure", {}, error)
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[watched-repos/check] Fatal error:", error)
     return NextResponse.json({ error: "Failed to run check" }, { status: 500 })
