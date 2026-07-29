@@ -4,11 +4,9 @@ import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
 import { addScrapeToEcosystem, createScrape, createScrapeJob, ecosystemExists } from "@/lib/db"
-import { runScrapeWorker } from "@/lib/scrape-worker"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
-  normalizeGithubToken,
   normalizeScrapeTarget,
   normalizeUuid,
   parseMinContributions,
@@ -47,7 +45,6 @@ export async function POST(request: NextRequest) {
     }
     const type = parseScrapeType(body.type)
     const target = type ? normalizeScrapeTarget(type, body.target) : null
-    const token = normalizeGithubToken(body.token)
     const minContributions = parseMinContributions(body.minContributions)
     const rawProjectId = typeof body.projectId === "string" ? body.projectId.trim() : ""
     const projectId = rawProjectId ? normalizeUuid(rawProjectId) : null
@@ -60,8 +57,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing or invalid projectId" }, { status: 400 })
     }
 
+    const token = process.env.GITHUB_TOKEN?.trim()
     if (!token) {
-      return NextResponse.json({ error: "Missing GitHub token" }, { status: 400 })
+      return NextResponse.json(
+        { error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment." },
+        { status: 503 }
+      )
     }
 
     if (projectId) {
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
     if (projectId) {
       await addScrapeToEcosystem(projectId, scrapeId, teamId)
     }
-    await createScrapeJob(scrapeId, type, target, minContributions, teamId)
+    const job = await createScrapeJob(scrapeId, type, target, minContributions, teamId)
     await recordActivityEvent({
       teamId,
       actorEmail: email,
@@ -105,25 +106,27 @@ export async function POST(request: NextRequest) {
       description: `${type === "repository" ? "Repository" : "Organization"} scrape for ${target}`,
       metadata: { scrapeId, type, target, minContributions, projectId },
     })
-    const workerRun = await runScrapeWorker(1, teamId)
-    const triggered = workerRun.results.some((result) => result.scrapeId === scrapeId)
     await recordAuditEvent({
       request,
       action: "scrape.start",
       outcome: "success",
       teamId,
-      metadata: { scrapeId, teamSlug, type, target, minContributions, projectId, workerTriggered: triggered },
+      metadata: { scrapeId, jobId: job.id, teamSlug, type, target, minContributions, projectId },
     })
 
-    return NextResponse.json({
-      scrapeId,
-      message: triggered ? "Scrape started" : "Scrape queued",
-      workerTriggered: triggered,
-      rateLimit: {
-        limit: rateLimit.resources.core.limit,
-        remaining: rateLimit.resources.core.remaining,
+    return NextResponse.json(
+      {
+        scrapeId,
+        jobId: job.id,
+        status: "queued",
+        message: "Scrape queued",
+        rateLimit: {
+          limit: rateLimit.resources.core.limit,
+          remaining: rateLimit.resources.core.remaining,
+        },
       },
-    })
+      { status: 202 }
+    )
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[v0] Scrape error:", error)

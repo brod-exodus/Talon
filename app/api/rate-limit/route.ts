@@ -1,20 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
-import { normalizeGithubToken, readJsonObject } from "@/lib/validation"
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   const authError = requirePermission(request, "write")
   if (authError) return authError
 
   try {
-    const body = await readJsonObject(request)
-    if (!body) {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
-    }
-
-    const token = normalizeGithubToken(body.token)
+    const token = process.env.GITHUB_TOKEN?.trim()
     if (!token) {
-      return NextResponse.json({ error: "Invalid GitHub token" }, { status: 400 })
+      return NextResponse.json(
+        { error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment." },
+        { status: 503 }
+      )
     }
 
     const response = await fetch("https://api.github.com/rate_limit", {
@@ -25,7 +22,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+      return NextResponse.json({ error: "The configured GitHub token is invalid." }, { status: 502 })
     }
 
     const data = await response.json()

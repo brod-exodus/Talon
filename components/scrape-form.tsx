@@ -21,7 +21,6 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getStoredGithubToken } from "@/lib/client-secrets"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
 type ProjectOption = {
@@ -163,17 +162,6 @@ export function ScrapeForm() {
         return
       }
 
-      const { token } = getStoredGithubToken()
-
-      if (!token) {
-        toast({
-          title: "GitHub token required",
-          description: "Please add your GitHub token in Settings first",
-          variant: "destructive",
-        })
-        return
-      }
-
       setIsLoading(true)
 
       try {
@@ -195,7 +183,6 @@ export function ScrapeForm() {
           body: JSON.stringify({
             type,
             target: target.trim(),
-            token,
             minContributions,
             projectId: scrapeProjectId,
           }),
