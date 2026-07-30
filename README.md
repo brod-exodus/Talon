@@ -161,6 +161,7 @@ Production end-to-end scrape smoke:
 
 ```bash
 BASE_URL="https://your-domain.example" \
+ADMIN_EMAIL="owner@example.com" \
 ADMIN_PASSWORD="..." \
 SMOKE_REPO="vercel/next.js" \
 pnpm smoke:production

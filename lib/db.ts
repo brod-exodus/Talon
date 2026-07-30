@@ -911,6 +911,7 @@ export async function completeScrape(
     .from("scrapes")
     .update({
       status: "completed",
+      progress: 100,
       completed_at: new Date().toISOString(),
       error: null,
       current_user_login: null,
