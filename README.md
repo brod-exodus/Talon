@@ -206,6 +206,7 @@ Useful tuning variables are `SMOKE_CANCEL_REPO`, `POLL_SECONDS`, and
 ## Operations and security
 
 - [Operations runbook](docs/ops.md)
+- [Dependency and CI security](docs/dependency-security.md)
 - [Supabase worker schedule](docs/supabase-worker-schedule.md)
 - [Production follow-ups](PRODUCTION_TODO.md)
 - [Multi-user design notes](docs/multi-user-phase2.md)
