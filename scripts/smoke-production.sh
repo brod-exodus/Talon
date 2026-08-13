@@ -97,7 +97,7 @@ if [[ -n "${CRON_SECRET:-}" ]]; then
   KEEPALIVE_STATUS="$(curl -sS -o "$TEMP_DIR/keepalive.json" -w "%{http_code}" \
     -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/keepalive")"
   [[ "$KEEPALIVE_STATUS" == "200" ]] || { echo "Keepalive failed: HTTP $KEEPALIVE_STATUS"; cat "$TEMP_DIR/keepalive.json"; exit 1; }
-  assert_json 'response.success === true && typeof response.timestamp === "string"' < "$TEMP_DIR/keepalive.json"
+  assert_json 'response.success === true && typeof response.timestamp === "string" && ["healthy", "breached", "insufficient_data"].includes(response.sloMonitor?.state)' < "$TEMP_DIR/keepalive.json"
 else
   echo "CRON_SECRET not provided; persistent keepalive history was verified through /api/health"
 fi
