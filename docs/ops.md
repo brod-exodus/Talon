@@ -120,9 +120,40 @@ Talon's service role.
 ## Database schema deployments
 
 Apply migration `027` before deploying the application release that introduces
-schema health checks. It refuses to run unless migration `026` is present, then
-records the historical baseline and exposes the current version only to Talon's
-service role.
+schema health checks. First confirm migrations `001` through `026` have been
+applied; migration `027` then records that historical baseline and exposes the
+current version only to Talon's service role.
+
+Use this read-only preflight before adopting the v27 ledger. It must return no
+rows:
+
+```sql
+WITH prerequisites(required_object, is_present) AS (
+  VALUES
+    ('table public.scrapes', to_regclass('public.scrapes') IS NOT NULL),
+    ('table public.contributors', to_regclass('public.contributors') IS NOT NULL),
+    ('table public.scrape_jobs', to_regclass('public.scrape_jobs') IS NOT NULL),
+    ('table public.scrape_job_contributions', to_regclass('public.scrape_job_contributions') IS NOT NULL),
+    ('table public.scrape_job_events', to_regclass('public.scrape_job_events') IS NOT NULL),
+    ('table public.shared_scrapes', to_regclass('public.shared_scrapes') IS NOT NULL),
+    ('table public.teams', to_regclass('public.teams') IS NOT NULL),
+    ('table public.team_memberships', to_regclass('public.team_memberships') IS NOT NULL),
+    ('table public.audit_events', to_regclass('public.audit_events') IS NOT NULL),
+    ('table public.auth_rate_limits', to_regclass('public.auth_rate_limits') IS NOT NULL),
+    ('table public.activity_events', to_regclass('public.activity_events') IS NOT NULL),
+    ('table public.project_contributors_cache', to_regclass('public.project_contributors_cache') IS NOT NULL),
+    ('table public.project_lists', to_regclass('public.project_lists') IS NOT NULL),
+    ('table public.project_contributor_tracking', to_regclass('public.project_contributor_tracking') IS NOT NULL),
+    ('table public.system_runs', to_regclass('public.system_runs') IS NOT NULL),
+    ('function public.talon_current_user_team_ids()', to_regprocedure('public.talon_current_user_team_ids()') IS NOT NULL),
+    ('function public.get_contactable_scrape_contributors_page(text,integer,integer)', to_regprocedure('public.get_contactable_scrape_contributors_page(text,integer,integer)') IS NOT NULL),
+    ('function public.cleanup_talon_retention()', to_regprocedure('public.cleanup_talon_retention()') IS NOT NULL)
+)
+SELECT required_object AS missing_object
+FROM prerequisites
+WHERE NOT is_present
+ORDER BY required_object;
+```
 
 For every future database change:
 
