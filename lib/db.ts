@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase"
 import { recordActivityEvent } from "@/lib/activity"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
+import { getShareAvailability, shareTokenHash, type ShareAvailability } from "@/lib/share-links"
 import { getDefaultTeamId } from "@/lib/team-context"
 import { planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
 import type { ProjectOutreachStatus } from "@/lib/validation"
@@ -1832,14 +1833,48 @@ export async function deleteScrape(id: string, teamId?: string): Promise<void> {
 }
 
 // ─── Shared scrapes ───────────────────────────────────────────────────────────
-// Requires: CREATE TABLE shared_scrapes (
-//   id TEXT PRIMARY KEY,
-//   scrape_id TEXT REFERENCES scrapes(id) ON DELETE CASCADE,
-//   created_at TIMESTAMPTZ DEFAULT NOW()
-// );
+export type SharedScrapeLinkSummary = {
+  id: string
+  scrapeId: string
+  createdAt: string
+  expiresAt: string
+  revokedAt: string | null
+  allowDownload: boolean
+  lastAccessedAt: string | null
+  accessCount: number
+}
 
-/** Insert a share row and return the token. */
-export async function createSharedScrape(scrapeId: string, token: string, teamId?: string): Promise<void> {
+type SharedScrapeLinkRow = {
+  id: string
+  scrape_id: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  allow_download: boolean
+  last_accessed_at: string | null
+  access_count: number
+}
+
+function toSharedScrapeLinkSummary(row: SharedScrapeLinkRow): SharedScrapeLinkSummary {
+  return {
+    id: row.id,
+    scrapeId: row.scrape_id,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    allowDownload: row.allow_download,
+    lastAccessedAt: row.last_accessed_at,
+    accessCount: row.access_count,
+  }
+}
+
+/** Store only the token hash and return lifecycle metadata. */
+export async function createSharedScrape(
+  scrapeId: string,
+  token: string,
+  options: { expiresAt: string; allowDownload: boolean },
+  teamId?: string
+): Promise<SharedScrapeLinkSummary> {
   const resolvedTeamId = await resolveTeamId(teamId)
   const { data: scrape, error: scrapeError } = await supabaseAdmin
     .from("scrapes")
@@ -1850,10 +1885,51 @@ export async function createSharedScrape(scrapeId: string, token: string, teamId
   if (scrapeError) throw scrapeError
   if (!scrape) throw new Error("Scrape not found")
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("shared_scrapes")
-    .insert({ id: token, scrape_id: scrapeId, team_id: resolvedTeamId })
+    .insert({
+      token_hash: shareTokenHash(token),
+      scrape_id: scrapeId,
+      team_id: resolvedTeamId,
+      expires_at: options.expiresAt,
+      allow_download: options.allowDownload,
+    })
+    .select("id, scrape_id, created_at, expires_at, revoked_at, allow_download, last_accessed_at, access_count")
+    .single()
   if (error) throw error
+  return toSharedScrapeLinkSummary(data as SharedScrapeLinkRow)
+}
+
+export async function listSharedScrapeLinks(
+  scrapeId: string,
+  teamId?: string
+): Promise<SharedScrapeLinkSummary[]> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("shared_scrapes")
+    .select("id, scrape_id, created_at, expires_at, revoked_at, allow_download, last_accessed_at, access_count")
+    .eq("scrape_id", scrapeId)
+    .eq("team_id", resolvedTeamId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as SharedScrapeLinkRow[]).map(toSharedScrapeLinkSummary)
+}
+
+export async function revokeSharedScrapeLink(
+  shareId: string,
+  teamId?: string
+): Promise<SharedScrapeLinkSummary | null> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data, error } = await supabaseAdmin
+    .from("shared_scrapes")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", shareId)
+    .eq("team_id", resolvedTeamId)
+    .is("revoked_at", null)
+    .select("id, scrape_id, created_at, expires_at, revoked_at, allow_download, last_accessed_at, access_count")
+    .maybeSingle()
+  if (error) throw error
+  return data ? toSharedScrapeLinkSummary(data as SharedScrapeLinkRow) : null
 }
 
 // ─── Ecosystems ───────────────────────────────────────────────────────────────
@@ -2902,14 +2978,40 @@ async function computeEcosystemContributors(
   return aggregateEcosystemContributors(contributors, allLinks, targetMap)
 }
 
-/** Resolve a share token → full scrape with contributors, or null if not found. */
-export async function getSharedScrape(token: string): Promise<AppScrape | null> {
+export type SharedScrapeResolution =
+  | { status: "not_found" | Exclude<ShareAvailability, "active"> }
+  | {
+      status: "active"
+      scrape: AppScrape
+      expiresAt: string
+      allowDownload: boolean
+    }
+
+/** Resolve a bearer token without ever querying by or persisting its raw value. */
+export async function getSharedScrape(token: string): Promise<SharedScrapeResolution> {
   const { data: share, error: shareError } = await supabaseAdmin
     .from("shared_scrapes")
-    .select("scrape_id, team_id")
-    .eq("id", token)
+    .select("id, scrape_id, team_id, expires_at, revoked_at, allow_download")
+    .eq("token_hash", shareTokenHash(token))
     .maybeSingle()
   if (shareError) throw shareError
-  if (!share) return null
-  return getScrape(share.scrape_id, share.team_id)
+  if (!share) return { status: "not_found" }
+
+  const status = getShareAvailability({ expiresAt: share.expires_at, revokedAt: share.revoked_at })
+  if (status !== "active") return { status }
+
+  const scrape = await getScrape(share.scrape_id, share.team_id)
+  if (!scrape) return { status: "not_found" }
+
+  const { error: accessError } = await supabaseAdmin.rpc("record_shared_scrape_access", {
+    p_id: share.id,
+  })
+  if (accessError) console.warn("[share] Failed to record share access", accessError)
+
+  return {
+    status: "active",
+    scrape,
+    expiresAt: share.expires_at,
+    allowDownload: share.allow_download,
+  }
 }

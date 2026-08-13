@@ -67,3 +67,33 @@ export function buildCsvContent(contributors: CsvContributor[]): string {
 
   return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
 }
+
+/** Public-share export intentionally excludes all outreach and recruiter-only fields. */
+export function buildPublicCsvContent(contributors: CsvContributor[]): string {
+  const sorted = [...contributors].sort((a, b) => b.contributions - a.contributions)
+  const headers = [
+    "#",
+    "Name",
+    "Username",
+    "GitHub Profile",
+    "Contributions",
+    "Email",
+    "Twitter",
+    "LinkedIn",
+    "Website",
+  ]
+  const rows = sorted.map((contributor, index) => [
+    index + 1,
+    contributor.name,
+    contributor.username,
+    `https://github.com/${contributor.username}`,
+    contributor.contributions,
+    contributor.contacts?.email?.trim() || "",
+    contributor.contacts?.twitter?.trim()
+      ? `https://twitter.com/${contributor.contacts.twitter.trim()}`
+      : "",
+    contributor.contacts?.linkedin?.trim() || "",
+    contributor.contacts?.website?.trim() || "",
+  ])
+  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
+}

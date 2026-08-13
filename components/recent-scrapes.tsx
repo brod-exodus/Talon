@@ -97,6 +97,17 @@ type ProjectSummary = {
   name: string
 }
 
+type ShareLinkSummary = {
+  id: string
+  scrapeId: string
+  createdAt: string
+  expiresAt: string
+  revokedAt: string | null
+  allowDownload: boolean
+  lastAccessedAt: string | null
+  accessCount: number
+}
+
 const RECENT_SCRAPES_PAGE_SIZE = 10
 const CONTRIBUTOR_FETCH_PAGE_SIZE = 500
 const CONTRIBUTOR_RENDER_BATCH_SIZE = 50
@@ -739,32 +750,86 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   }, [defaultCardSettings])
 
   // ── Share modal state ─────────────────────────────────────────────────────
-  const [shareModal, setShareModal] = useState<{ open: boolean; url: string; loading: boolean }>({
+  const [shareModal, setShareModal] = useState<{
+    open: boolean
+    scrapeId: string
+    url: string
+    loading: boolean
+  }>({
     open: false,
+    scrapeId: "",
     url: "",
     loading: false,
   })
+  const [shareLinks, setShareLinks] = useState<ShareLinkSummary[]>([])
+  const [shareLinksLoading, setShareLinksLoading] = useState(false)
+  const [shareExpiresInDays, setShareExpiresInDays] = useState("7")
+  const [shareAllowDownload, setShareAllowDownload] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const handleShare = useCallback(async (scrapeId: string) => {
     if (!canWrite) return
-    setShareModal({ open: true, url: "", loading: true })
+    setShareModal({ open: true, scrapeId, url: "", loading: false })
+    setShareLinks([])
+    setShareLinksLoading(true)
+    setShareExpiresInDays("7")
+    setShareAllowDownload(false)
+    try {
+      const res = await fetch(`/api/share?scrapeId=${encodeURIComponent(scrapeId)}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to load share links")
+      setShareLinks(Array.isArray(data?.shares) ? data.shares : [])
+    } catch (err) {
+      console.error("[share]", err)
+      toast({ title: "Error", description: "Failed to load share history", variant: "destructive" })
+    } finally {
+      setShareLinksLoading(false)
+    }
+  }, [canWrite, toast])
+
+  const createShareLink = useCallback(async () => {
+    if (!shareModal.scrapeId || shareModal.loading) return
+    setShareModal((current) => ({ ...current, url: "", loading: true }))
     try {
       const res = await fetch("/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scrapeId }),
+        body: JSON.stringify({
+          scrapeId: shareModal.scrapeId,
+          expiresInDays: Number(shareExpiresInDays),
+          allowDownload: shareAllowDownload,
+        }),
       })
-      if (!res.ok) throw new Error("Failed to create share link")
-      const { token } = await res.json()
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to create share link")
+      const { token, share } = data
       const url = `${window.location.origin}/share/${token}`
-      setShareModal({ open: true, url, loading: false })
+      setShareModal((current) => ({ ...current, url, loading: false }))
+      if (share) setShareLinks((current) => [share, ...current])
     } catch (err) {
       console.error("[share]", err)
-      setShareModal({ open: false, url: "", loading: false })
+      setShareModal((current) => ({ ...current, url: "", loading: false }))
       toast({ title: "Error", description: "Failed to create share link", variant: "destructive" })
     }
-  }, [canWrite, toast])
+  }, [shareAllowDownload, shareExpiresInDays, shareModal.loading, shareModal.scrapeId, toast])
+
+  const revokeShareLink = useCallback(async (shareId: string) => {
+    try {
+      const res = await fetch("/api/share", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shareId }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Failed to revoke share link")
+      setShareLinks((current) => current.map((share) => (share.id === shareId ? data.share : share)))
+      setShareModal((current) => ({ ...current, url: "" }))
+      toast({ title: "Share revoked", description: "The public link can no longer be opened." })
+    } catch (err) {
+      console.error("[share]", err)
+      toast({ title: "Error", description: "Failed to revoke share link", variant: "destructive" })
+    }
+  }, [toast])
 
   const copyShareUrl = useCallback(async () => {
     if (!shareModal.url) return
@@ -1527,7 +1592,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           <DialogHeader>
             <DialogTitle>Share this scrape</DialogTitle>
             <DialogDescription>
-              Anyone with this link can view the contributor list in read-only mode.
+              Anyone with the link can view public profile and contact fields until it expires or is revoked.
             </DialogDescription>
           </DialogHeader>
 
@@ -1538,29 +1603,86 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  readOnly
-                  value={shareModal.url}
-                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  onFocus={(e) => e.target.select()}
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 bg-transparent hover:bg-primary/10 transition-colors"
-                  onClick={copyShareUrl}
-                >
-                  {copied ? (
-                    <><CheckCheck className="w-4 h-4 mr-1.5 text-green-500" />Copied!</>
-                  ) : (
-                    <><Copy className="w-4 h-4 mr-1.5" />Copy</>
-                  )}
-                </Button>
-              </div>
+              {shareModal.url ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={shareModal.url}
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 bg-transparent hover:bg-primary/10 transition-colors"
+                    onClick={copyShareUrl}
+                  >
+                    {copied ? (
+                      <><CheckCheck className="w-4 h-4 mr-1.5 text-green-500" />Copied!</>
+                    ) : (
+                      <><Copy className="w-4 h-4 mr-1.5" />Copy</>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 rounded-md border border-border p-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="share-expiry">Link expires after</Label>
+                    <Select value={shareExpiresInDays} onValueChange={setShareExpiresInDays}>
+                      <SelectTrigger id="share-expiry">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 day</SelectItem>
+                        <SelectItem value="7">7 days</SelectItem>
+                        <SelectItem value="30">30 days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <Label htmlFor="share-download">Allow CSV download</Label>
+                      <p className="text-xs text-muted-foreground">The CSV contains only public profile and contact fields.</p>
+                    </div>
+                    <Switch id="share-download" checked={shareAllowDownload} onCheckedChange={setShareAllowDownload} />
+                  </div>
+                  <Button type="button" className="w-full" onClick={createShareLink}>
+                    Generate secure link
+                  </Button>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                The link shows only contributors with contact information, sorted by contributions.
+                Recruiter notes, outreach status, reminders, and internal operations data are never included.
               </p>
+
+              <div className="space-y-2 border-t border-border pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Share history</p>
+                {shareLinksLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading share history…</p>
+                ) : shareLinks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No share links have been created for this scrape.</p>
+                ) : (
+                  shareLinks.map((share) => {
+                    const expired = Date.parse(share.expiresAt) <= Date.now()
+                    const active = !share.revokedAt && !expired
+                    return (
+                      <div key={share.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+                        <div className="min-w-0 text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">{active ? "Active" : share.revokedAt ? "Revoked" : "Expired"}</p>
+                          <p>Expires {formatDate(share.expiresAt)} · {share.accessCount} view{share.accessCount === 1 ? "" : "s"}</p>
+                          <p>{share.allowDownload ? "CSV download allowed" : "View only"}</p>
+                        </div>
+                        {active && (
+                          <Button type="button" size="sm" variant="destructive" onClick={() => revokeShareLink(share.id)}>
+                            Revoke
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

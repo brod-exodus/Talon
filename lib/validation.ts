@@ -119,6 +119,10 @@ export function normalizeShareToken(value: unknown): string | null {
   return SHARE_TOKEN_RE.test(token) ? token : null
 }
 
+export function normalizeShareId(value: unknown): string | null {
+  return normalizeUuid(value)
+}
+
 export function normalizeGithubUsername(value: unknown): string | null {
   if (typeof value !== "string") return null
   const username = value.trim()

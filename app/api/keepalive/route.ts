@@ -40,20 +40,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Supabase keepalive query failed" }, { status: 500 })
     }
 
+    const { data: retention, error: retentionError } = await supabase.rpc("cleanup_talon_retention")
+    if (retentionError) {
+      console.error("[keepalive] Retention cleanup failed:", retentionError)
+      return NextResponse.json({ error: "Supabase retention cleanup failed" }, { status: 500 })
+    }
+
     const timestamp = new Date().toISOString()
     const { error: runError } = await supabase.from("system_runs").insert({
       kind: "keepalive",
       status: "success",
       started_at: timestamp,
       completed_at: timestamp,
-      details: { source: "vercel_cron" },
+      details: { source: "vercel_cron", retention },
     })
     if (runError) {
       console.error("[keepalive] Failed to record operational status:", runError)
       return NextResponse.json({ error: "Supabase keepalive status recording failed" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, timestamp })
+    return NextResponse.json({ success: true, timestamp, retention })
   } catch (error) {
     console.error("[keepalive] request failed:", error)
     return NextResponse.json({ error: "Supabase keepalive failed" }, { status: 500 })
