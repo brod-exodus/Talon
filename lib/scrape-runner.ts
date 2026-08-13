@@ -18,6 +18,7 @@ import {
   planOrganizationDiscoveryStep,
   SCRAPE_HYDRATION_BATCH_SIZE,
 } from "@/lib/scrape-step"
+import { isScrapeJobCancellationRequested } from "@/lib/scrape-job-policy"
 
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
@@ -97,7 +98,7 @@ async function hydrateContributor(
 
 async function ensureNotCanceled(jobId: string): Promise<void> {
   const control = await getScrapeJobControl(jobId)
-  if (control?.cancel_requested || control?.status === "canceled") {
+  if (isScrapeJobCancellationRequested(control)) {
     throw new ScrapeJobCanceledError()
   }
 }
