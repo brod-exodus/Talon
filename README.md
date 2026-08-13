@@ -84,6 +84,9 @@ The portfolio deployment favors free infrastructure:
   Slack alert for a new breach or recovery when `SLACK_WEBHOOK_URL` is set.
 - `system_runs` preserves operational outcomes beyond Vercel Hobby log
   retention.
+- Request IDs connect sanitized JSON logs to audit events, queue jobs, job
+  events, and scheduled system runs without recording repository or contributor
+  data in logs.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
   failures, database connectivity, GitHub rate limits, and seven-day repository
   scrape reliability/latency SLOs.
@@ -93,7 +96,10 @@ This is appropriate for a portfolio deployment, not a formal high-volume SLA.
 
 ### Idempotency and recovery
 
-Contributor totals use job-scoped upserts. Persisted contributors are skipped
+Starting a scrape atomically creates its scrape, queue job, optional project
+link, and initial event. Browser and network retries reuse the original durable
+resources through a team-scoped idempotency key. Contributor totals use
+job-scoped upserts. Persisted contributors are skipped
 when a hydration step resumes. GitHub rate-limit failures use delayed retries,
 manual cancellation is checked between steps, and terminal failures remain
 visible with their recent job events.
@@ -215,7 +221,8 @@ Supabase RLS is enabled for private tables, server routes use the service role,
 sessions are signed and HTTP-only, every API request rechecks the user's current
 team role, login attempts are rate limited, cron routes require bearer
 authentication, browser writes enforce same-origin requests, security headers
-limit browser capabilities, and audit metadata intentionally excludes secrets.
+limit browser capabilities, and correlated operational logs redact secrets,
+URLs, repository targets, and contributor identifiers.
 Role changes and team removals therefore take effect without waiting for a
 session to expire.
 

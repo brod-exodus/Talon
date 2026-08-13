@@ -1,5 +1,6 @@
 import "server-only"
 import { runScrapeWorker, type ScrapeWorkerResult } from "@/lib/scrape-worker"
+import { logError, logInfo } from "@/lib/logger"
 import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
 
 export type ScrapeWorkerTrigger = "cron" | "manual" | "queue"
@@ -18,16 +19,19 @@ export async function runScrapeWorkerOperation({
   teamId,
   teamSlug,
   maxJobs = 1,
+  requestId,
 }: {
   trigger: ScrapeWorkerTrigger
   teamId?: string
   teamSlug?: string
   maxJobs?: number
+  requestId?: string
 }): Promise<ScrapeWorkerOperation> {
-  const systemRunId = await startSystemRun("scrape_worker", { trigger, teamSlug })
+  const systemRunId = await startSystemRun("scrape_worker", { trigger, teamSlug }, requestId)
+  logInfo("scrape_worker.started", { requestId, systemRunId, details: { trigger, maxJobs } })
 
   try {
-    const { workerId, recoveredStaleJobs, results } = await runScrapeWorker(maxJobs, teamId)
+    const { workerId, recoveredStaleJobs, results } = await runScrapeWorker(maxJobs, teamId, requestId)
     const hasFailedResult = results.some((result) => result.status === "failed")
     const steps = results.reduce((total, result) => total + (result.steps ?? 0), 0)
     const maxElapsedMs = Math.max(0, ...results.map((result) => result.elapsedMs ?? 0))
@@ -40,6 +44,21 @@ export async function runScrapeWorkerOperation({
       steps,
       maxElapsedMs,
       trigger,
+      originRequestIds: results.map((result) => result.originRequestId).filter(Boolean),
+    })
+
+    logInfo("scrape_worker.finished", {
+      requestId,
+      systemRunId,
+      workerId,
+      details: {
+        trigger,
+        processed: results.length,
+        statuses: results.map((result) => result.status),
+        recoveredStaleJobs,
+        steps,
+        maxElapsedMs,
+      },
     })
 
     return {
@@ -52,6 +71,7 @@ export async function runScrapeWorkerOperation({
     }
   } catch (error) {
     await finishSystemRun(systemRunId, "failure", { trigger }, error)
+    logError("scrape_worker.failed", error, { requestId, systemRunId, details: { trigger } })
     throw error
   }
 }

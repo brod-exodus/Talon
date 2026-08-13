@@ -19,6 +19,7 @@ import {
   SCRAPE_HYDRATION_BATCH_SIZE,
 } from "@/lib/scrape-step"
 import { isScrapeJobCancellationRequested } from "@/lib/scrape-job-policy"
+import { logWarn } from "@/lib/logger"
 
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
@@ -49,18 +50,19 @@ function mergeContacts(
 async function hydrateContributor(
   githubClient: ReturnType<typeof createGitHubClient>,
   login: string,
-  contributions: number
+  contributions: number,
+  context: { requestId?: string | null; jobId: string; scrapeId: string }
 ): Promise<ScrapeContributorProfile> {
   let details
   try {
     details = await githubClient.getUserDetails(login)
   } catch (error) {
     if (error instanceof GitHubApiError && error.status === 404) {
-      console.warn("[scrape-runner] Skipping unavailable contributor profile details", {
-        login,
-        endpointPath: error.endpointPath,
-        url: error.url,
-        responseBody: error.responseBody,
+      logWarn("scrape.contributor_unavailable", {
+        originRequestId: context.requestId,
+        jobId: context.jobId,
+        scrapeId: context.scrapeId,
+        details: { githubStatus: error.status },
       })
       return {
         username: login,
@@ -137,7 +139,11 @@ async function hydrateCandidates(
   })
 
   const batchResults = await Promise.allSettled(
-    batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions))
+    batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions, {
+      requestId: job.request_id,
+      jobId: job.id,
+      scrapeId: job.scrape_id,
+    }))
   )
   const fulfilled = batchResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
   const rejected = batchResults.find((result) => result.status === "rejected")

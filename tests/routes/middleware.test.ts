@@ -12,6 +12,8 @@ function pageRequest(path: string, token?: string) {
   })
 }
 
+const REQUEST_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
 describe("protected-page middleware", () => {
   beforeEach(() => {
     vi.stubEnv("TALON_SESSION_SECRET", sessionSecret)
@@ -81,6 +83,29 @@ describe("protected-page middleware", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1")
   })
 
+  test("propagates a valid request ID to the application and response", async () => {
+    const request = new NextRequest("https://talon.example/api/health", {
+      headers: { "X-Request-ID": REQUEST_ID },
+    })
+
+    const response = await middleware(request)
+
+    expect(response.headers.get("x-request-id")).toBe(REQUEST_ID)
+    expect(response.headers.get("x-middleware-request-x-request-id")).toBe(REQUEST_ID)
+  })
+
+  test("replaces an invalid caller-supplied request ID", async () => {
+    const request = new NextRequest("https://talon.example/api/health", {
+      headers: { "X-Request-ID": "not-safe-log-entry" },
+    })
+
+    const response = await middleware(request)
+    const requestId = response.headers.get("x-request-id")
+
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(requestId).not.toContain("not-safe")
+  })
+
   test("keeps the protected route declaration aligned with the matcher", () => {
     expect(PROTECTED_PATHS).toEqual(["/", "/contributors", "/ecosystems", "/pipeline", "/settings", "/watched"])
     expect(config.matcher).toEqual([
@@ -90,6 +115,7 @@ describe("protected-page middleware", () => {
       "/pipeline/:path*",
       "/settings/:path*",
       "/watched/:path*",
+      "/api/:path*",
     ])
   })
 })

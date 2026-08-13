@@ -12,6 +12,7 @@ import {
 import { GitHubApiError } from "@/lib/github"
 import { runScrapeJob, ScrapeJobCanceledError } from "@/lib/scrape-runner"
 import { runBoundedJobSteps } from "@/lib/worker-budget"
+import { sanitizeOperationalError } from "@/lib/logger"
 
 export type ScrapeWorkerResult = {
   jobId: string
@@ -21,11 +22,13 @@ export type ScrapeWorkerResult = {
   steps?: number
   elapsedMs?: number
   error?: string
+  originRequestId?: string | null
 }
 
 export async function runScrapeWorker(
   maxJobs = 1,
-  teamId?: string
+  teamId?: string,
+  requestId?: string
 ): Promise<{ workerId: string; recoveredStaleJobs: number; results: ScrapeWorkerResult[] }> {
   const workerId = `worker-${randomUUID()}`
   const recoveredStaleJobs = await recoverStaleScrapeJobs(undefined, teamId)
@@ -35,7 +38,8 @@ export async function runScrapeWorker(
     "worker_started",
     "Scrape worker invocation started",
     { workerId, recoveredStaleJobs },
-    teamId
+    teamId,
+    requestId
   )
   const results: ScrapeWorkerResult[] = []
 
@@ -48,6 +52,7 @@ export async function runScrapeWorker(
         workerId,
         type: job.type,
         target: job.target,
+        workerRequestId: requestId,
       })
       const execution = await runBoundedJobSteps({
         initialJob: job,
@@ -72,18 +77,33 @@ export async function runScrapeWorker(
         status,
         steps: execution.steps,
         elapsedMs: execution.elapsedMs,
+        originRequestId: job.request_id,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown scrape job error"
+      const message = sanitizeOperationalError(error).message
       if (error instanceof ScrapeJobCanceledError) {
         await cancelScrapeJob(job.id, message)
-        results.push({ jobId: job.id, scrapeId: job.scrape_id, teamId: job.team_id, status: "canceled", error: message })
+        results.push({
+          jobId: job.id,
+          scrapeId: job.scrape_id,
+          teamId: job.team_id,
+          status: "canceled",
+          error: message,
+          originRequestId: job.request_id,
+        })
         continue
       }
       const status = await failScrapeJob(job, message, {
         retryAfterMs: error instanceof GitHubApiError ? error.retryAfterMs : undefined,
       })
-      results.push({ jobId: job.id, scrapeId: job.scrape_id, teamId: job.team_id, status, error: message })
+      results.push({
+        jobId: job.id,
+        scrapeId: job.scrape_id,
+        teamId: job.team_id,
+        status,
+        error: message,
+        originRequestId: job.request_id,
+      })
     }
   }
 

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto"
 import { type NextRequest } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
+import { getRequestId } from "@/lib/request-id"
+import { logWarn, sanitizeOperationalError } from "@/lib/logger"
 
 export type AuditOutcome = "success" | "failure" | "blocked"
 
@@ -12,6 +14,7 @@ export type AuditEvent = {
   ipHash: string | null
   userAgent: string | null
   metadata: Record<string, unknown>
+  requestId: string | null
   createdAt: string
 }
 
@@ -48,6 +51,7 @@ export async function recordAuditEvent({
   teamId?: string | null
   metadata?: Record<string, unknown>
 }): Promise<void> {
+  const requestId = getRequestId(request)
   try {
     const ip = getClientIp(request)
     const { error } = await supabaseAdmin.from("audit_events").insert({
@@ -58,17 +62,22 @@ export async function recordAuditEvent({
       ip_hash: ip === "unknown" ? null : hashAuditValue(ip),
       user_agent: userAgent(request),
       metadata,
+      request_id: requestId,
     })
     if (error) throw error
   } catch (error) {
-    console.warn("[audit] Failed to record audit event:", error)
+    logWarn("audit.persist_failed", {
+      requestId,
+      teamId: teamId ?? undefined,
+      details: { action, outcome, error: sanitizeOperationalError(error) },
+    })
   }
 }
 
 export async function getRecentAuditEvents(limit = 25, teamId?: string | null): Promise<AuditEvent[]> {
   let query = supabaseAdmin
     .from("audit_events")
-    .select("id, action, outcome, actor, ip_hash, user_agent, metadata, created_at")
+    .select("id, action, outcome, actor, ip_hash, user_agent, metadata, request_id, created_at")
     .order("created_at", { ascending: false })
     .limit(Math.max(1, Math.min(limit, 100)))
 
@@ -85,6 +94,7 @@ export async function getRecentAuditEvents(limit = 25, teamId?: string | null): 
     ipHash: event.ip_hash,
     userAgent: event.user_agent,
     metadata: event.metadata ?? {},
+    requestId: event.request_id ?? null,
     createdAt: event.created_at,
   }))
 }

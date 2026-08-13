@@ -32,6 +32,7 @@ test("production smoke exercises idempotent enqueue, cancel, retry, completion, 
     response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
     response.setHeader("X-Content-Type-Options", "nosniff")
     response.setHeader("X-Frame-Options", "DENY")
+    response.setHeader("X-Request-ID", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       response.setHeader("Set-Cookie", "talon_session=test; Path=/")

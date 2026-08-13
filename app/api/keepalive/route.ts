@@ -9,6 +9,8 @@ import {
 } from "@/lib/slo-alert"
 import { buildScrapeSloSnapshot, SCRAPE_SLO_WINDOW_DAYS, type ScrapeSloRow } from "@/lib/scrape-slo"
 import { normalizeSlackWebhookUrl } from "@/lib/validation"
+import { getRequestId } from "@/lib/request-id"
+import { logError } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
 
@@ -67,6 +69,7 @@ async function sendSloNotification(webhookUrl: string, monitor: SloMonitorState)
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   if (!hasCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
@@ -76,13 +79,13 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.from("team_memberships").select("id").limit(1)
 
     if (error) {
-      console.error("[keepalive] Supabase query failed:", error)
+      logError("keepalive.database_check_failed", error, { requestId })
       return NextResponse.json({ error: "Supabase keepalive query failed" }, { status: 500 })
     }
 
     const { data: retention, error: retentionError } = await supabase.rpc("cleanup_talon_retention")
     if (retentionError) {
-      console.error("[keepalive] Retention cleanup failed:", retentionError)
+      logError("keepalive.retention_failed", retentionError, { requestId })
       return NextResponse.json({ error: "Supabase retention cleanup failed" }, { status: 500 })
     }
 
@@ -98,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     let sloMonitor: SloMonitorDetails | { state: "unavailable"; notification: "not_evaluated" }
     if (sloError) {
-      console.error("[keepalive] SLO calculation failed:", sloError)
+      logError("keepalive.slo_calculation_failed", sloError, { requestId })
       sloMonitor = { state: "unavailable", notification: "not_evaluated" }
     } else {
       const current = buildSloMonitorState(buildScrapeSloSnapshot((sloRows ?? []) as ScrapeSloRow[]))
@@ -118,7 +121,7 @@ export async function GET(request: NextRequest) {
       let notification: SloNotificationStatus = "unchanged"
 
       if (previousRunError) {
-        console.error("[keepalive] Could not read prior SLO state:", previousRunError)
+        logError("keepalive.slo_history_failed", previousRunError, { requestId })
         notification = "history_unavailable"
       } else if (shouldNotifySloState(current, previous)) {
         const configuredWebhook = process.env.SLACK_WEBHOOK_URL
@@ -133,7 +136,7 @@ export async function GET(request: NextRequest) {
             lastNotifiedFingerprint = current.fingerprint
             notification = "sent"
           } catch (error) {
-            console.error("[keepalive] SLO Slack notification failed:", error)
+            logError("keepalive.slo_notification_failed", error, { requestId })
             notification = "failed"
           }
         }
@@ -148,16 +151,17 @@ export async function GET(request: NextRequest) {
       status: "success",
       started_at: timestamp,
       completed_at: timestamp,
+      request_id: requestId,
       details: { source: "vercel_cron", retention, sloMonitor },
     })
     if (runError) {
-      console.error("[keepalive] Failed to record operational status:", runError)
+      logError("keepalive.run_persist_failed", runError, { requestId })
       return NextResponse.json({ error: "Supabase keepalive status recording failed" }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, timestamp, retention, sloMonitor })
   } catch (error) {
-    console.error("[keepalive] request failed:", error)
+    logError("keepalive.failed", error, { requestId })
     return NextResponse.json({ error: "Supabase keepalive failed" }, { status: 500 })
   }
 }

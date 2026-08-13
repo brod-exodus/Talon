@@ -8,6 +8,8 @@ import { createGitHubClient, extractContactsFromBio, extractSocialContacts } fro
 import { upsertContributor } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
+import { getRequestId } from "@/lib/request-id"
+import { logError, logInfo } from "@/lib/logger"
 
 type WatchedRepo = {
   id: string
@@ -37,11 +39,12 @@ async function sendSlackNotification(
     body: JSON.stringify({ text }),
   })
   if (!res.ok) {
-    console.error("[watched-repos/check] Slack notification failed:", res.status, await res.text())
+    throw new Error(`Slack notification returned HTTP ${res.status}`)
   }
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const isCronRequest = hasCronSecret(request)
   let requestTeamId: string | null = null
   let requestTeamSlug: string | null = null
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
   const systemRunId = await startSystemRun("watched_repos", {
     trigger: isCronRequest ? "cron" : "manual",
     teamSlug: requestTeamSlug,
-  })
+  }, requestId)
 
   try {
     // Fetch all active watched repos that are due for a check
@@ -87,7 +90,12 @@ export async function POST(request: NextRequest) {
       return now >= nextCheck
     }) : scopedWatched
 
-    console.log(`[watched-repos/check] ${dueRepos.length} repo(s) due for check out of ${(allWatched ?? []).length}`)
+    logInfo("watched_repos.check_started", {
+      requestId,
+      systemRunId,
+      teamId: requestTeamId ?? undefined,
+      details: { due: dueRepos.length, active: (allWatched ?? []).length },
+    })
 
     const results: Array<{
       watchedRepoId: string
@@ -184,7 +192,12 @@ export async function POST(request: NextRequest) {
               })
             }
           } catch (err) {
-            console.error(`[watched-repos/check] Failed to process ${contributor.login}:`, err)
+            logError("watched_repos.contributor_failed", err, {
+              requestId,
+              systemRunId,
+              teamId: watched.team_id,
+              details: { watchId: watched.id },
+            })
           }
         }
 
@@ -226,7 +239,12 @@ export async function POST(request: NextRequest) {
           notified: shouldNotify,
         })
       } catch (err) {
-        console.error(`[watched-repos/check] Failed to check ${watched.repo}:`, err)
+        logError("watched_repos.repository_failed", err, {
+          requestId,
+          systemRunId,
+          teamId: watched.team_id,
+          details: { watchId: watched.id },
+        })
         results.push({
           watchedRepoId: watched.id,
           repo: watched.repo,
@@ -255,11 +273,25 @@ export async function POST(request: NextRequest) {
       errors: results.filter((result) => result.error).length,
       newContributors: results.reduce((sum, result) => sum + result.newContributors, 0),
     })
+    logInfo("watched_repos.check_finished", {
+      requestId,
+      systemRunId,
+      teamId: requestTeamId ?? undefined,
+      details: {
+        checked: dueRepos.length,
+        errors: results.filter((result) => result.error).length,
+        newContributors: results.reduce((sum, result) => sum + result.newContributors, 0),
+      },
+    })
     return NextResponse.json({ checked: dueRepos.length, results })
   } catch (error) {
     await finishSystemRun(systemRunId, "failure", {}, error)
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[watched-repos/check] Fatal error:", error)
+    logError("watched_repos.failed", error, {
+      requestId,
+      systemRunId,
+      teamId: requestTeamId ?? undefined,
+    })
     return NextResponse.json({ error: "Failed to run check" }, { status: 500 })
   }
 }
