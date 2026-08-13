@@ -48,6 +48,7 @@ db/migrations/007_security_events.sql
 db/migrations/010_service_role_rls_lockdown.sql
 db/migrations/024_system_runs.sql
 db/migrations/025_contactable_scrape_contributors_rpc.sql
+db/migrations/026_share_lifecycle_and_retention.sql
 ```
 
 They create or enforce:
@@ -57,6 +58,53 @@ They create or enforce:
 - Service-role-only app access for private tables, plus future authenticated team-member read policies.
 
 If Settings cannot load recent security events, confirm migration `007` has been applied. If scrapes fail after removing temporary Supabase policies, confirm `SUPABASE_SERVICE_ROLE_KEY` is configured and migration `010` has been applied.
+
+Apply migration `026` before deploying the matching application release. It is
+expand-first: the prior release can continue creating and opening shares during
+the rollout, while the new release resolves only token hashes. After deployment,
+expired legacy raw-token IDs are replaced with opaque UUIDs by keepalive cleanup;
+active legacy links retain rollback compatibility until their expiration.
+
+## Share lifecycle and data retention
+
+Share links default to seven days and can be configured for 1, 7, or 30 days.
+Operators can review link history, view approximate access counts, and revoke an
+active link from the scrape card. Revoked and expired links return HTTP `410`.
+Only public GitHub profile/contact fields appear in a shared response; recruiter
+notes, outreach status, reminders, internal errors, and team identifiers do not.
+The CSV switch controls Talon's built-in download button, but it cannot prevent a
+viewer from copying data that is already visible in their browser.
+
+The daily `/api/keepalive` call runs `cleanup_talon_retention()` and records its
+row counts in `system_runs.details`. Current retention windows are:
+
+| Data | Retention |
+| --- | --- |
+| Expired or revoked share metadata | 30 days after expiry/revocation |
+| Keepalive and worker run history | 30 days |
+| Audit and activity events | 180 days |
+| Inactive authentication rate-limit records | 30 days |
+| Terminal scrape jobs and their staging/events | 90 days |
+| Completed scrape results and contributors | Kept until an operator deletes them |
+
+To verify the cleanup manually in Supabase SQL Editor without deleting anything,
+inspect the eligible counts first:
+
+```sql
+select
+  (select count(*) from shared_scrapes
+    where expires_at < now() - interval '30 days'
+       or (revoked_at is not null and revoked_at < now() - interval '30 days')) as old_shares,
+  (select count(*) from system_runs
+    where started_at < now() - interval '30 days') as old_system_runs,
+  (select count(*) from scrape_jobs
+    where status in ('succeeded', 'failed', 'canceled')
+      and updated_at < now() - interval '90 days') as old_terminal_jobs;
+```
+
+Use `select cleanup_talon_retention();` only when you intentionally want to run
+the cleanup immediately. The function is restricted to the database owner and
+Talon's service role.
 
 ## Auth Lockouts
 
@@ -82,6 +130,7 @@ Useful actions to check during incident response:
 - `watched_repo.create`
 - `watched_repo.delete`
 - `share.create`
+- `share.revoke`
 - `outreach.update`
 
 ## Scrape Recovery

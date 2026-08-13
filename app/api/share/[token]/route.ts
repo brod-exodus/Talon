@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSharedScrape } from "@/lib/db"
+import { toPublicSharedScrape } from "@/lib/share-links"
 import { normalizeShareToken } from "@/lib/validation"
 
 export async function GET(
@@ -12,11 +13,23 @@ export async function GET(
     if (!shareToken) {
       return NextResponse.json({ error: "Invalid share token" }, { status: 400 })
     }
-    const scrape = await getSharedScrape(shareToken)
-    if (!scrape) {
+    const resolution = await getSharedScrape(shareToken)
+    if (resolution.status === "not_found") {
       return NextResponse.json({ error: "Share not found" }, { status: 404 })
     }
-    return NextResponse.json(scrape)
+    if (resolution.status !== "active") {
+      return NextResponse.json(
+        { error: "This share link is no longer available" },
+        { status: 410, headers: { "Cache-Control": "private, no-store" } }
+      )
+    }
+    return NextResponse.json(
+      toPublicSharedScrape(resolution.scrape, {
+        expiresAt: resolution.expiresAt,
+        allowDownload: resolution.allowDownload,
+      }),
+      { headers: { "Cache-Control": "private, no-store" } }
+    )
   } catch (error) {
     console.error("[share] Failed to fetch shared scrape:", error)
     return NextResponse.json(

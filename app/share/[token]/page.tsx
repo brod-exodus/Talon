@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useParams } from "next/navigation"
-import { Linkedin, Globe, Calendar, Github } from "lucide-react"
+import { Linkedin, Globe, Calendar, Github, Download } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { buildPublicCsvContent } from "@/lib/csv-export"
 import { CopyableEmail } from "./copyable-email"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +35,10 @@ type SharedScrape = {
   target: string
   completedAt?: string
   contributors: Contributor[]
+  share: {
+    expiresAt: string
+    allowDownload: boolean
+  }
 }
 
 type ContactFilter = "email" | "linkedin" | "twitter"
@@ -75,20 +81,20 @@ export default function SharePage() {
 
   const [scrape, setScrape] = useState<SharedScrape | null>(null)
   const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
 
   const [activeFilters, setActiveFilters] = useState<Set<ContactFilter>>(new Set())
   const [sortOrder, setSortOrder] = useState<SortOrder>("high-low")
 
   useEffect(() => {
-    fetch(`/api/share/${token}`)
+    fetch(`/api/share/${token}`, { cache: "no-store" })
       .then((res) => {
-        if (res.status === 404) { setNotFound(true); return null }
+        if (res.status === 404 || res.status === 410) { setUnavailable(true); return null }
         if (!res.ok) throw new Error("Failed to load")
         return res.json()
       })
       .then((data) => { if (data) setScrape(data) })
-      .catch(() => setNotFound(true))
+      .catch(() => setUnavailable(true))
       .finally(() => setLoading(false))
   }, [token])
 
@@ -118,6 +124,17 @@ export default function SharePage() {
     )
   }, [withContacts, activeFilters, sortOrder])
 
+  function downloadCsv() {
+    if (!scrape?.share.allowDownload) return
+    const blob = new Blob([buildPublicCsvContent(withContacts)], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `${scrape.target.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-contributors.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -130,13 +147,13 @@ export default function SharePage() {
     )
   }
 
-  // ── Not found ──────────────────────────────────────────────────────────────
-  if (notFound || !scrape) {
+  // ── Unavailable ────────────────────────────────────────────────────────────
+  if (unavailable || !scrape) {
     return (
       <div className="relative z-10 flex min-h-screen items-center justify-center">
         <div className="text-center space-y-2">
-          <p className="text-2xl font-bold">404</p>
-          <p className="text-muted-foreground text-sm">This shared list does not exist or has been deleted.</p>
+          <p className="text-2xl font-bold">Link unavailable</p>
+          <p className="text-muted-foreground text-sm">This shared list does not exist, has expired, or was revoked.</p>
         </div>
       </div>
     )
@@ -163,6 +180,7 @@ export default function SharePage() {
               <span className="font-mono text-foreground">{withContacts.length}</span>
               {" "}contributor{withContacts.length !== 1 ? "s" : ""} with contact info
             </p>
+            <p className="mt-0.5 text-xs">Link expires {formatDate(scrape.share.expiresAt)}</p>
           </div>
         </div>
       </header>
@@ -197,6 +215,13 @@ export default function SharePage() {
             </div>
 
             <div className="flex-1" />
+
+            {scrape.share.allowDownload && (
+              <Button type="button" variant="outline" size="sm" className="h-7" onClick={downloadCsv}>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download CSV
+              </Button>
+            )}
 
             {/* Sort */}
             <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOrder)}>

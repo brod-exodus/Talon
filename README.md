@@ -67,12 +67,19 @@ recovered automatically.
 never enter browser storage, scrape-job state, operational details, or API
 responses.
 
+Public scrape links use random bearer tokens that are shown only when a link is
+created; Supabase stores their SHA-256 hashes. Links expire after 1, 7, or 30
+days, can be revoked immediately, and expose public profile/contact fields only.
+Recruiter notes, outreach status, reminders, errors, and team identifiers are
+excluded from the public response.
+
 ### Free-tier operations
 
 The portfolio deployment favors free infrastructure:
 
 - Supabase Cron and `pg_net` schedule bounded worker requests.
 - Vercel Cron performs a daily external keepalive.
+- The keepalive also applies documented retention windows to operational data.
 - `system_runs` preserves operational outcomes beyond Vercel Hobby log
   retention.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,

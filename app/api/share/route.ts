@@ -1,10 +1,15 @@
 import { randomBytes } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
 import { recordAuditEvent } from "@/lib/audit"
-import { createSharedScrape } from "@/lib/db"
+import { createSharedScrape, listSharedScrapeLinks, revokeSharedScrapeLink } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
+import {
+  DEFAULT_SHARE_EXPIRY_DAYS,
+  normalizeShareExpiryDays,
+  shareExpiresAt,
+} from "@/lib/share-links"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
-import { normalizeScrapeId, readJsonObject } from "@/lib/validation"
+import { normalizeScrapeId, normalizeShareId, readJsonObject } from "@/lib/validation"
 
 function randomToken(): string {
   return randomBytes(24).toString("base64url")
@@ -18,29 +23,28 @@ export async function POST(request: NextRequest) {
     const { teamId, teamSlug } = await resolveTeamContext(request)
     const body = await readJsonObject(request)
     const scrapeId = normalizeScrapeId(body?.scrapeId)
-    if (!body || !scrapeId) {
-      return NextResponse.json({ error: "Missing or invalid scrapeId" }, { status: 400 })
+    const expiresInDays = normalizeShareExpiryDays(body?.expiresInDays ?? DEFAULT_SHARE_EXPIRY_DAYS)
+    const allowDownload = body?.allowDownload === true
+    if (!body || !scrapeId || !expiresInDays) {
+      return NextResponse.json({ error: "Missing or invalid share settings" }, { status: 400 })
     }
 
-    let token = ""
-    for (let attempt = 0; attempt < 3; attempt++) {
-      token = randomToken()
-      try {
-        await createSharedScrape(scrapeId, token, teamId)
-        break
-      } catch (error) {
-        if (attempt === 2) throw error
-      }
-    }
+    const token = randomToken()
+    const share = await createSharedScrape(
+      scrapeId,
+      token,
+      { expiresAt: shareExpiresAt(expiresInDays), allowDownload },
+      teamId
+    )
 
     await recordAuditEvent({
       request,
       action: "share.create",
       outcome: "success",
       teamId,
-      metadata: { scrapeId, teamSlug },
+      metadata: { scrapeId, teamSlug, shareId: share.id, expiresAt: share.expiresAt, allowDownload },
     })
-    return NextResponse.json({ token })
+    return NextResponse.json({ token, share })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     console.error("[share] Failed to create share:", error)
@@ -48,5 +52,50 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "Failed to create share" },
       { status: 500 }
     )
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const authError = await requirePermission(request, "read")
+  if (authError) return authError
+
+  try {
+    const { teamId } = await resolveTeamContext(request)
+    const scrapeId = normalizeScrapeId(request.nextUrl.searchParams.get("scrapeId"))
+    if (!scrapeId) return NextResponse.json({ error: "Missing or invalid scrapeId" }, { status: 400 })
+    return NextResponse.json({ shares: await listSharedScrapeLinks(scrapeId, teamId) })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    console.error("[share] Failed to list shares:", error)
+    return NextResponse.json({ error: "Failed to list share links" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const authError = await requirePermission(request, "write")
+  if (authError) return authError
+
+  try {
+    const team = await resolveTeamContext(request)
+    const body = await readJsonObject(request)
+    const shareId = normalizeShareId(body?.shareId)
+    if (!shareId) return NextResponse.json({ error: "Missing or invalid shareId" }, { status: 400 })
+
+    const share = await revokeSharedScrapeLink(shareId, team.teamId)
+    if (!share) return NextResponse.json({ error: "Active share link not found" }, { status: 404 })
+
+    await recordAuditEvent({
+      request,
+      action: "share.revoke",
+      outcome: "success",
+      actor: team.actor,
+      teamId: team.teamId,
+      metadata: { shareId, scrapeId: share.scrapeId, teamSlug: team.teamSlug },
+    })
+    return NextResponse.json({ share })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    console.error("[share] Failed to revoke share:", error)
+    return NextResponse.json({ error: "Failed to revoke share link" }, { status: 500 })
   }
 }

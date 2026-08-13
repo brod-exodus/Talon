@@ -16,6 +16,7 @@ function json(response: import("node:http").ServerResponse, status: number, body
 test("production smoke exercises cancel, retry, completion, export, sharing, and cleanup", async () => {
   const requests: Array<{ method: string; path: string }> = []
   let queuedScrapes = 0
+  let shareRevoked = false
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1")
     requests.push({ method: request.method ?? "GET", path: url.pathname })
@@ -84,10 +85,29 @@ test("production smoke exercises cancel, retry, completion, export, sharing, and
       })
     }
     if (request.method === "POST" && url.pathname === "/api/share") {
-      return json(response, 200, { token: "smoke-share-token-1234567890123456" })
+      return json(response, 200, {
+        token: "smoke-share-token-1234567890123456",
+        share: {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          scrapeId: "scrape-2",
+          expiresAt: "2026-08-14T12:00:00Z",
+          allowDownload: true,
+        },
+      })
     }
     if (request.method === "GET" && url.pathname === "/api/share/smoke-share-token-1234567890123456") {
-      return json(response, 200, { id: "scrape-2", contributors: [{ username: "octocat" }] })
+      if (shareRevoked) return json(response, 410, { error: "This share link is no longer available" })
+      return json(response, 200, {
+        id: "scrape-2",
+        contributors: [{ username: "octocat" }],
+        share: { expiresAt: "2026-08-14T12:00:00Z", allowDownload: true },
+      })
+    }
+    if (request.method === "DELETE" && url.pathname === "/api/share") {
+      shareRevoked = true
+      return json(response, 200, {
+        share: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revokedAt: "2026-08-13T12:00:00Z" },
+      })
     }
     if (request.method === "DELETE" && url.pathname.startsWith("/api/scrape/")) {
       return json(response, 200, { success: true })

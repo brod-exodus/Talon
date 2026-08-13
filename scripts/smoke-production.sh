@@ -189,15 +189,27 @@ echo "[9/10] Create and verify a public read-only share"
 SHARE_RESPONSE="$(curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/share" \
   -H "Content-Type: application/json" \
-  --data-binary "$(SCRAPE_ID="$SCRAPE_ID" node -e 'process.stdout.write(JSON.stringify({ scrapeId: process.env.SCRAPE_ID }))')")"
+  --data-binary "$(SCRAPE_ID="$SCRAPE_ID" node -e 'process.stdout.write(JSON.stringify({ scrapeId: process.env.SCRAPE_ID, expiresInDays: 1, allowDownload: true }))')")"
 SHARE_TOKEN="$(printf '%s' "$SHARE_RESPONSE" | json_field token || true)"
-[[ -n "$SHARE_TOKEN" ]] || { echo "Share creation failed: $SHARE_RESPONSE"; exit 1; }
+SHARE_ID="$(printf '%s' "$SHARE_RESPONSE" | json_field share.id || true)"
+[[ -n "$SHARE_TOKEN" && -n "$SHARE_ID" ]] || { echo "Share creation failed: $SHARE_RESPONSE"; exit 1; }
 PUBLIC_SHARE="$(curl -sS "$BASE_URL/api/share/$SHARE_TOKEN")"
 printf '%s' "$PUBLIC_SHARE" | SCRAPE_ID="$SCRAPE_ID" node -e '
   const fs = require("node:fs")
   const response = JSON.parse(fs.readFileSync(0, "utf8"))
   if (response.id !== process.env.SCRAPE_ID || !Array.isArray(response.contributors)) process.exit(1)
+  if (response.share?.allowDownload !== true || !response.share?.expiresAt) process.exit(1)
+  if (response.contributors.some((contributor) =>
+    "notes" in contributor || "status" in contributor || "contacted" in contributor || "contactedDate" in contributor
+  )) process.exit(1)
 '
+REVOKE_STATUS="$(curl -sS -o "$TEMP_DIR/revoke-share.json" -w "%{http_code}" -b "$COOKIE_JAR" \
+  -X DELETE "$BASE_URL/api/share" \
+  -H "Content-Type: application/json" \
+  --data-binary "$(SHARE_ID="$SHARE_ID" node -e 'process.stdout.write(JSON.stringify({ shareId: process.env.SHARE_ID }))')")"
+[[ "$REVOKE_STATUS" == "200" ]] || { echo "Share revocation failed: $(cat "$TEMP_DIR/revoke-share.json")"; exit 1; }
+REVOKED_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL/api/share/$SHARE_TOKEN")"
+[[ "$REVOKED_STATUS" == "410" ]] || { echo "Revoked share returned HTTP $REVOKED_STATUS instead of 410"; exit 1; }
 
 echo "[10/10] Clean up smoke artifacts"
 if [[ "$KEEP_SMOKE_ARTIFACTS" == "true" ]]; then

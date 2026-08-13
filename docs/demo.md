@@ -65,9 +65,10 @@ Download **CSV** and explain that Talon intentionally removed its former fake
 
 ### 4. Demonstrate safe sharing
 
-Create a share link, open it in a private window, and confirm that the page is
-read-only. Revoke the link after the demonstration unless it is intentionally
-being retained as a public artifact.
+Create a one-day, view-only share link, open it in a private window, and confirm
+that recruiter notes and outreach state are absent. Return to the share history
+and revoke the link; refreshing the private window should show that the link is
+no longer available.
 
 ### 5. Close with operations visibility
 
