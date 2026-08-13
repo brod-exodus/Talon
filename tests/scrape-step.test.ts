@@ -38,6 +38,30 @@ test("the default hydration batch keeps GitHub concurrency bounded at twenty pro
   assert.equal(step.completesHydration, false)
 })
 
+test("hydration resumes idempotently across multiple worker invocations", () => {
+  const largeCandidateSet = Array.from({ length: 55 }, (_, index) => ({
+    login: `resume-user-${index + 1}`,
+    contributions: 55 - index,
+  }))
+  const persisted = new Set<string>()
+  const batches: string[][] = []
+
+  for (let invocation = 0; invocation < 3; invocation++) {
+    const step = planHydrationStep(largeCandidateSet, persisted, 20)
+    const usernames = step.batch.map((candidate) => candidate.login)
+    batches.push(usernames)
+    usernames.forEach((username) => persisted.add(username))
+  }
+
+  assert.deepEqual(batches.map((batch) => batch.length), [20, 20, 15])
+  assert.equal(new Set(batches.flat()).size, 55)
+  assert.equal(persisted.size, 55)
+
+  const replayedFinalStep = planHydrationStep(largeCandidateSet, persisted, 20)
+  assert.deepEqual(replayedFinalStep.batch, [])
+  assert.equal(replayedFinalStep.completesHydration, true)
+})
+
 test("planOrganizationDiscoveryStep advances one repository step at a time", () => {
   assert.deepEqual(planOrganizationDiscoveryStep(3, 1), {
     repoIndex: 1,

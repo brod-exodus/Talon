@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { recordActivityEvent } from "@/lib/activity"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getDefaultTeamId } from "@/lib/team-context"
+import { planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
@@ -503,22 +504,30 @@ export async function recoverStaleScrapeJobs(
 
   let recovered = 0
   for (const job of (data ?? []) as ScrapeJobRow[]) {
-    if (job.cancel_requested) {
+    const recovery = planStaleScrapeJobRecovery({
+      attempts: job.attempts,
+      maxAttempts: job.max_attempts,
+      cancelRequested: job.cancel_requested,
+    })
+    if (recovery === "canceled") {
       await cancelScrapeJob(job.id, "Canceled while recovering a stale worker lock", job.team_id)
       recovered++
       continue
     }
 
     const now = new Date().toISOString()
+    const recoveryMessage =
+      recovery === "failed"
+        ? "Scrape failed after reaching the stale worker recovery limit"
+        : "Recovered after worker lock expired"
     const { data: updated, error: updateError } = await supabaseAdmin
       .from("scrape_jobs")
       .update({
-        status: "queued",
-        attempts: 0,
-        run_after: now,
+        status: recovery,
+        run_after: recovery === "failed" ? job.run_after : now,
         locked_at: null,
         locked_by: null,
-        last_error: "Recovered after worker lock expired",
+        last_error: recoveryMessage,
         updated_at: now,
       })
       .eq("id", job.id)
@@ -529,10 +538,21 @@ export async function recoverStaleScrapeJobs(
     if (updateError) throw updateError
     if (!updated) continue
     recovered++
-    await recordScrapeJobEvent(job.id, job.scrape_id, "stale_lock_recovered", "Recovered expired worker lock", {
-      previousWorkerId: job.locked_by,
-      previousLockedAt: job.locked_at,
-    })
+    if (recovery === "failed") {
+      await failScrape(job.scrape_id, recoveryMessage)
+    }
+    await recordScrapeJobEvent(
+      job.id,
+      job.scrape_id,
+      recovery === "failed" ? "failed" : "stale_lock_recovered",
+      recovery === "failed" ? recoveryMessage : "Recovered expired worker lock",
+      {
+        previousWorkerId: job.locked_by,
+        previousLockedAt: job.locked_at,
+        attempt: job.attempts,
+        maxAttempts: job.max_attempts,
+      }
+    )
   }
 
   return recovered
@@ -584,20 +604,21 @@ export async function failScrapeJob(
   errorMessage: string,
   options: { retryAfterMs?: number } = {}
 ): Promise<"queued" | "failed"> {
-  const terminal = job.attempts >= job.max_attempts
-  const retryDelayMs =
-    options.retryAfterMs && Number.isFinite(options.retryAfterMs)
-      ? Math.max(60 * 1000, options.retryAfterMs)
-      : Math.min(60, 2 ** job.attempts) * 60 * 1000
-  const nextRun = new Date(Date.now() + retryDelayMs).toISOString()
+  const plan = planScrapeJobFailure({
+    attempts: job.attempts,
+    maxAttempts: job.max_attempts,
+    currentRunAfter: job.run_after,
+    retryAfterMs: options.retryAfterMs,
+  })
+  const terminal = plan.status === "failed"
   const { error } = await supabaseAdmin
     .from("scrape_jobs")
     .update({
-      status: terminal ? "failed" : "queued",
+      status: plan.status,
       locked_at: null,
       locked_by: null,
       last_error: errorMessage,
-      run_after: terminal ? job.run_after : nextRun,
+      run_after: plan.runAfter,
       updated_at: new Date().toISOString(),
     })
     .eq("id", job.id)
@@ -606,7 +627,8 @@ export async function failScrapeJob(
     await failScrape(job.scrape_id, errorMessage)
   }
   await recordScrapeJobEvent(job.id, job.scrape_id, terminal ? "failed" : "retry_scheduled", errorMessage, {
-    nextRun: terminal ? null : nextRun,
+    nextRun: terminal ? null : plan.runAfter,
+    retryDelayMs: plan.retryDelayMs,
     attempt: job.attempts,
     maxAttempts: job.max_attempts,
   })
