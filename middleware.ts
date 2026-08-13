@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { verifyMiddlewareSessionToken } from "@/lib/middleware-auth"
 
-const PROTECTED_PATHS = ["/", "/ecosystems", "/settings", "/watched"]
+export const PROTECTED_PATHS = ["/", "/contributors", "/ecosystems", "/pipeline", "/settings", "/watched"]
 
-export function middleware(request: NextRequest) {
-  if (!process.env.TALON_SESSION_SECRET && !process.env.TALON_ADMIN_PASSWORD) {
+export async function middleware(request: NextRequest) {
+  const secret = process.env.TALON_SESSION_SECRET || process.env.TALON_ADMIN_PASSWORD
+  if (!secret) {
     return NextResponse.next()
   }
 
@@ -13,16 +15,24 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (request.cookies.has("talon_session")) {
+  const token = request.cookies.get("talon_session")?.value
+  if (await verifyMiddlewareSessionToken(token, secret)) {
     return NextResponse.next()
   }
 
   const url = request.nextUrl.clone()
   url.pathname = "/login"
-  url.searchParams.set("next", pathname)
+  url.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
   return NextResponse.redirect(url)
 }
 
 export const config = {
-  matcher: ["/", "/ecosystems/:path*", "/settings", "/watched"],
+  matcher: [
+    "/",
+    "/contributors/:path*",
+    "/ecosystems/:path*",
+    "/pipeline/:path*",
+    "/settings/:path*",
+    "/watched/:path*",
+  ],
 }

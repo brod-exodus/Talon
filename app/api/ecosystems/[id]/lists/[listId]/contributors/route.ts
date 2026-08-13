@@ -8,7 +8,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> }
 ) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

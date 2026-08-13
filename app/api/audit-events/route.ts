@@ -9,7 +9,7 @@ function csvCell(value: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requirePermission(request, "admin")
+  const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
   try {

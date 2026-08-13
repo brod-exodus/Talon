@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -84,7 +84,7 @@ function jsonWithDevMetrics(startedAt: number, query: string, payload: unknown) 
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const startedAt = performance.now()

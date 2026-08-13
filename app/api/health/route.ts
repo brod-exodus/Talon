@@ -144,7 +144,7 @@ function overallStatus(checks: Record<string, HealthCheck>): CheckStatus {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requirePermission(request, "admin")
+  const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
   const [database, github, keepalive, scrapeWorker, scrapeQueue] = await Promise.all([

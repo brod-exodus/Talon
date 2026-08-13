@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { getEcosystemContributorPage } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
@@ -53,7 +53,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const startedAt = performance.now()

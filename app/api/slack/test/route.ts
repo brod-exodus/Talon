@@ -3,7 +3,7 @@ import { requirePermission } from "@/lib/permissions"
 import { normalizeSlackWebhookUrl, readJsonObject } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
-  const authError = requirePermission(request, "admin")
+  const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
   try {

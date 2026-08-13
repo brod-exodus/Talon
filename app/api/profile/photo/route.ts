@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthSession, requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
+import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -49,7 +50,7 @@ function photoStorageNotReady() {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const session = getAuthSession(request)
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const session = getAuthSession(request)

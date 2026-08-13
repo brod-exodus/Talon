@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity"
 import { getEcosystems, createEcosystem } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
@@ -7,7 +6,7 @@ import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeName, readJsonObject } from "@/lib/validation"
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

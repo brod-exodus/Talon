@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthSession, requireAuth } from "@/lib/auth"
-import { sessionHasPermission } from "@/lib/permissions"
+import { getAuthSession } from "@/lib/auth"
+import { requirePermission, sessionHasPermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -29,7 +29,7 @@ async function getUserProfileFields(teamId: string, email: string): Promise<User
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
 import { getActiveScrapes } from "@/lib/db"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -18,7 +18,7 @@ function jsonWithDevMetrics(payload: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {

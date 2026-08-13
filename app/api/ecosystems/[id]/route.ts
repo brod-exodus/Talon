@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { getEcosystem, deleteEcosystem } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -9,7 +8,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireAuth(_request)
+  const authError = await requirePermission(_request, "read")
   if (authError) return authError
 
   try {
@@ -35,7 +34,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requirePermission(_request, "write")
+  const authError = await requirePermission(_request, "write")
   if (authError) return authError
 
   try {

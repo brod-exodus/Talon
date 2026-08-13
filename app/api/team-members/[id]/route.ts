@@ -78,7 +78,7 @@ function isLastOwner(members: TeamMemberRow[], targetId: string): boolean {
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = requirePermission(request, "admin")
+  const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
   try {
@@ -124,7 +124,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = requirePermission(request, "admin")
+  const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
   try {

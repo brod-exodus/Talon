@@ -8,7 +8,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> }
 ) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {
@@ -42,7 +42,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> }
 ) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {
