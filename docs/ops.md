@@ -51,6 +51,25 @@ This rejects missing or duplicate migration numbers, an application/version
 mismatch, and new migrations that do not record themselves in
 `talon_schema_migrations`.
 
+### Atomic scrape enqueue
+
+Migration `028_idempotent_scrape_enqueue.sql` makes the start-scrape command a
+single database transaction. The scrape, queue job, optional project link, and
+initial job event either all exist or none do. Each request carries a UUID
+`Idempotency-Key`; retrying the same payload with the same key returns the
+original scrape and job, while reusing a key for different input returns HTTP
+`409`.
+
+Apply migration 028 before deploying the compatible application. After deploy,
+run `pnpm smoke:production`; its completion scrape is submitted twice with one
+key and must return the same `scrapeId` and `jobId`. No new environment variable
+is required.
+
+Rollback the application normally if needed. Migration 028 is additive and can
+remain installed; do not drop its request records during an application
+rollback. The schema health check will report that the database is ahead until
+the compatible application is redeployed.
+
 Security hardening migrations include:
 
 ```text
@@ -60,6 +79,7 @@ db/migrations/024_system_runs.sql
 db/migrations/025_contactable_scrape_contributors_rpc.sql
 db/migrations/026_share_lifecycle_and_retention.sql
 db/migrations/027_schema_version_contract.sql
+db/migrations/028_idempotent_scrape_enqueue.sql
 ```
 
 They create or enforce:

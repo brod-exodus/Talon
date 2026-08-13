@@ -13,16 +13,21 @@ function json(response: import("node:http").ServerResponse, status: number, body
   response.end(JSON.stringify(body))
 }
 
-test("production smoke exercises cancel, retry, completion, export, sharing, and cleanup", async () => {
-  const requests: Array<{ method: string; path: string; origin?: string }> = []
+test("production smoke exercises idempotent enqueue, cancel, retry, completion, export, sharing, and cleanup", async () => {
+  const requests: Array<{ method: string; path: string; origin?: string; idempotencyKey?: string }> = []
   let queuedScrapes = 0
   let shareRevoked = false
+  const queuedByIdempotencyKey = new Map<string, { scrapeId: string; jobId: string }>()
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1")
     requests.push({
       method: request.method ?? "GET",
       path: url.pathname,
       origin: typeof request.headers.origin === "string" ? request.headers.origin : undefined,
+      idempotencyKey:
+        typeof request.headers["idempotency-key"] === "string"
+          ? request.headers["idempotency-key"]
+          : undefined,
     })
     response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
     response.setHeader("X-Content-Type-Options", "nosniff")
@@ -45,11 +50,20 @@ test("production smoke exercises cancel, retry, completion, export, sharing, and
       })
     }
     if (request.method === "POST" && url.pathname === "/api/scrape") {
+      const idempotencyKey = request.headers["idempotency-key"]
+      if (typeof idempotencyKey !== "string") return json(response, 400, { error: "Missing idempotency key" })
+      const existing = queuedByIdempotencyKey.get(idempotencyKey)
+      if (existing) return json(response, 202, { ...existing, status: "queued", replayed: true })
       queuedScrapes++
-      return json(response, 202, {
+      const queued = {
         scrapeId: `scrape-${queuedScrapes}`,
         jobId: `00000000-0000-4000-8000-00000000000${queuedScrapes}`,
+      }
+      queuedByIdempotencyKey.set(idempotencyKey, queued)
+      return json(response, 202, {
+        ...queued,
         status: "queued",
+        replayed: false,
       })
     }
     if (request.method === "POST" && /\/api\/scrape-jobs\/[^/]+\/cancel$/.test(url.pathname)) {
@@ -152,7 +166,9 @@ test("production smoke exercises cancel, retry, completion, export, sharing, and
 
     assert.equal(exitCode, 0, `stdout:\n${stdout}\nstderr:\n${stderr}`)
     assert.match(stdout, /Production smoke passed/)
-    assert.equal(requests.filter((entry) => entry.method === "POST" && entry.path === "/api/scrape").length, 2)
+    const scrapeStarts = requests.filter((entry) => entry.method === "POST" && entry.path === "/api/scrape")
+    assert.equal(scrapeStarts.length, 3)
+    assert.equal(new Set(scrapeStarts.map((entry) => entry.idempotencyKey)).size, 2)
     assert.equal(requests.filter((entry) => entry.method === "DELETE" && entry.path.startsWith("/api/scrape/")).length, 2)
     assert.ok(requests.some((entry) => entry.path === "/api/share/smoke-share-token-1234567890123456"))
     assert.ok(requests
