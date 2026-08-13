@@ -103,7 +103,9 @@ resources through a team-scoped idempotency key. Contributor totals use
 job-scoped upserts. Persisted contributors are skipped
 when a hydration step resumes. GitHub rate-limit failures use delayed retries,
 manual cancellation is checked between steps, and terminal failures remain
-visible with their recent job events.
+visible with their recent job events. Yield, failure, completion, cancellation,
+manual retry, and stale-lock recovery use row-locked database transactions, so
+a canceled job or newer worker lease cannot be overwritten by an older worker.
 
 ## Stack
 

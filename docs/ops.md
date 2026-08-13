@@ -125,6 +125,25 @@ rollback. The prior enqueue RPC remains compatible because the new request ID
 argument is optional. A rolled-back application will report the database as
 ahead until the compatible release is restored.
 
+### Lease-safe worker transitions
+
+Migration `030_lease_safe_job_transitions.sql` moves worker yield, failure,
+completion, cancellation, manual retry, and stale-lock recovery into database
+transactions. Each worker transition locks the job row and checks that it is
+still `running`, still belongs to the calling worker, and has not been canceled.
+Control and terminal transitions update the job and parent scrape together.
+This prevents an interrupted or stale worker from reviving a canceled job,
+overwriting a newer worker's state, or leaving the job and scrape inconsistent.
+
+Apply migration 030 before deploying the compatible application. No environment
+variable or scheduler change is required. After deployment, run
+`pnpm smoke:production`; its cancel/retry flow confirms that canceled state
+remains stable before retrying.
+
+Migration 030 is additive and may remain installed during an application
+rollback. The prior application does not call its new functions, so rolling back
+only requires redeploying the previous application version.
+
 Security hardening migrations include:
 
 ```text
@@ -136,6 +155,7 @@ db/migrations/026_share_lifecycle_and_retention.sql
 db/migrations/027_schema_version_contract.sql
 db/migrations/028_idempotent_scrape_enqueue.sql
 db/migrations/029_operation_correlation.sql
+db/migrations/030_lease_safe_job_transitions.sql
 ```
 
 They create or enforce:

@@ -7,10 +7,9 @@ import {
   recoverStaleScrapeJobs,
   recordScrapeJobEvent,
   requeueScrapeJob,
-  succeedScrapeJob,
 } from "@/lib/db"
 import { GitHubApiError } from "@/lib/github"
-import { runScrapeJob, ScrapeJobCanceledError } from "@/lib/scrape-runner"
+import { runScrapeJob, ScrapeJobCanceledError, ScrapeJobLeaseLostError } from "@/lib/scrape-runner"
 import { runBoundedJobSteps } from "@/lib/worker-budget"
 import { sanitizeOperationalError } from "@/lib/logger"
 
@@ -18,7 +17,7 @@ export type ScrapeWorkerResult = {
   jobId: string
   scrapeId: string
   teamId: string
-  status: "succeeded" | "queued" | "failed" | "canceled"
+  status: "succeeded" | "queued" | "failed" | "canceled" | "skipped"
   steps?: number
   elapsedMs?: number
   error?: string
@@ -59,7 +58,7 @@ export async function runScrapeWorker(
         runStep: runScrapeJob,
         refreshJob: async () => await getScrapeJobForWorker(job.id, workerId),
       })
-      const status = execution.completed ? await succeedScrapeJob(job.id) : "queued"
+      let status: ScrapeWorkerResult["status"] = "succeeded"
       if (!execution.completed) {
         await recordScrapeJobEvent(
           job.id,
@@ -68,7 +67,12 @@ export async function runScrapeWorker(
           "Worker invocation yielded before the job completed",
           { workerId, steps: execution.steps, elapsedMs: execution.elapsedMs }
         )
-        await requeueScrapeJob(job.id, job.scrape_id)
+        const transition = await requeueScrapeJob(job)
+        status = transition.applied
+          ? "queued"
+          : transition.status === "canceled"
+            ? "canceled"
+            : "skipped"
       }
       results.push({
         jobId: job.id,
@@ -93,14 +97,30 @@ export async function runScrapeWorker(
         })
         continue
       }
-      const status = await failScrapeJob(job, message, {
+      if (error instanceof ScrapeJobLeaseLostError) {
+        await recordScrapeJobEvent(job.id, job.scrape_id, "worker_lease_lost", message, { workerId })
+        results.push({
+          jobId: job.id,
+          scrapeId: job.scrape_id,
+          teamId: job.team_id,
+          status: "skipped",
+          error: message,
+          originRequestId: job.request_id,
+        })
+        continue
+      }
+      const transition = await failScrapeJob(job, message, {
         retryAfterMs: error instanceof GitHubApiError ? error.retryAfterMs : undefined,
       })
       results.push({
         jobId: job.id,
         scrapeId: job.scrape_id,
         teamId: job.team_id,
-        status,
+        status: transition.applied
+          ? transition.status as "queued" | "failed"
+          : transition.status === "canceled"
+            ? "canceled"
+            : "skipped",
         error: message,
         originRequestId: job.request_id,
       })

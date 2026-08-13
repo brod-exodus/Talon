@@ -34,6 +34,20 @@ export class ScrapeJobCanceledError extends Error {
   }
 }
 
+export class ScrapeJobLeaseLostError extends Error {
+  constructor(status: string) {
+    super(`Scrape worker lease was lost; job is now ${status}`)
+    this.name = "ScrapeJobLeaseLostError"
+  }
+}
+
+async function finishScrape(job: ScrapeJobRow): Promise<boolean> {
+  const transition = await completeScrape(job, [])
+  if (transition.applied) return true
+  if (transition.status === "canceled") throw new ScrapeJobCanceledError()
+  throw new ScrapeJobLeaseLostError(transition.status)
+}
+
 function mergeContacts(
   structured: { email?: string; twitter?: string; linkedin?: string; website?: string },
   fromBio: ReturnType<typeof extractContactsFromBio>,
@@ -229,12 +243,10 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   )
   if (!hydrated) return false
   await ensureNotCanceled(job.id)
-  await completeScrape(scrapeId, [])
-  return true
+  return await finishScrape(job)
 }
 
 async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
-  const scrapeId = job.scrape_id
   const repo = job.target
   const minContributions = job.min_contributions
   const state = (job.state ?? {}) as ScrapeJobState
@@ -263,8 +275,7 @@ async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
   const hydrated = await hydrateCandidates(job, candidates)
   if (!hydrated) return false
   await ensureNotCanceled(job.id)
-  await completeScrape(scrapeId, [])
-  return true
+  return await finishScrape(job)
 }
 
 export async function runScrapeJob(job: ScrapeJobRow): Promise<boolean> {

@@ -153,6 +153,11 @@ export type ScrapeJobSummary = {
   updatedAt: string
 }
 
+export type ScrapeJobTransitionResult = {
+  applied: boolean
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled"
+}
+
 export type ScrapeEnqueueRequest = {
   scrapeId: string
   jobId: string
@@ -368,31 +373,6 @@ export async function getScrapeJobForWorker(id: string, workerId: string): Promi
   return data as ScrapeJobRow
 }
 
-export async function succeedScrapeJob(id: string): Promise<"succeeded" | "canceled"> {
-  const { data, error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      status: "succeeded",
-      locked_at: null,
-      locked_by: null,
-      last_error: null,
-      cancel_requested: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("cancel_requested", false)
-    .neq("status", "canceled")
-    .select("id")
-    .maybeSingle()
-  if (error) throw error
-  if (!data) {
-    await cancelScrapeJob(id)
-    return "canceled"
-  }
-  await recordScrapeJobEvent(id, null, "succeeded", "Scrape job succeeded")
-  return "succeeded"
-}
-
 export async function updateScrapeJobState(id: string, state: Record<string, unknown>): Promise<void> {
   const { error } = await supabaseAdmin
     .from("scrape_jobs")
@@ -553,55 +533,30 @@ export async function recoverStaleScrapeJobs(
 
   let recovered = 0
   for (const job of (data ?? []) as ScrapeJobRow[]) {
-    const recovery = planStaleScrapeJobRecovery({
+    const plannedRecovery = planStaleScrapeJobRecovery({
       attempts: job.attempts,
       maxAttempts: job.max_attempts,
       cancelRequested: job.cancel_requested,
     })
-    if (recovery === "canceled") {
-      await cancelScrapeJob(job.id, "Canceled while recovering a stale worker lock", job.team_id)
-      recovered++
-      continue
-    }
-
-    const now = new Date().toISOString()
     const recoveryMessage =
-      recovery === "failed"
+      plannedRecovery === "failed"
         ? "Scrape failed after reaching the stale worker recovery limit"
-        : "Recovered after worker lock expired"
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("scrape_jobs")
-      .update({
-        status: recovery,
-        run_after: recovery === "failed" ? job.run_after : now,
-        locked_at: null,
-        locked_by: null,
-        last_error: recoveryMessage,
-        updated_at: now,
+        : plannedRecovery === "canceled"
+          ? "Canceled while recovering a stale worker lock"
+          : "Recovered after worker lock expired"
+    const { data: transitionData, error: transitionError } = await supabaseAdmin
+      .rpc("recover_stale_scrape_job", {
+        p_job_id: job.id,
+        p_expected_worker_id: job.locked_by,
+        p_cutoff: cutoff,
+        p_next_status: plannedRecovery,
+        p_error: recoveryMessage,
       })
-      .eq("id", job.id)
-      .eq("status", "running")
-      .lt("locked_at", cutoff)
-      .select("id")
-      .maybeSingle()
-    if (updateError) throw updateError
-    if (!updated) continue
+      .single()
+    if (transitionError) throw transitionError
+    const transition = transitionData as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+    if (!transition.applied) continue
     recovered++
-    if (recovery === "failed") {
-      await failScrape(job.scrape_id, recoveryMessage)
-    }
-    await recordScrapeJobEvent(
-      job.id,
-      job.scrape_id,
-      recovery === "failed" ? "failed" : "stale_lock_recovered",
-      recovery === "failed" ? recoveryMessage : "Recovered expired worker lock",
-      {
-        previousWorkerId: job.locked_by,
-        previousLockedAt: job.locked_at,
-        attempt: job.attempts,
-        maxAttempts: job.max_attempts,
-      }
-    )
   }
 
   return recovered
@@ -612,39 +567,22 @@ export async function cancelScrapeJob(
   reason = "Scrape canceled",
   teamId?: string
 ): Promise<ScrapeJobSummary> {
-  const now = new Date().toISOString()
-  const { data, error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      status: "canceled",
-      cancel_requested: true,
-      locked_at: null,
-      locked_by: null,
-      last_error: reason,
-      updated_at: now,
+  const { data: transitionData, error: transitionError } = await supabaseAdmin
+    .rpc("cancel_scrape_job", {
+      p_job_id: id,
+      p_team_id: teamId ?? null,
+      p_reason: reason,
     })
-    .eq("id", id)
-    .match(teamId ? { team_id: teamId } : {})
-    .neq("status", "succeeded")
-    .select("*")
-    .maybeSingle()
+    .single()
+  if (transitionError) throw transitionError
+  const transition = transitionData as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+  if (!transition.applied) throw new Error("Succeeded scrape jobs cannot be canceled")
+  let query = supabaseAdmin.from("scrape_jobs").select("*").eq("id", id)
+  if (teamId) query = query.eq("team_id", teamId)
+  const { data, error } = await query.maybeSingle()
   if (error) throw error
-  if (!data) throw new Error("Succeeded scrape jobs cannot be canceled")
-
+  if (!data) throw new Error("Scrape job not found after cancellation")
   const job = data as ScrapeJobRow
-  const { error: scrapeError } = await supabaseAdmin
-    .from("scrapes")
-    .update({
-      status: "canceled",
-      completed_at: now,
-      error: reason,
-      current_user_login: null,
-    })
-    .eq("id", job.scrape_id)
-    .eq("team_id", job.team_id)
-  if (scrapeError) throw scrapeError
-
-  await recordScrapeJobEvent(job.id, job.scrape_id, "canceled", reason)
   return toScrapeJobSummary(job)
 }
 
@@ -652,55 +590,42 @@ export async function failScrapeJob(
   job: ScrapeJobRow,
   errorMessage: string,
   options: { retryAfterMs?: number } = {}
-): Promise<"queued" | "failed"> {
+): Promise<ScrapeJobTransitionResult> {
   const plan = planScrapeJobFailure({
     attempts: job.attempts,
     maxAttempts: job.max_attempts,
     currentRunAfter: job.run_after,
     retryAfterMs: options.retryAfterMs,
   })
-  const terminal = plan.status === "failed"
-  const { error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      status: plan.status,
-      locked_at: null,
-      locked_by: null,
-      last_error: errorMessage,
-      run_after: plan.runAfter,
-      updated_at: new Date().toISOString(),
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("fail_scrape_job_step", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_next_status: plan.status,
+      p_run_after: plan.runAfter,
+      p_error: errorMessage,
+      p_retry_delay_ms: plan.retryDelayMs,
     })
-    .eq("id", job.id)
+    .single()
   if (error) throw error
-  if (terminal) {
-    await failScrape(job.scrape_id, errorMessage)
-  }
-  await recordScrapeJobEvent(job.id, job.scrape_id, terminal ? "failed" : "retry_scheduled", errorMessage, {
-    nextRun: terminal ? null : plan.runAfter,
-    retryDelayMs: plan.retryDelayMs,
-    attempt: job.attempts,
-    maxAttempts: job.max_attempts,
-  })
-  return terminal ? "failed" : "queued"
+  const row = data as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+  return { applied: Boolean(row.applied), status: row.result_status }
 }
 
-export async function requeueScrapeJob(id: string, scrapeId: string): Promise<void> {
-  const now = new Date().toISOString()
-  const { error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      status: "queued",
-      attempts: 0,
-      run_after: now,
-      locked_at: null,
-      locked_by: null,
-      last_error: null,
-      updated_at: now,
+export async function requeueScrapeJob(job: ScrapeJobRow): Promise<ScrapeJobTransitionResult> {
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("yield_scrape_job", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
     })
-    .eq("id", id)
-    .eq("status", "running")
+    .single()
   if (error) throw error
-  await recordScrapeJobEvent(id, scrapeId, "step_completed", "Scrape step completed; job requeued")
+  const row = data as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+  return { applied: Boolean(row.applied), status: row.result_status }
 }
 
 export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promise<ScrapeJobSummary[]> {
@@ -737,44 +662,21 @@ export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promis
 }
 
 export async function retryScrapeJob(id: string, teamId?: string): Promise<ScrapeJobSummary> {
-  const now = new Date().toISOString()
-  const { data, error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      status: "queued",
-      attempts: 0,
-      run_after: now,
-      locked_at: null,
-      locked_by: null,
-      last_error: null,
-      cancel_requested: false,
-      updated_at: now,
+  const { data: transitionData, error: transitionError } = await supabaseAdmin
+    .rpc("retry_scrape_job", {
+      p_job_id: id,
+      p_team_id: teamId ?? null,
     })
-    .eq("id", id)
-    .match(teamId ? { team_id: teamId } : {})
-    .in("status", ["failed", "canceled", "queued"])
-    .select("*")
-    .maybeSingle()
+    .single()
+  if (transitionError) throw transitionError
+  const transition = transitionData as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+  if (!transition.applied) throw new Error("Only failed, canceled, or queued retry scrape jobs can be retried")
+  let query = supabaseAdmin.from("scrape_jobs").select("*").eq("id", id)
+  if (teamId) query = query.eq("team_id", teamId)
+  const { data, error } = await query.maybeSingle()
   if (error) throw error
-  if (!data) throw new Error("Only failed, canceled, or queued retry scrape jobs can be retried")
-
+  if (!data) throw new Error("Scrape job not found after retry")
   const job = data as ScrapeJobRow
-  const { error: scrapeError } = await supabaseAdmin
-    .from("scrapes")
-    .update({
-      status: "active",
-      progress: 0,
-      current: 0,
-      total: 0,
-      current_user_login: null,
-      completed_at: null,
-      error: null,
-    })
-    .eq("id", job.scrape_id)
-    .eq("team_id", job.team_id)
-  if (scrapeError) throw scrapeError
-
-  await recordScrapeJobEvent(job.id, job.scrape_id, "retried", "Scrape job was manually requeued")
   return toScrapeJobSummary(job)
 }
 
@@ -790,14 +692,6 @@ export async function updateScrapeProgress(
       total: data.total,
       current_user_login: data.current_user_login ?? null,
     })
-    .eq("id", id)
-  if (error) throw error
-}
-
-export async function failScrape(id: string, errorMessage: string): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from("scrapes")
-    .update({ status: "failed", error: errorMessage })
     .eq("id", id)
   if (error) throw error
 }
@@ -1001,9 +895,12 @@ export async function getScrapeContributorStats(id: string): Promise<{
 }
 
 export async function completeScrape(
-  id: string,
+  job: ScrapeJobRow,
   contributors: ScrapeContributorProfile[]
-): Promise<void> {
+): Promise<ScrapeJobTransitionResult> {
+  const id = job.scrape_id
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
   await persistScrapeContributors(id, contributors)
   const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
   const { data: scrape, error: scrapeFetchError } = await supabaseAdmin
@@ -1013,19 +910,21 @@ export async function completeScrape(
     .maybeSingle()
   if (scrapeFetchError) throw scrapeFetchError
   const resolvedTeamId = scrape?.team_id ?? (await getDefaultTeamId())
-  const { error } = await supabaseAdmin
-    .from("scrapes")
-    .update({
-      status: "completed",
-      progress: 100,
-      completed_at: new Date().toISOString(),
-      error: null,
-      current_user_login: null,
-      contact_info_count: contactInfoCount,
-      total_contributors: contributorTotal,
+  const { data: transitionData, error: transitionError } = await supabaseAdmin
+    .rpc("complete_scrape_job", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_contributor_total: contributorTotal,
+      p_contact_info_count: contactInfoCount,
     })
-    .eq("id", id)
-  if (error) throw error
+    .single()
+  if (transitionError) throw transitionError
+  const transitionRow = transitionData as {
+    applied: boolean
+    result_status: ScrapeJobTransitionResult["status"]
+  }
+  const transition = { applied: Boolean(transitionRow.applied), status: transitionRow.result_status }
+  if (!transition.applied) return transition
 
   const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
     .from("ecosystem_scrapes")
@@ -1051,6 +950,7 @@ export async function completeScrape(
       contactInfoCount,
     },
   })
+  return transition
 }
 
 export type AppScrape = {
