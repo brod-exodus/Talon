@@ -2,24 +2,40 @@
 
 ## Production Smoke Check
 
-1. Open `/api/health` while logged in and confirm every check is `ok`.
-2. Start a small repository scrape and confirm it moves from queued to running to completed.
-3. Force a bad repository scrape and confirm retry controls appear.
-4. Run Watched Repos `Check Now` and confirm `last checked` updates.
-5. Create a share link and open it in a private browser window.
+Run the automated release smoke after deployment:
+
+```bash
+BASE_URL="https://your-domain.example" \
+ADMIN_EMAIL="owner@example.com" \
+ADMIN_PASSWORD="..." \
+SMOKE_REPO="octocat/Hello-World" \
+pnpm smoke:production
+```
+
+It verifies:
+
+1. Login and admin health access.
+2. Supabase, GitHub credentials, recent keepalive, and recent worker activity.
+3. Direct keepalive authentication when `CRON_SECRET` is provided.
+4. Queue creation, cancellation stability, and retry.
+5. Queued work completing through the durable worker.
+6. Contributor pagination and CSV generation using Talon's production exporter.
+7. Public read-only share creation and access without an authenticated cookie.
+8. Cleanup of both smoke scrapes and the cascading share token.
+
+The script exits non-zero on the first failed acceptance check. By default it
+deletes its artifacts even when a later check fails. Set
+`KEEP_SMOKE_ARTIFACTS=true` only for deliberate debugging.
 
 ## Post-Deploy Smoke Checklist
 
 Run this after every production deploy:
 
-1. Open `/api/health` and confirm all checks are `ok`.
-2. Login with the admin password.
-3. Verify `Settings -> Recent Security Events` loads and logs new actions.
-4. Run a small scrape and confirm queued -> running -> completed.
-5. Force a failing scrape and confirm retry path works.
-6. Run Watched Repos `Check Now` and confirm `last checked` updates.
-7. Create a share link and verify read-only access in a private window.
-8. Verify Vercel deploy checks are green and no unresolved preview comments remain.
+1. Run `pnpm smoke:production` and save the pass/fail result in the PR or release notes.
+2. Open Settings and verify Recent Security Events includes the smoke actions.
+3. Download one CSV from the UI and open it to confirm the browser download path.
+4. Run Watched Repos `Check Now` and confirm `last checked` updates.
+5. Verify Vercel deploy checks are green and no unresolved preview comments remain.
 
 ## Database Migrations
 

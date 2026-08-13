@@ -50,6 +50,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
 import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 import { setBoundedMapEntry } from "@/lib/bounded-cache"
+import { buildCsvContent, hasExportableContact } from "@/lib/csv-export"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,41 +131,6 @@ function formatTimeAgo(date: string | Date) {
   if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`
   const days = Math.floor(hours / 24)
   return `${days} day${days > 1 ? "s" : ""} ago`
-}
-
-function buildCsvContent(contributors: Contributor[]): string {
-  const sorted = [...contributors].sort((a, b) => b.contributions - a.contributions)
-  const headers = [
-    "#", "Name", "Username", "GitHub Profile", "Contributions",
-    "Email", "Twitter", "LinkedIn", "Website",
-    "Contacted", "Contact Date", "Notes", "Status",
-  ]
-  const rows = sorted.map((c, i) => [
-    i + 1,
-    c.name,
-    c.username,
-    `https://github.com/${c.username}`,
-    c.contributions,
-    c.contacts?.email?.trim() || "",
-    c.contacts?.twitter?.trim() ? `https://twitter.com/${c.contacts.twitter}` : "",
-    c.contacts?.linkedin?.trim() || "",
-    c.contacts?.website?.trim() || "",
-    c.contacted ? "Yes" : "No",
-    c.contactedDate || "",
-    c.notes || "",
-    c.status || "",
-  ])
-  return [
-    headers.join(","),
-    ...rows.map((row) =>
-      row.map((cell) => {
-        const s = String(cell)
-        return s.includes(",") || s.includes('"') || s.includes("\n")
-          ? `"${s.replace(/"/g, '""')}"`
-          : s
-      }).join(",")
-    ),
-  ].join("\n")
 }
 
 function triggerDownload(content: string, filename: string, mime: string) {
@@ -322,12 +288,7 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
  * null/undefined/empty-string depending on what the API returns.
  */
 function hasContactInfo(c: Contributor): boolean {
-  return !!(
-    c.contacts?.email?.trim() ||
-    c.contacts?.twitter?.trim() ||
-    c.contacts?.linkedin?.trim() ||
-    c.contacts?.website?.trim()
-  )
+  return hasExportableContact(c)
 }
 
 /** Case-insensitive match on name, username, email, LinkedIn URL, or Twitter handle */
