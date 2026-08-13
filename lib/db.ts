@@ -148,6 +148,21 @@ export type ScrapeJobSummary = {
   updatedAt: string
 }
 
+export type ScrapeEnqueueRequest = {
+  scrapeId: string
+  jobId: string
+  type: "organization" | "repository"
+  target: string
+  minContributions: number
+  projectId: string | null
+}
+
+export type EnqueueScrapeResult = {
+  scrapeId: string
+  jobId: string
+  replayed: boolean
+}
+
 function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
   return {
     id: row.id,
@@ -224,63 +239,59 @@ export function toAppContributor(c: ContributorWithContributions): {
   }
 }
 
-export async function createScrape(
-  id: string,
-  type: string,
-  target: string,
-  minContributions = 1,
+export async function getScrapeEnqueueRequest(
+  idempotencyKey: string,
   teamId?: string
-): Promise<void> {
-  const resolvedTeamId = await resolveTeamId(teamId)
-  const { error } = await supabaseAdmin.from("scrapes").insert({
-    id,
-    team_id: resolvedTeamId,
-    type,
-    target,
-    status: "active",
-    progress: 0,
-    current: 0,
-    total: 0,
-    current_user_login: null,
-    started_at: new Date().toISOString(),
-    completed_at: null,
-    error: null,
-    min_contributions: Math.max(1, Math.floor(minContributions)),
-  })
-  if (error) throw error
-}
-
-export async function createScrapeJob(
-  scrapeId: string,
-  type: "organization" | "repository",
-  target: string,
-  minContributions = 1,
-  teamId?: string
-): Promise<ScrapeJobRow> {
+): Promise<ScrapeEnqueueRequest | null> {
   const resolvedTeamId = await resolveTeamId(teamId)
   const { data, error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .insert({
-      scrape_id: scrapeId,
-      team_id: resolvedTeamId,
-      type,
-      target,
-      min_contributions: Math.max(1, Math.floor(minContributions)),
-      status: "queued",
-      run_after: new Date().toISOString(),
-      state: {},
-      cancel_requested: false,
+    .from("scrape_enqueue_requests")
+    .select("scrape_id, job_id, scrape_type, target, min_contributions, project_id")
+    .eq("team_id", resolvedTeamId)
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  return {
+    scrapeId: data.scrape_id as string,
+    jobId: data.job_id as string,
+    type: data.scrape_type as "organization" | "repository",
+    target: data.target as string,
+    minContributions: data.min_contributions as number,
+    projectId: (data.project_id as string | null) ?? null,
+  }
+}
+
+export async function enqueueScrape(input: {
+  scrapeId: string
+  idempotencyKey: string
+  type: "organization" | "repository"
+  target: string
+  minContributions: number
+  projectId: string | null
+  teamId?: string
+}): Promise<EnqueueScrapeResult> {
+  const resolvedTeamId = await resolveTeamId(input.teamId)
+  const { data, error } = await supabaseAdmin
+    .rpc("enqueue_scrape", {
+      p_team_id: resolvedTeamId,
+      p_idempotency_key: input.idempotencyKey,
+      p_scrape_id: input.scrapeId,
+      p_type: input.type,
+      p_target: input.target,
+      p_min_contributions: Math.max(1, Math.floor(input.minContributions)),
+      p_project_id: input.projectId,
     })
-    .select("*")
     .single()
   if (error) throw error
-  const job = data as ScrapeJobRow
-  await recordScrapeJobEvent(job.id, job.scrape_id, "queued", `Queued ${type} scrape for ${target}`, {
-    type,
-    target,
-    minContributions: Math.max(1, Math.floor(minContributions)),
-  })
-  return job
+  const row = data as { scrape_id: string; job_id: string; replayed: boolean }
+
+  return {
+    scrapeId: row.scrape_id,
+    jobId: row.job_id,
+    replayed: Boolean(row.replayed),
+  }
 }
 
 export async function claimNextScrapeJob(workerId: string, teamId?: string): Promise<ScrapeJobRow | null> {

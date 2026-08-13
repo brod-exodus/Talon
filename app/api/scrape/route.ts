@@ -3,7 +3,7 @@ import { after, type NextRequest, NextResponse } from "next/server"
 import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
-import { addScrapeToEcosystem, createScrape, createScrapeJob, ecosystemExists } from "@/lib/db"
+import { enqueueScrape, ecosystemExists, getScrapeEnqueueRequest } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -16,6 +16,20 @@ import {
 } from "@/lib/validation"
 
 export const maxDuration = 60
+
+const IDEMPOTENCY_CONFLICT_MESSAGE = "Idempotency key was already used for a different scrape request"
+
+function scheduleImmediateWorker(teamId: string, teamSlug: string) {
+  // Supabase Cron remains the recovery path if this post-response invocation
+  // is interrupted or another worker already owns the job.
+  after(async () => {
+    try {
+      await runScrapeWorkerOperation({ trigger: "queue", teamId, teamSlug })
+    } catch (error) {
+      console.error("[scrape-dispatch] Immediate worker invocation failed; cron will retry:", error)
+    }
+  })
+}
 
 function githubTargetNotFoundResponse(type: "organization" | "repository", target: string) {
   const label = type === "repository" ? "Repository" : "Organization"
@@ -51,6 +65,7 @@ export async function POST(request: NextRequest) {
     const minContributions = parseMinContributions(body.minContributions)
     const rawProjectId = typeof body.projectId === "string" ? body.projectId.trim() : ""
     const projectId = rawProjectId ? normalizeUuid(rawProjectId) : null
+    const idempotencyKey = normalizeUuid(request.headers.get("Idempotency-Key"))
 
     if (!type || !target) {
       return NextResponse.json({ error: "Missing or invalid type or target" }, { status: 400 })
@@ -58,6 +73,58 @@ export async function POST(request: NextRequest) {
 
     if (rawProjectId && !projectId) {
       return NextResponse.json({ error: "Missing or invalid projectId" }, { status: 400 })
+    }
+
+    if (!idempotencyKey) {
+      return NextResponse.json(
+        { error: "A valid Idempotency-Key header is required" },
+        { status: 400 }
+      )
+    }
+
+    // A retry should not consume GitHub rate limit or depend on credentials
+    // still being healthy. Return the original durable resource immediately.
+    const existingRequest = await getScrapeEnqueueRequest(idempotencyKey, teamId)
+    if (existingRequest) {
+      const sameRequest =
+        existingRequest.type === type &&
+        existingRequest.target === target &&
+        existingRequest.minContributions === minContributions &&
+        existingRequest.projectId === projectId
+
+      if (!sameRequest) {
+        return NextResponse.json({ error: IDEMPOTENCY_CONFLICT_MESSAGE }, { status: 409 })
+      }
+
+      await recordAuditEvent({
+        request,
+        action: "scrape.start",
+        outcome: "success",
+        teamId,
+        metadata: {
+          scrapeId: existingRequest.scrapeId,
+          jobId: existingRequest.jobId,
+          teamSlug,
+          type,
+          target,
+          minContributions,
+          projectId,
+          replayed: true,
+        },
+      })
+      scheduleImmediateWorker(teamId, teamSlug)
+
+      return NextResponse.json(
+        {
+          scrapeId: existingRequest.scrapeId,
+          jobId: existingRequest.jobId,
+          status: "queued",
+          dispatch: "immediate",
+          replayed: true,
+          message: "Existing scrape request returned",
+        },
+        { status: 202 }
+      )
     }
 
     const token = process.env.GITHUB_TOKEN?.trim()
@@ -95,46 +162,52 @@ export async function POST(request: NextRequest) {
       return githubTargetNotFoundResponse(type, target)
     }
 
-    const scrapeId = `scrape-${randomUUID()}`
-    await createScrape(scrapeId, type, target, minContributions, teamId)
-    if (projectId) {
-      await addScrapeToEcosystem(projectId, scrapeId, teamId)
-    }
-    const job = await createScrapeJob(scrapeId, type, target, minContributions, teamId)
-    await recordActivityEvent({
+    const enqueueResult = await enqueueScrape({
+      scrapeId: `scrape-${randomUUID()}`,
+      idempotencyKey,
+      type,
+      target,
+      minContributions,
+      projectId,
       teamId,
-      actorEmail: email,
-      type: "scrape.started",
-      title: "Scrape started",
-      description: `${type === "repository" ? "Repository" : "Organization"} scrape for ${target}`,
-      metadata: { scrapeId, type, target, minContributions, projectId },
     })
+    if (!enqueueResult.replayed) {
+      await recordActivityEvent({
+        teamId,
+        actorEmail: email,
+        type: "scrape.started",
+        title: "Scrape started",
+        description: `${type === "repository" ? "Repository" : "Organization"} scrape for ${target}`,
+        metadata: { scrapeId: enqueueResult.scrapeId, type, target, minContributions, projectId },
+      })
+    }
     await recordAuditEvent({
       request,
       action: "scrape.start",
       outcome: "success",
       teamId,
-      metadata: { scrapeId, jobId: job.id, teamSlug, type, target, minContributions, projectId },
+      metadata: {
+        scrapeId: enqueueResult.scrapeId,
+        jobId: enqueueResult.jobId,
+        teamSlug,
+        type,
+        target,
+        minContributions,
+        projectId,
+        replayed: enqueueResult.replayed,
+      },
     })
 
-    // Return the durable queue response first, then immediately give the worker
-    // a chance to claim it. Supabase Cron remains the recovery path if this
-    // post-response invocation is interrupted or another worker owns the job.
-    after(async () => {
-      try {
-        await runScrapeWorkerOperation({ trigger: "queue", teamId, teamSlug })
-      } catch (error) {
-        console.error("[scrape-dispatch] Immediate worker invocation failed; cron will retry:", error)
-      }
-    })
+    scheduleImmediateWorker(teamId, teamSlug)
 
     return NextResponse.json(
       {
-        scrapeId,
-        jobId: job.id,
+        scrapeId: enqueueResult.scrapeId,
+        jobId: enqueueResult.jobId,
         status: "queued",
         dispatch: "immediate",
-        message: "Scrape queued",
+        replayed: enqueueResult.replayed,
+        message: enqueueResult.replayed ? "Existing scrape request returned" : "Scrape queued",
         rateLimit: {
           limit: rateLimit.resources.core.limit,
           remaining: rateLimit.resources.core.remaining,
@@ -144,6 +217,9 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes(IDEMPOTENCY_CONFLICT_MESSAGE)) {
+      return NextResponse.json({ error: IDEMPOTENCY_CONFLICT_MESSAGE }, { status: 409 })
+    }
     console.error("[v0] Scrape error:", error)
 
     const extractedError =

@@ -51,6 +51,7 @@ export function ScrapeForm() {
   const [invalidTargetError, setInvalidTargetError] = useState<InvalidTargetError | null>(null)
   const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
   const targetInputRef = useRef<HTMLInputElement>(null)
+  const pendingRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -177,15 +178,27 @@ export function ScrapeForm() {
           setCreatingProject(false)
         }
 
+        const requestBody = {
+          type,
+          target: target.trim(),
+          minContributions,
+          projectId: scrapeProjectId,
+        }
+        const fingerprint = JSON.stringify(requestBody)
+        const pendingRequest = pendingRequestRef.current
+        const idempotencyKey =
+          pendingRequest?.fingerprint === fingerprint
+            ? pendingRequest.idempotencyKey
+            : crypto.randomUUID()
+        pendingRequestRef.current = { fingerprint, idempotencyKey }
+
         const response = await fetch("/api/scrape", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type,
-            target: target.trim(),
-            minContributions,
-            projectId: scrapeProjectId,
-          }),
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: JSON.stringify(requestBody),
         })
 
         if (!response.ok) {
@@ -204,12 +217,15 @@ export function ScrapeForm() {
         }
 
         const data = await response.json()
+        pendingRequestRef.current = null
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
         const projectMsg = scrapeProjectName ? ` Added to ${scrapeProjectName}.` : ""
         toast({
-          title: "Scrape starting",
-          description: `${target} is queued and its worker is starting now.${projectMsg}${rateLimitMsg}`,
+          title: data.replayed ? "Scrape already queued" : "Scrape starting",
+          description: data.replayed
+            ? `${target} was already accepted, so Talon returned the original scrape instead of creating a duplicate.`
+            : `${target} is queued and its worker is starting now.${projectMsg}${rateLimitMsg}`,
         })
 
         setTarget("")

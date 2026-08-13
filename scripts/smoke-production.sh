@@ -118,12 +118,14 @@ else
 fi
 
 echo "[4/10] Queue and cancel a scrape: $SMOKE_CANCEL_REPO"
+CANCEL_IDEMPOTENCY_KEY="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 CANCEL_START_BODY="$(SMOKE_TARGET="$SMOKE_CANCEL_REPO" node -e '
   process.stdout.write(JSON.stringify({ type: "repository", target: process.env.SMOKE_TARGET, minContributions: 1 }))
 ')"
 CANCEL_START_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/scrape" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $CANCEL_IDEMPOTENCY_KEY" \
   --data-binary "$CANCEL_START_BODY")"
 CANCEL_SCRAPE_ID="$(printf '%s' "$CANCEL_START_RESPONSE" | json_field scrapeId || true)"
 CANCEL_JOB_ID="$(printf '%s' "$CANCEL_START_RESPONSE" | json_field jobId || true)"
@@ -154,19 +156,34 @@ if [[ "$RETRY_STATUS" != "succeeded" ]]; then
   talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel"
 fi
 
-echo "[6/10] Queue the completion scrape: $SMOKE_REPO"
+echo "[6/10] Queue and safely replay the completion scrape: $SMOKE_REPO"
+START_IDEMPOTENCY_KEY="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 START_BODY="$(SMOKE_TARGET="$SMOKE_REPO" node -e '
   process.stdout.write(JSON.stringify({ type: "repository", target: process.env.SMOKE_TARGET, minContributions: 1 }))
 ')"
 START_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/scrape" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $START_IDEMPOTENCY_KEY" \
   --data-binary "$START_BODY")"
 SCRAPE_ID="$(printf '%s' "$START_RESPONSE" | json_field scrapeId || true)"
 JOB_ID="$(printf '%s' "$START_RESPONSE" | json_field jobId || true)"
 [[ -n "$SCRAPE_ID" && -n "$JOB_ID" ]] || { echo "Scrape did not queue: $START_RESPONSE"; exit 1; }
 SCRAPE_IDS+=("$SCRAPE_ID")
 JOB_IDS+=("$JOB_ID")
+
+REPLAY_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
+  -X POST "$BASE_URL/api/scrape" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $START_IDEMPOTENCY_KEY" \
+  --data-binary "$START_BODY")"
+printf '%s' "$REPLAY_RESPONSE" | SCRAPE_ID="$SCRAPE_ID" JOB_ID="$JOB_ID" node -e '
+  const fs = require("node:fs")
+  const response = JSON.parse(fs.readFileSync(0, "utf8"))
+  if (response.scrapeId !== process.env.SCRAPE_ID || response.jobId !== process.env.JOB_ID || response.replayed !== true) {
+    process.exit(1)
+  }
+' || { echo "Idempotent replay created a different scrape or job: $REPLAY_RESPONSE"; exit 1; }
 
 echo "[7/10] Wait for queued -> running -> completed: $SCRAPE_ID"
 for ((poll = 1; poll <= MAX_POLLS; poll++)); do
