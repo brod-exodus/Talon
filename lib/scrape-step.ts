@@ -32,6 +32,15 @@ export function planOrganizationDiscoveryStep(repoCount: number, repoIndex: numb
   }
 }
 
+export function planOrganizationRepositoryPage(page: number, hasNext: boolean) {
+  const scannedPage = Math.max(1, Math.floor(page))
+  return {
+    scannedPage,
+    nextPage: scannedPage + 1,
+    completesDiscovery: !hasNext,
+  }
+}
+
 export function planRepositoryContributorPage(page: number, hasNext: boolean) {
   const scannedPage = Math.max(1, Math.floor(page))
   return {

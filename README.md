@@ -55,10 +55,10 @@ discovery, organization repository scanning, and contributor hydration persist
 their cursors between invocations, so work can resume after a timeout without
 duplicating contributors.
 
-Repository contributor discovery checkpoints every GitHub result page. Worker
-GitHub calls use short attempts and delegate retry delays to the durable queue,
-keeping an individual serverless invocation bounded even for repositories with
-thousands of contributors.
+Repository contributor discovery and organization repository enumeration
+checkpoint every GitHub result page. Worker GitHub calls use short attempts and
+delegate retry delays to the durable queue, keeping an individual serverless
+invocation bounded even for very large repositories and organizations.
 
 ## Engineering decisions
 
