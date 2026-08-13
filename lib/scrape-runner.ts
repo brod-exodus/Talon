@@ -22,6 +22,7 @@ import {
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
   repoIndex?: number
+  repositories?: string[]
 }
 
 export class ScrapeJobCanceledError extends Error {
@@ -160,24 +161,28 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   const scrapeId = job.scrape_id
   const org = job.target
   const minContributions = job.min_contributions
-  const githubClient = createGitHubClient()
-  const allRepos = await githubClient.getOrgRepos(org)
-
-  if (!allRepos?.length) {
-    throw new Error(`No repositories found for organization "${org}". Please check the organization name.`)
-  }
-
-  const repos = allRepos.filter((repo) => !repo.fork && !repo.archived)
-  if (!repos.length) {
-    throw new Error(`No non-forked repositories found for organization "${org}".`)
-  }
-
   const initialState = (job.state ?? {}) as ScrapeJobState
+  let repositories = initialState.repositories
+  if (!repositories?.length) {
+    const githubClient = createGitHubClient()
+    const allRepos = await githubClient.getOrgRepos(org)
+    if (!allRepos?.length) {
+      throw new Error(`No repositories found for organization "${org}". Please check the organization name.`)
+    }
+    repositories = allRepos.filter((repo) => !repo.fork && !repo.archived).map((repo) => repo.full_name)
+    if (!repositories.length) {
+      throw new Error(`No non-forked repositories found for organization "${org}".`)
+    }
+    await updateScrapeJobState(job.id, { ...initialState, repositories })
+  }
+
+  const repos = repositories
   const discovery = planOrganizationDiscoveryStep(repos.length, initialState.repoIndex ?? 0)
   if (initialState.phase !== "hydrate" && discovery.hasRepository) {
     await ensureNotCanceled(job.id)
 
     const repo = repos[discovery.repoIndex]
+    const githubClient = createGitHubClient()
     await updateScrapeProgress(scrapeId, {
       current: discovery.nextRepoIndex,
       total: repos.length,
@@ -186,7 +191,7 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
     })
 
     const contribSumMap = await getScrapeJobContributionMap(job.id)
-    const contributors = await githubClient.getRepoContributors(repo.full_name)
+    const contributors = await githubClient.getRepoContributors(repo)
     const changedTotals: Array<{ login: string; contributions: number }> = []
     for (const contributor of contributors) {
       const contributions = (contribSumMap.get(contributor.login) ?? 0) + contributor.contributions
@@ -197,9 +202,10 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
     await updateScrapeJobState(job.id, {
       phase: discovery.completesDiscovery ? "hydrate" : "discover",
       repoIndex: discovery.nextRepoIndex,
+      repositories: repos,
     })
     await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
-      repository: repo.full_name,
+      repository: repo,
       repoIndex: discovery.nextRepoIndex,
       repositories: repos.length,
       contributorCount: contributors.length,
@@ -209,7 +215,7 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
 
   const logins = await getScrapeJobContributionCandidates(job.id, minContributions)
   const hydrated = await hydrateCandidates(
-    { ...job, state: { phase: "hydrate", repoIndex: repos.length } },
+    { ...job, state: { phase: "hydrate", repoIndex: repos.length, repositories: repos } },
     logins,
     50,
     50

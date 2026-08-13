@@ -318,14 +318,15 @@ class GitHubClient {
   }
 
   private logGitHubResponse(context: GitHubRequestLogContext, statusCode: number, responseBody: string): void {
-    console.info("[github] response", {
+    if (statusCode < 400) return
+    console.warn("[github] error response", {
       owner: context.owner,
       repo: context.repo,
       endpointPath: context.endpointPath,
       fullGitHubApiUrl: context.fullGitHubApiUrl,
       method: context.method,
       statusCode,
-      responseBody,
+      responseBody: responseBody.slice(0, 1000),
     })
   }
 
@@ -344,7 +345,6 @@ class GitHubClient {
       const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs)
 
       try {
-        console.info("[github] request", context)
         const response = await this.fetchImpl(url, {
           headers: this.headers(),
           redirect: "follow",
@@ -473,12 +473,10 @@ class GitHubClient {
   }
 
   async getUserDetails(username: string): Promise<Contributor> {
-    console.log("[v0] Getting details for user:", username)
     return await this.fetch(`${this.baseUrl}/users/${encodeURIComponent(username)}`)
   }
 
   async getUserSocialAccounts(username: string): Promise<SocialAccount[]> {
-    console.log("[v0] Getting social accounts for user:", username)
     try {
       const data = await this.fetch(`${this.baseUrl}/users/${encodeURIComponent(username)}/social_accounts`)
       return Array.isArray(data) ? data : []

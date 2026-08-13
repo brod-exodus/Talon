@@ -288,6 +288,7 @@ export async function claimNextScrapeJob(workerId: string, teamId?: string): Pro
     .select("*")
     .eq("status", "queued")
     .lte("run_after", now)
+    .order("run_after", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(5)
   if (teamId) query = query.eq("team_id", teamId)
@@ -321,6 +322,19 @@ export async function claimNextScrapeJob(workerId: string, teamId?: string): Pro
   }
 
   return null
+}
+
+export async function getScrapeJobForWorker(id: string, workerId: string): Promise<ScrapeJobRow> {
+  const { data, error } = await supabaseAdmin
+    .from("scrape_jobs")
+    .select("*")
+    .eq("id", id)
+    .eq("status", "running")
+    .eq("locked_by", workerId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("Scrape job lock was lost while processing")
+  return data as ScrapeJobRow
 }
 
 export async function succeedScrapeJob(id: string): Promise<"succeeded" | "canceled"> {
@@ -812,26 +826,47 @@ export async function persistScrapeContributors(
   id: string,
   contributors: ScrapeContributorProfile[]
 ): Promise<void> {
+  if (!contributors.length) return
+
   const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
   const teamId = scrape?.team_id ?? (await getDefaultTeamId())
 
-  for (const c of contributors) {
-    const contributorId = await upsertContributor({
-      team_id: teamId,
-      github_username: c.username,
-      name: c.name || null,
-      avatar_url: c.avatar || null,
-      bio: c.bio ?? null,
-      location: c.location ?? null,
-      company: c.company ?? null,
-      email: c.contacts?.email ?? null,
-      twitter: c.contacts?.twitter ?? null,
-      linkedin: c.contacts?.linkedin ?? null,
-      website: c.contacts?.website ?? null,
-    })
-    await linkScrapeContributor(id, contributorId, c.contributions)
-  }
+  const { data: persisted, error: contributorError } = await supabaseAdmin
+    .from("contributors")
+    .upsert(
+      contributors.map((c) => ({
+        team_id: teamId,
+        github_username: c.username,
+        name: c.name || null,
+        avatar_url: c.avatar || null,
+        bio: c.bio ?? null,
+        location: c.location ?? null,
+        company: c.company ?? null,
+        email: c.contacts?.email ?? null,
+        twitter: c.contacts?.twitter ?? null,
+        linkedin: c.contacts?.linkedin ?? null,
+        website: c.contacts?.website ?? null,
+      })),
+      { onConflict: "team_id,github_username" }
+    )
+    .select("id, github_username")
+  if (contributorError) throw contributorError
+
+  const contributorIds = new Map((persisted ?? []).map((row) => [row.github_username, row.id]))
+  const links = contributors.map((contributor) => {
+    const contributorId = contributorIds.get(contributor.username)
+    if (!contributorId) throw new Error(`No id returned while persisting ${contributor.username}`)
+    return {
+      scrape_id: id,
+      contributor_id: contributorId,
+      contributions: contributor.contributions,
+    }
+  })
+  const { error: linkError } = await supabaseAdmin
+    .from("scrape_contributors")
+    .upsert(links, { onConflict: "scrape_id,contributor_id" })
+  if (linkError) throw linkError
 }
 
 export async function getScrapeContributorUsernames(id: string): Promise<Set<string>> {

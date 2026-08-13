@@ -1,4 +1,4 @@
-export const SCRAPE_HYDRATION_BATCH_SIZE = 10
+export const SCRAPE_HYDRATION_BATCH_SIZE = 20
 
 export type ScrapeCandidate = {
   login: string
