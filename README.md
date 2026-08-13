@@ -23,6 +23,12 @@ matching. Talon begins with contribution activity:
 The deployed portfolio version is operator-controlled. It demonstrates the
 complete workflow without presenting itself as a billing-ready customer SaaS.
 
+![Talon dashboard showing a completed public repository scrape](docs/images/talon-dashboard.png)
+
+The production deployment is intentionally access-controlled. Reviewers can
+follow the [five-minute demo](docs/demo.md), or use the screenshots below to
+inspect the core workflow without receiving an account.
+
 ## Architecture
 
 ```mermaid
@@ -125,15 +131,14 @@ For Production, configure the bounded worker by following
 
 ## Reproducible demonstration
 
-1. Sign in as the operator.
-2. In Settings, confirm GitHub and database checks are healthy.
-3. Start a repository scrape for `vercel/next.js` with a minimum contribution
-   threshold appropriate to the desired demo size.
-4. Observe the job move through queued and running states while the browser is
-   closed or refreshed.
-5. Open the completed scrape, filter contributors by contact channel, inspect a
-   contributor, update outreach state, and export CSV.
-6. Open Settings again to show the worker run history and healthy queue.
+The canonical demo uses the public `expressjs/express` repository. It covers
+queue creation, background progress, contributor filtering, CSV export,
+read-only sharing, and the production health panel. Counts and timings can
+change as GitHub activity changes.
+
+Follow the complete [five-minute demo runbook](docs/demo.md).
+
+![Talon operations panel showing healthy database, GitHub, scheduler, and queue checks](docs/images/talon-operations.png)
 
 Only public GitHub data should be used in portfolio demonstrations. Do not
 publish recruiter notes, private repositories, secrets, or personal contact
