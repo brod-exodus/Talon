@@ -1,17 +1,17 @@
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase"
+import { sanitizeOperationalError } from "@/lib/logger"
 
 export type SystemRunKind = "keepalive" | "scrape_worker" | "watched_repos"
 
-function sanitizedError(error: unknown): string {
-  const message = error instanceof Error ? error.message : "Unknown operational error"
-  return message.replace(/(bearer|token|secret|key)\s+[^\s,;]+/gi, "$1 [redacted]").slice(0, 500)
-}
-
-export async function startSystemRun(kind: SystemRunKind, details: Record<string, unknown> = {}): Promise<string> {
+export async function startSystemRun(
+  kind: SystemRunKind,
+  details: Record<string, unknown> = {},
+  requestId?: string
+): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("system_runs")
-    .insert({ kind, status: "running", details })
+    .insert({ kind, status: "running", details, request_id: requestId ?? null })
     .select("id")
     .single()
   if (error) throw error
@@ -30,7 +30,7 @@ export async function finishSystemRun(
       status,
       completed_at: new Date().toISOString(),
       details,
-      error: error === undefined ? null : sanitizedError(error),
+      error: error === undefined ? null : sanitizeOperationalError(error).message,
     })
     .eq("id", id)
   if (updateError) throw updateError

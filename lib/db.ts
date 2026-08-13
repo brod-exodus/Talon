@@ -4,6 +4,7 @@ import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getShareAvailability, shareTokenHash, type ShareAvailability } from "@/lib/share-links"
 import { getDefaultTeamId } from "@/lib/team-context"
 import { planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
+import { logError } from "@/lib/logger"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
@@ -75,6 +76,7 @@ export type ScrapeJobEventRow = {
   event_type: string
   message: string
   metadata: Record<string, unknown>
+  request_id: string | null
   created_at: string
 }
 
@@ -85,6 +87,7 @@ export type ScrapeJobEventSummary = {
   eventType: string
   message: string
   metadata: Record<string, unknown>
+  requestId: string | null
   createdAt: string
 }
 
@@ -126,6 +129,7 @@ export type ScrapeJobRow = {
   last_error: string | null
   state: Record<string, unknown>
   cancel_requested: boolean
+  request_id: string | null
   created_at: string
   updated_at: string
 }
@@ -143,6 +147,7 @@ export type ScrapeJobSummary = {
   lockedBy: string | null
   lastError: string | null
   cancelRequested: boolean
+  requestId: string | null
   recentEvents?: ScrapeJobEventSummary[]
   createdAt: string
   updatedAt: string
@@ -155,12 +160,14 @@ export type ScrapeEnqueueRequest = {
   target: string
   minContributions: number
   projectId: string | null
+  originRequestId: string | null
 }
 
 export type EnqueueScrapeResult = {
   scrapeId: string
   jobId: string
   replayed: boolean
+  originRequestId: string | null
 }
 
 function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
@@ -177,6 +184,7 @@ function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
     lockedBy: row.locked_by,
     lastError: row.last_error,
     cancelRequested: row.cancel_requested,
+    requestId: row.request_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -190,6 +198,7 @@ function toScrapeJobEventSummary(row: ScrapeJobEventRow): ScrapeJobEventSummary 
     eventType: row.event_type,
     message: row.message,
     metadata: row.metadata ?? {},
+    requestId: row.request_id,
     createdAt: row.created_at,
   }
 }
@@ -246,7 +255,7 @@ export async function getScrapeEnqueueRequest(
   const resolvedTeamId = await resolveTeamId(teamId)
   const { data, error } = await supabaseAdmin
     .from("scrape_enqueue_requests")
-    .select("scrape_id, job_id, scrape_type, target, min_contributions, project_id")
+    .select("scrape_id, job_id, scrape_type, target, min_contributions, project_id, request_id")
     .eq("team_id", resolvedTeamId)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle()
@@ -260,6 +269,7 @@ export async function getScrapeEnqueueRequest(
     target: data.target as string,
     minContributions: data.min_contributions as number,
     projectId: (data.project_id as string | null) ?? null,
+    originRequestId: (data.request_id as string | null) ?? null,
   }
 }
 
@@ -270,6 +280,7 @@ export async function enqueueScrape(input: {
   target: string
   minContributions: number
   projectId: string | null
+  requestId: string
   teamId?: string
 }): Promise<EnqueueScrapeResult> {
   const resolvedTeamId = await resolveTeamId(input.teamId)
@@ -282,15 +293,22 @@ export async function enqueueScrape(input: {
       p_target: input.target,
       p_min_contributions: Math.max(1, Math.floor(input.minContributions)),
       p_project_id: input.projectId,
+      p_request_id: input.requestId,
     })
     .single()
   if (error) throw error
-  const row = data as { scrape_id: string; job_id: string; replayed: boolean }
+  const row = data as {
+    scrape_id: string
+    job_id: string
+    replayed: boolean
+    origin_request_id: string | null
+  }
 
   return {
     scrapeId: row.scrape_id,
     jobId: row.job_id,
     replayed: Boolean(row.replayed),
+    originRequestId: row.origin_request_id,
   }
 }
 
@@ -392,16 +410,28 @@ export async function recordScrapeJobEvent(
   eventType: string,
   message: string,
   metadata: Record<string, unknown> = {},
-  teamId?: string
+  teamId?: string,
+  requestId?: string
 ): Promise<void> {
   let resolvedTeamId = teamId
-  if (!resolvedTeamId && jobId) {
-    const { data } = await supabaseAdmin.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
-    resolvedTeamId = data?.team_id
+  let resolvedRequestId = requestId
+  if (jobId && (!resolvedTeamId || !resolvedRequestId)) {
+    const { data } = await supabaseAdmin
+      .from("scrape_jobs")
+      .select("team_id, request_id")
+      .eq("id", jobId)
+      .maybeSingle()
+    resolvedTeamId = data?.team_id ?? resolvedTeamId
+    resolvedRequestId = data?.request_id ?? resolvedRequestId
   }
-  if (!resolvedTeamId && scrapeId) {
-    const { data } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", scrapeId).maybeSingle()
-    resolvedTeamId = data?.team_id
+  if (scrapeId && (!resolvedTeamId || !resolvedRequestId)) {
+    const { data } = await supabaseAdmin
+      .from("scrape_jobs")
+      .select("team_id, request_id")
+      .eq("scrape_id", scrapeId)
+      .maybeSingle()
+    resolvedTeamId = data?.team_id ?? resolvedTeamId
+    resolvedRequestId = data?.request_id ?? resolvedRequestId
   }
   resolvedTeamId ??= await getDefaultTeamId()
 
@@ -412,9 +442,16 @@ export async function recordScrapeJobEvent(
     event_type: eventType,
     message,
     metadata,
+    request_id: resolvedRequestId ?? null,
   })
   if (error) {
-    console.error("[scrape-job-events] insert failed:", error)
+    logError("scrape_job_event.persist_failed", error, {
+      requestId: resolvedRequestId,
+      jobId: jobId ?? undefined,
+      scrapeId: scrapeId ?? undefined,
+      teamId: resolvedTeamId,
+      details: { eventType },
+    })
   }
 }
 

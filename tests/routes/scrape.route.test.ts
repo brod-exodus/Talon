@@ -52,6 +52,7 @@ vi.mock("@/lib/github", () => ({
 import { POST } from "@/app/api/scrape/route"
 
 const IDEMPOTENCY_KEY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+const REQUEST_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
 function scrapeRequest(
   body: unknown,
@@ -59,6 +60,7 @@ function scrapeRequest(
 ): import("next/server").NextRequest {
   const headers = new Headers({ "Content-Type": "application/json" })
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey)
+  headers.set("X-Request-ID", REQUEST_ID)
   return new Request("https://talon.example/api/scrape", {
     method: "POST",
     headers,
@@ -171,6 +173,7 @@ describe("POST /api/scrape", () => {
       target: "octocat/Hello-World",
       minContributions: 2,
       projectId: null,
+      requestId: REQUEST_ID,
       teamId: "team-1",
     })
     expect(routeMocks.afterTasks).toHaveLength(1)
@@ -181,6 +184,7 @@ describe("POST /api/scrape", () => {
       trigger: "queue",
       teamId: "team-1",
       teamSlug: "default",
+      requestId: REQUEST_ID,
     })
   })
 

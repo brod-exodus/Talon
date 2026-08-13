@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -9,6 +10,7 @@ const MAX_JOBS_PER_INVOCATION = 1
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const isCronRequest = hasCronSecret(request)
   let teamId: string | undefined
   let teamSlug: string | undefined
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
     teamId,
     teamSlug,
     maxJobs: MAX_JOBS_PER_INVOCATION,
+    requestId,
   })
 
   await recordAuditEvent({

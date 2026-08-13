@@ -70,6 +70,53 @@ remain installed; do not drop its request records during an application
 rollback. The schema health check will report that the database is ahead until
 the compatible application is redeployed.
 
+### Operation correlation
+
+Migration `029_operation_correlation.sql` adds a nullable UUID `request_id` to
+audit events, system runs, scrape jobs, scrape job events, and idempotent enqueue
+records. Apply it before deploying the compatible application. No environment
+variable is required.
+
+Authenticated Talon pages and API responses include an `X-Request-ID` header.
+The same ID is passed into the application request and persisted at critical
+operational boundaries. Scrape jobs retain the ID of the request that originally
+created them; each scheduled worker invocation receives its own ID. Worker run
+details record both so an operator can connect the original command to later
+cron work.
+
+Given an ID from a browser response or sanitized JSON log, investigate it in the
+Supabase SQL Editor:
+
+```sql
+select id, action, outcome, created_at
+from public.audit_events
+where request_id = '00000000-0000-4000-8000-000000000000';
+
+select id, kind, status, started_at, completed_at, details, error
+from public.system_runs
+where request_id = '00000000-0000-4000-8000-000000000000';
+
+select id, scrape_id, status, attempts, request_id, updated_at
+from public.scrape_jobs
+where request_id = '00000000-0000-4000-8000-000000000000';
+
+select job_id, scrape_id, event_type, request_id, created_at
+from public.scrape_job_events
+where request_id = '00000000-0000-4000-8000-000000000000'
+order by created_at;
+```
+
+Critical scrape, worker, keepalive, watched-repository, audit, and GitHub-client
+logs are emitted as one-line JSON. They redact credential-like keys, URLs, email
+addresses, repository targets, contributor identifiers, and long values. Never
+add raw request bodies, GitHub response bodies, contact fields, or secret values
+to log context.
+
+Migration 029 is additive and may remain installed during an application
+rollback. The prior enqueue RPC remains compatible because the new request ID
+argument is optional. A rolled-back application will report the database as
+ahead until the compatible release is restored.
+
 Security hardening migrations include:
 
 ```text
@@ -80,6 +127,7 @@ db/migrations/025_contactable_scrape_contributors_rpc.sql
 db/migrations/026_share_lifecycle_and_retention.sql
 db/migrations/027_schema_version_contract.sql
 db/migrations/028_idempotent_scrape_enqueue.sql
+db/migrations/029_operation_correlation.sql
 ```
 
 They create or enforce:

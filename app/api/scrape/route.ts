@@ -4,7 +4,9 @@ import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
 import { enqueueScrape, ecosystemExists, getScrapeEnqueueRequest } from "@/lib/db"
+import { logError, logInfo } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
@@ -19,14 +21,14 @@ export const maxDuration = 60
 
 const IDEMPOTENCY_CONFLICT_MESSAGE = "Idempotency key was already used for a different scrape request"
 
-function scheduleImmediateWorker(teamId: string, teamSlug: string) {
+function scheduleImmediateWorker(teamId: string, teamSlug: string, requestId: string) {
   // Supabase Cron remains the recovery path if this post-response invocation
   // is interrupted or another worker already owns the job.
   after(async () => {
     try {
-      await runScrapeWorkerOperation({ trigger: "queue", teamId, teamSlug })
+      await runScrapeWorkerOperation({ trigger: "queue", teamId, teamSlug, requestId })
     } catch (error) {
-      console.error("[scrape-dispatch] Immediate worker invocation failed; cron will retry:", error)
+      logError("scrape.worker_dispatch_failed", error, { requestId, teamId })
     }
   })
 }
@@ -51,6 +53,7 @@ function githubTargetNotFoundResponse(type: "organization" | "repository", targe
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -112,7 +115,14 @@ export async function POST(request: NextRequest) {
           replayed: true,
         },
       })
-      scheduleImmediateWorker(teamId, teamSlug)
+      logInfo("scrape.enqueue_replayed", {
+        requestId,
+        originRequestId: existingRequest.originRequestId,
+        teamId,
+        jobId: existingRequest.jobId,
+        scrapeId: existingRequest.scrapeId,
+      })
+      scheduleImmediateWorker(teamId, teamSlug, requestId)
 
       return NextResponse.json(
         {
@@ -169,6 +179,7 @@ export async function POST(request: NextRequest) {
       target,
       minContributions,
       projectId,
+      requestId,
       teamId,
     })
     if (!enqueueResult.replayed) {
@@ -198,7 +209,14 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    scheduleImmediateWorker(teamId, teamSlug)
+    logInfo(enqueueResult.replayed ? "scrape.enqueue_replayed" : "scrape.enqueue_accepted", {
+      requestId,
+      originRequestId: enqueueResult.originRequestId,
+      teamId,
+      jobId: enqueueResult.jobId,
+      scrapeId: enqueueResult.scrapeId,
+    })
+    scheduleImmediateWorker(teamId, teamSlug, requestId)
 
     return NextResponse.json(
       {
@@ -220,7 +238,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.message.includes(IDEMPOTENCY_CONFLICT_MESSAGE)) {
       return NextResponse.json({ error: IDEMPOTENCY_CONFLICT_MESSAGE }, { status: 409 })
     }
-    console.error("[v0] Scrape error:", error)
+    logError("scrape.enqueue_failed", error, { requestId })
 
     const extractedError =
       error instanceof Error

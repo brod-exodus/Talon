@@ -1,5 +1,6 @@
 // GitHub API client with authentication for 5000 req/hour rate limit
 import { normalizeGitHubRepositoryTarget } from "./validation.ts"
+import { logWarn } from "./logger.ts"
 
 export type BioContacts = {
   email?: string
@@ -317,16 +318,10 @@ class GitHubClient {
     }
   }
 
-  private logGitHubResponse(context: GitHubRequestLogContext, statusCode: number, responseBody: string): void {
+  private logGitHubResponse(context: GitHubRequestLogContext, statusCode: number): void {
     if (statusCode < 400) return
-    console.warn("[github] error response", {
-      owner: context.owner,
-      repo: context.repo,
-      endpointPath: context.endpointPath,
-      fullGitHubApiUrl: context.fullGitHubApiUrl,
-      method: context.method,
-      statusCode,
-      responseBody: responseBody.slice(0, 1000),
+    logWarn("github.response_error", {
+      details: { method: context.method, statusCode },
     })
   }
 
@@ -352,12 +347,12 @@ class GitHubClient {
         })
 
         if (response.status === 204) {
-          this.logGitHubResponse(context, response.status, "")
+          this.logGitHubResponse(context, response.status)
           return { data: [] as T, headers: response.headers }
         }
 
         const text = await response.text()
-        this.logGitHubResponse(context, response.status, text)
+        this.logGitHubResponse(context, response.status)
 
         if (!response.ok) {
           const decision = getGitHubRetryDecision(response.status, response.headers, text, attempt)
@@ -435,7 +430,6 @@ class GitHubClient {
   }
 
   async getOrgRepos(org: string): Promise<Repository[]> {
-    console.log("[v0] Getting repos for org:", org)
     const all: Repository[] = []
     let page = 1
     while (true) {
@@ -451,12 +445,10 @@ class GitHubClient {
       if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
       page++
     }
-    console.log("[v0] Found repos:", all.length)
     return all
   }
 
   async getRepoContributors(repo: string): Promise<Contributor[]> {
-    console.log("[v0] Getting contributors for repo:", repo)
     const all: Contributor[] = []
     let page = 1
     while (true) {
@@ -468,7 +460,6 @@ class GitHubClient {
       if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
       page++
     }
-    console.log("[v0] Found contributors:", all.length)
     return all
   }
 
@@ -483,7 +474,6 @@ class GitHubClient {
     } catch (err) {
       if (err instanceof GitHubApiError && err.status !== 404) throw err
       // 404 or empty response is normal for users with no social accounts set
-      console.warn(`[v0] Could not fetch social accounts for ${username}:`, err)
       return []
     }
   }

@@ -101,8 +101,11 @@ node -e '
   for (const name of ["content-security-policy:", "x-content-type-options:", "x-frame-options:"]) {
     if (!headers.includes(name)) process.exit(1)
   }
+  if (!/^x-request-id:\s*[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\s*$/im.test(headers)) {
+    process.exit(1)
+  }
 ' "$TEMP_DIR/health-headers.txt" || {
-  echo "Health response is missing required browser security headers"
+  echo "Health response is missing required browser security or request-correlation headers"
   cat "$TEMP_DIR/health-headers.txt"
   exit 1
 }

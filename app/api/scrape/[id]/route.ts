@@ -9,8 +9,11 @@ import {
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeScrapeId } from "@/lib/validation"
+import { getRequestId } from "@/lib/request-id"
+import { logError } from "@/lib/logger"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -60,10 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Missing required query parameter: page" }, { status: 400 })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[v0] Get scrape error – full error:", error)
-    if (error && typeof error === "object") {
-      console.error("[v0] Get scrape error detail:", JSON.stringify(error, null, 2))
-    }
+    logError("scrape.read_failed", error, { requestId })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to get scrape status" },
       { status: 500 }
@@ -72,6 +72,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -87,12 +88,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       request,
       action: "scrape.delete",
       outcome: "success",
+      teamId,
       metadata: { scrapeId },
     })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[v0] Delete scrape error:", error)
+    logError("scrape.delete_failed", error, { requestId })
     return NextResponse.json({ error: "Failed to delete scrape" }, { status: 500 })
   }
 }

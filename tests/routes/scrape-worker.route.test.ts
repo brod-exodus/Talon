@@ -23,7 +23,10 @@ import { POST } from "@/app/api/scrape-jobs/run/route"
 function workerRequest(authorization?: string): import("next/server").NextRequest {
   return new Request("https://talon.example/api/scrape-jobs/run", {
     method: "POST",
-    headers: authorization ? { Authorization: authorization } : undefined,
+    headers: {
+      ...(authorization ? { Authorization: authorization } : {}),
+      "X-Request-ID": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    },
   }) as import("next/server").NextRequest
 }
 
@@ -53,6 +56,7 @@ describe("POST /api/scrape-jobs/run", () => {
       teamId: undefined,
       teamSlug: undefined,
       maxJobs: 1,
+      requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
   })
 
@@ -81,6 +85,7 @@ describe("POST /api/scrape-jobs/run", () => {
       teamId: "team-1",
       teamSlug: "default",
       maxJobs: 1,
+      requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
   })
 })
