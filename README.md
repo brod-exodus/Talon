@@ -108,6 +108,8 @@ manual cancellation is checked between steps, and terminal failures remain
 visible with their recent job events. Yield, failure, completion, cancellation,
 manual retry, and stale-lock recovery use row-locked database transactions, so
 a canceled job or newer worker lease cannot be overwritten by an older worker.
+Cursor and progress checkpoints enforce that same lease before updating either
+the queue job or its parent scrape.
 
 ## Stack
 

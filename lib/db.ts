@@ -341,15 +341,34 @@ export async function getScrapeJobForWorker(id: string, workerId: string): Promi
   return data as ScrapeJobRow
 }
 
-export async function updateScrapeJobState(id: string, state: Record<string, unknown>): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from("scrape_jobs")
-    .update({
-      state,
-      updated_at: new Date().toISOString(),
+export async function checkpointScrapeJob(
+  job: ScrapeJobRow,
+  checkpoint: {
+    state?: Record<string, unknown>
+    progress?: {
+      progress: number
+      current: number
+      total: number
+      currentUserLogin?: string | null
+    }
+  }
+): Promise<ScrapeJobTransitionResult> {
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("checkpoint_scrape_job", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_state: checkpoint.state ?? null,
+      p_progress: checkpoint.progress?.progress ?? null,
+      p_current: checkpoint.progress?.current ?? null,
+      p_total: checkpoint.progress?.total ?? null,
+      p_current_user_login: checkpoint.progress?.currentUserLogin ?? null,
     })
-    .eq("id", id)
+    .single()
   if (error) throw error
+  const row = data as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }
+  return { applied: Boolean(row.applied), status: row.result_status }
 }
 
 export async function recordScrapeJobEvent(
@@ -646,22 +665,6 @@ export async function retryScrapeJob(id: string, teamId?: string): Promise<Scrap
   if (!data) throw new Error("Scrape job not found after retry")
   const job = data as ScrapeJobRow
   return toScrapeJobSummary(job)
-}
-
-export async function updateScrapeProgress(
-  id: string,
-  data: { progress: number; current: number; total: number; current_user_login?: string | null }
-): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from("scrapes")
-    .update({
-      progress: data.progress,
-      current: data.current,
-      total: data.total,
-      current_user_login: data.current_user_login ?? null,
-    })
-    .eq("id", id)
-  if (error) throw error
 }
 
 /** Upsert contributor: on conflict (github_username) update only profile fields, preserve contacted/contacted_date/outreach_notes/status */

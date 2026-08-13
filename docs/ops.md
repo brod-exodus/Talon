@@ -157,6 +157,21 @@ Apply migration 031 before deploying the compatible application. No environment
 variable or scheduler change is required. The migration is additive and may
 remain installed during an application rollback.
 
+### Lease-safe worker checkpoints
+
+Migration `032_lease_safe_job_checkpoints.sql` moves worker cursor and progress
+updates into one database transaction. The checkpoint locks the job and verifies
+that it is still running, still belongs to the calling worker, and has not been
+canceled before updating either the job state or its parent scrape. An expired
+worker can therefore no longer overwrite progress or resumable state after a
+new worker has recovered the job.
+
+Apply migration 032 before deploying the compatible application. No environment
+variable or scheduler change is required. After deployment, the normal
+cancel/retry portion of `pnpm smoke:production` verifies the surrounding worker
+control flow. The migration is additive and may remain installed during an
+application rollback.
+
 Security hardening migrations include:
 
 ```text
@@ -170,6 +185,7 @@ db/migrations/028_idempotent_scrape_enqueue.sql
 db/migrations/029_operation_correlation.sql
 db/migrations/030_lease_safe_job_transitions.sql
 db/migrations/031_atomic_job_claim.sql
+db/migrations/032_lease_safe_job_checkpoints.sql
 ```
 
 They create or enforce:

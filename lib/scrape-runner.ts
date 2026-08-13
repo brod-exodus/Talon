@@ -1,4 +1,5 @@
 import {
+  checkpointScrapeJob,
   completeScrape,
   getScrapeJobContributionCandidates,
   getScrapeJobContributionMap,
@@ -6,8 +7,6 @@ import {
   getScrapeJobControl,
   persistScrapeContributors,
   recordScrapeJobEvent,
-  updateScrapeProgress,
-  updateScrapeJobState,
   upsertScrapeJobContributionTotals,
   type ScrapeJobRow,
   type ScrapeContributorProfile,
@@ -39,6 +38,16 @@ export class ScrapeJobLeaseLostError extends Error {
     super(`Scrape worker lease was lost; job is now ${status}`)
     this.name = "ScrapeJobLeaseLostError"
   }
+}
+
+async function saveScrapeCheckpoint(
+  job: ScrapeJobRow,
+  checkpoint: Parameters<typeof checkpointScrapeJob>[1]
+): Promise<void> {
+  const transition = await checkpointScrapeJob(job, checkpoint)
+  if (transition.applied) return
+  if (transition.status === "canceled") throw new ScrapeJobCanceledError()
+  throw new ScrapeJobLeaseLostError(transition.status)
 }
 
 async function finishScrape(job: ScrapeJobRow): Promise<boolean> {
@@ -129,10 +138,6 @@ async function hydrateCandidates(
   const alreadyLinked = await getScrapeContributorUsernames(job.scrape_id)
   const step = planHydrationStep(candidates, alreadyLinked, SCRAPE_HYDRATION_BATCH_SIZE)
 
-  await updateScrapeJobState(job.id, {
-    ...((job.state ?? {}) as ScrapeJobState),
-    phase: "hydrate",
-  })
   await recordScrapeJobEvent(job.id, job.scrape_id, "hydrate_started", "Contributor hydration started", {
     totalCandidates: candidates.length,
     alreadyLinked: alreadyLinked.size,
@@ -145,11 +150,17 @@ async function hydrateCandidates(
   const processed = step.processedAfterStep
   const progress = progressBase + Math.round((processed / Math.max(candidates.length, 1)) * progressSpan)
 
-  await updateScrapeProgress(job.scrape_id, {
-    current: processed,
-    total: candidates.length,
-    progress: Math.min(99, progress),
-    current_user_login: batch[0]?.login ?? null,
+  await saveScrapeCheckpoint(job, {
+    state: {
+      ...((job.state ?? {}) as ScrapeJobState),
+      phase: "hydrate",
+    },
+    progress: {
+      current: processed,
+      total: candidates.length,
+      progress: Math.min(99, progress),
+      currentUserLogin: batch[0]?.login ?? null,
+    },
   })
 
   const batchResults = await Promise.allSettled(
@@ -179,7 +190,6 @@ async function hydrateCandidates(
 }
 
 async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
-  const scrapeId = job.scrape_id
   const org = job.target
   const minContributions = job.min_contributions
   const initialState = (job.state ?? {}) as ScrapeJobState
@@ -194,7 +204,7 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
     if (!repositories.length) {
       throw new Error(`No non-forked repositories found for organization "${org}".`)
     }
-    await updateScrapeJobState(job.id, { ...initialState, repositories })
+    await saveScrapeCheckpoint(job, { state: { ...initialState, repositories } })
   }
 
   const repos = repositories
@@ -204,13 +214,6 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
 
     const repo = repos[discovery.repoIndex]
     const githubClient = createGitHubClient()
-    await updateScrapeProgress(scrapeId, {
-      current: discovery.nextRepoIndex,
-      total: repos.length,
-      progress: Math.round((discovery.nextRepoIndex / repos.length) * 50),
-      current_user_login: null,
-    })
-
     const contribSumMap = await getScrapeJobContributionMap(job.id)
     const contributors = await githubClient.getRepoContributors(repo)
     const changedTotals: Array<{ login: string; contributions: number }> = []
@@ -220,10 +223,18 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
       changedTotals.push({ login: contributor.login, contributions })
     }
     await upsertScrapeJobContributionTotals(job.id, changedTotals)
-    await updateScrapeJobState(job.id, {
-      phase: discovery.completesDiscovery ? "hydrate" : "discover",
-      repoIndex: discovery.nextRepoIndex,
-      repositories: repos,
+    await saveScrapeCheckpoint(job, {
+      state: {
+        phase: discovery.completesDiscovery ? "hydrate" : "discover",
+        repoIndex: discovery.nextRepoIndex,
+        repositories: repos,
+      },
+      progress: {
+        current: discovery.nextRepoIndex,
+        total: repos.length,
+        progress: Math.round((discovery.nextRepoIndex / repos.length) * 50),
+        currentUserLogin: null,
+      },
     })
     await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
       repository: repo,
@@ -262,7 +273,7 @@ async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
       .filter((contributor) => contributor.contributions >= minContributions)
       .map((contributor) => ({ login: contributor.login, contributions: contributor.contributions }))
     await upsertScrapeJobContributionTotals(job.id, candidates)
-    await updateScrapeJobState(job.id, { phase: "hydrate" })
+    await saveScrapeCheckpoint(job, { state: { phase: "hydrate" } })
     await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
       repository: repo,
       contributorCount: contributors.length,
