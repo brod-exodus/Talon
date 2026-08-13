@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

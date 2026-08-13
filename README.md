@@ -196,9 +196,10 @@ Useful tuning variables are `SMOKE_CANCEL_REPO`, `POLL_SECONDS`, and
 - [Multi-user design notes](docs/multi-user-phase2.md)
 
 Supabase RLS is enabled for private tables, server routes use the service role,
-sessions are signed and HTTP-only, login attempts are rate limited, cron routes
-require bearer authentication, and audit metadata intentionally excludes
-secrets.
+sessions are signed and HTTP-only, every API request rechecks the user's current
+team role, login attempts are rate limited, cron routes require bearer
+authentication, and audit metadata intentionally excludes secrets. Role changes
+and team removals therefore take effect without waiting for a session to expire.
 
 ## Deliberately deferred
 

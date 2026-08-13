@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthSession, requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
+import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -47,7 +48,7 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
 }
 
 export async function PATCH(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const session = getAuthSession(request)

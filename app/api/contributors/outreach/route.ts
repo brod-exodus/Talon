@@ -12,7 +12,7 @@ import {
 } from "@/lib/validation"
 
 export async function PATCH(request: NextRequest) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

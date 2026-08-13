@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getAuthSession, type AuthRole } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase"
-import { getTeamMembershipForSession } from "@/lib/team-membership"
+import { getCurrentRequestMembership } from "@/lib/request-membership"
 
 const DEFAULT_TEAM_SLUG = "default"
 
@@ -33,7 +33,7 @@ export async function getDefaultTeamId(): Promise<string> {
 export async function resolveTeamContext(request: NextRequest): Promise<TeamContext> {
   const session = getAuthSession(request)
   if (session?.actor === "user") {
-    const membership = await getTeamMembershipForSession(session.email, session.teamId)
+    const membership = await getCurrentRequestMembership(request)
     if (!membership) throw new Error("Authenticated user is not a member of this team.")
     return {
       teamId: membership.teamId,

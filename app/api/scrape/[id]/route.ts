@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import {
   getContactableScrapeContributorsPage,
@@ -12,7 +11,7 @@ import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeScrapeId } from "@/lib/validation"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {
@@ -73,7 +72,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthSession, requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions"
+import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin, supabaseAuth } from "@/lib/supabase"
 import { readJsonObject } from "@/lib/validation"
@@ -14,7 +15,7 @@ function normalizePassword(value: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   const session = getAuthSession(request)

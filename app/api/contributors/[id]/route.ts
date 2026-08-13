@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/auth"
 import { getContributorProfile, updateContributorProfile } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
@@ -27,7 +26,7 @@ function normalizeOptionalUrl(value: unknown): string | null | undefined {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const authError = requireAuth(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {
@@ -73,7 +72,7 @@ function toContributorPreview(contributor: NonNullable<ContributorProfileRespons
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {

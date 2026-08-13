@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   let teamId: string | undefined
   let teamSlug: string | undefined
   if (!isCronRequest) {
-    const authError = requirePermission(request, "write")
+    const authError = await requirePermission(request, "write")
     if (authError) return authError
     try {
       const team = await resolveTeamContext(request)

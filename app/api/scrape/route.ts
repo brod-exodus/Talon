@@ -37,7 +37,7 @@ function githubTargetNotFoundResponse(type: "organization" | "repository", targe
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requirePermission(request, "write")
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {
