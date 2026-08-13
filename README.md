@@ -128,8 +128,13 @@ GITHUB_TOKEN
 Apply every SQL migration in `db/migrations` in numeric order, then start Talon:
 
 ```bash
+pnpm migrations:check
 pnpm dev
 ```
+
+Starting with migration `027`, Talon records its database schema version. The
+admin Production Readiness panel compares Production with the version required
+by the deployed application and blocks health when migrations are missing.
 
 Open [http://localhost:3000](http://localhost:3000).
 

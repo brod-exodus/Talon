@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
+import { EXPECTED_SCHEMA_VERSION } from "@/lib/schema-version"
 import { supabaseAdmin } from "@/lib/supabase"
 
 type CheckStatus = "ok" | "warn" | "error"
@@ -35,6 +36,53 @@ async function dbCheck(): Promise<HealthCheck> {
       status: "error",
       message: "Database check threw an error",
       detail: error instanceof Error ? error.message : "Unknown database error",
+    }
+  }
+}
+
+async function schemaVersionCheck(): Promise<HealthCheck> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc("get_talon_schema_version")
+    if (error) {
+      return {
+        status: "error",
+        message: "Database schema version is unavailable",
+        detail: `Expected v${EXPECTED_SCHEMA_VERSION}. Apply pending migrations in numeric order.`,
+      }
+    }
+
+    const currentVersion = Number(data)
+    if (!Number.isInteger(currentVersion) || currentVersion < 1) {
+      return {
+        status: "error",
+        message: "Database returned an invalid schema version",
+        detail: `Expected v${EXPECTED_SCHEMA_VERSION}; received ${String(data)}`,
+      }
+    }
+    if (currentVersion < EXPECTED_SCHEMA_VERSION) {
+      return {
+        status: "error",
+        message: "Database migrations are behind this application",
+        detail: `Current v${currentVersion}; expected v${EXPECTED_SCHEMA_VERSION}`,
+      }
+    }
+    if (currentVersion > EXPECTED_SCHEMA_VERSION) {
+      return {
+        status: "warn",
+        message: "Database schema is ahead of this application",
+        detail: `Current v${currentVersion}; application expects v${EXPECTED_SCHEMA_VERSION}`,
+      }
+    }
+    return {
+      status: "ok",
+      message: "Database schema matches this application",
+      detail: `Current v${currentVersion}; expected v${EXPECTED_SCHEMA_VERSION}`,
+    }
+  } catch {
+    return {
+      status: "error",
+      message: "Database schema version check failed",
+      detail: `Expected v${EXPECTED_SCHEMA_VERSION}. Apply pending migrations in numeric order.`,
     }
   }
 }
@@ -147,8 +195,9 @@ export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
-  const [database, github, keepalive, scrapeWorker, scrapeQueue] = await Promise.all([
+  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue] = await Promise.all([
     dbCheck(),
+    schemaVersionCheck(),
     githubCheck(),
     lastSystemRunCheck("keepalive", 36 * 60),
     lastSystemRunCheck("scrape_worker", 10),
@@ -163,6 +212,7 @@ export async function GET(request: NextRequest) {
     cronSecret: envCheck("CRON_SECRET", { required: true, minLength: 32 }),
     slackWebhook: envCheck("SLACK_WEBHOOK_URL"),
     database,
+    databaseSchema,
     github,
     keepalive,
     scrapeWorker,

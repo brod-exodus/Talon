@@ -86,8 +86,8 @@ LOGGED_IN=true
 echo "[2/10] Verify production health, scheduler history, and credentials"
 HEALTH_STATUS="$(curl -sS -o "$TEMP_DIR/health.json" -w "%{http_code}" -b "$COOKIE_JAR" "$BASE_URL/api/health")"
 [[ "$HEALTH_STATUS" == "200" ]] || { echo "Health check failed: HTTP $HEALTH_STATUS"; cat "$TEMP_DIR/health.json"; exit 1; }
-assert_json 'response.status !== "error" && response.checks?.github?.status === "ok" && response.checks?.database?.status === "ok" && response.checks?.scrapeWorker?.status === "ok" && response.checks?.keepalive?.status === "ok"' < "$TEMP_DIR/health.json" || {
-  echo "Health response did not confirm GitHub, Supabase, keepalive, and worker scheduling"
+assert_json 'response.status !== "error" && response.checks?.github?.status === "ok" && response.checks?.database?.status === "ok" && response.checks?.databaseSchema?.status === "ok" && response.checks?.scrapeWorker?.status === "ok" && response.checks?.keepalive?.status === "ok"' < "$TEMP_DIR/health.json" || {
+  echo "Health response did not confirm GitHub, Supabase, schema version, keepalive, and worker scheduling"
   cat "$TEMP_DIR/health.json"
   exit 1
 }

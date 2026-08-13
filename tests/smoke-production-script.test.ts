@@ -31,6 +31,7 @@ test("production smoke exercises cancel, retry, completion, export, sharing, and
         checks: {
           github: { status: "ok" },
           database: { status: "ok" },
+          databaseSchema: { status: "ok" },
           scrapeWorker: { status: "ok" },
           keepalive: { status: "ok" },
         },

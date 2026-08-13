@@ -21,6 +21,7 @@ Describe how to quickly roll this back if the deploy is unhealthy.
 ## Production Checklist
 
 - [ ] Required DB migrations were applied (list files below)
+- [ ] Settings reports `Database Schema` healthy after deployment
 - [ ] Vercel env vars are present and correct for this change
 - [ ] `/api/health` is `ok` after deploy
 - [ ] Post-deploy smoke checks completed

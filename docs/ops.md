@@ -41,6 +41,16 @@ Run this after every production deploy:
 
 Apply migrations in order from `db/migrations`.
 
+Before opening a release PR, validate the repository contract:
+
+```bash
+pnpm migrations:check
+```
+
+This rejects missing or duplicate migration numbers, an application/version
+mismatch, and new migrations that do not record themselves in
+`talon_schema_migrations`.
+
 Security hardening migrations include:
 
 ```text
@@ -49,6 +59,7 @@ db/migrations/010_service_role_rls_lockdown.sql
 db/migrations/024_system_runs.sql
 db/migrations/025_contactable_scrape_contributors_rpc.sql
 db/migrations/026_share_lifecycle_and_retention.sql
+db/migrations/027_schema_version_contract.sql
 ```
 
 They create or enforce:
@@ -105,6 +116,29 @@ select
 Use `select cleanup_talon_retention();` only when you intentionally want to run
 the cleanup immediately. The function is restricted to the database owner and
 Talon's service role.
+
+## Database schema deployments
+
+Apply migration `027` before deploying the application release that introduces
+schema health checks. It refuses to run unless migration `026` is present, then
+records the historical baseline and exposes the current version only to Talon's
+service role.
+
+For every future database change:
+
+1. Create the next contiguous `NNN_snake_case.sql` file.
+2. Make the migration safe to apply before its compatible application deploy.
+3. Insert its own version and name into `talon_schema_migrations`.
+4. Increase `EXPECTED_SCHEMA_VERSION` in `lib/schema-version.ts`.
+5. Run `pnpm migrations:check`, apply the migration, then deploy the application.
+6. Open **Settings → Production Readiness** and verify **Database Schema** says
+   the current and expected versions match.
+
+If the database is behind, `/api/health` returns HTTP `503`. If the database is
+ahead after an application rollback, health reports a warning so the operator
+can verify backward compatibility. Additive migrations should normally remain
+in place during an application rollback; do not reverse a migration by deleting
+production data or columns unless its documented rollback explicitly requires it.
 
 ## Auth Lockouts
 
