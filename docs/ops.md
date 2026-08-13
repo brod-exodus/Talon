@@ -27,6 +27,14 @@ The script exits non-zero on the first failed acceptance check. By default it
 deletes its artifacts even when a later check fails. Set
 `KEEP_SMOKE_ARTIFACTS=true` only for deliberate debugging.
 
+Starting and retrying a scrape are queue-only commands. Each returns HTTP `202`
+after the durable state change and schedules a best-effort immediate worker
+after the response. The Supabase one-minute worker schedule remains the recovery
+path if that dispatch is interrupted. A Retry request should therefore return
+promptly even when the scrape itself needs many worker steps. The production
+smoke fails if Retry does not return HTTP `202` within ten seconds; override
+`RETRY_MAX_SECONDS` only when diagnosing unusual network latency.
+
 ## Post-Deploy Smoke Checklist
 
 Run this after every production deploy:

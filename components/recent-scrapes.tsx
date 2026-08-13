@@ -666,17 +666,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || "Failed to retry scrape")
-      if (data?.workerResult?.status === "failed") {
-        toast({
-          title: "Retry failed",
-          description: data.workerResult.error || "The scrape ran again but could not complete.",
-          variant: "destructive",
-        })
-      } else if (data?.workerResult?.status === "succeeded") {
-        toast({ title: "Retry completed", description: "The scrape completed successfully." })
-      } else {
-        toast({ title: "Retry queued", description: "The scrape will run again shortly." })
-      }
+      toast({ title: "Retry queued", description: "The scrape will run again shortly." })
       await fetchScrapes()
     } catch (error) {
       toast({

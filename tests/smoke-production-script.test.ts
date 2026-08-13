@@ -77,10 +77,10 @@ test("production smoke exercises idempotent enqueue, cancel, retry, completion, 
       })
     }
     if (request.method === "POST" && /\/api\/scrape-jobs\/[^/]+\/retry$/.test(url.pathname)) {
-      return json(response, 200, {
+      return json(response, 202, {
         job: { id: "00000000-0000-4000-8000-000000000001", status: "queued" },
-        workerTriggered: true,
-        workerResult: { status: "succeeded" },
+        status: "queued",
+        dispatch: "immediate",
       })
     }
     if (request.method === "GET" && url.pathname === "/api/scrape/scrape-1") {
