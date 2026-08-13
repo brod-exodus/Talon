@@ -192,6 +192,13 @@ developer tools and confirm these headers are present. If a new external font,
 image, script, or browser API is intentionally introduced, update the policy to
 the narrowest required origin rather than adding a wildcard.
 
+## Dependency security
+
+Run `pnpm security:audit` before every release. CI blocks known high- and
+critical-severity advisories, while the separate Security workflow runs CodeQL
+and reviews dependency changes. See `docs/dependency-security.md` for the update,
+override, and incident-response policy.
+
 ## Security Events
 
 Recent events are visible in Settings under `Recent Security Events`.
