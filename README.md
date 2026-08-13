@@ -46,11 +46,12 @@ flowchart LR
     Keepalive --> Ops
 ```
 
-Starting a scrape only validates the target and creates a durable job. Supabase
-Cron invokes one bounded step per minute. Repository discovery, organization
-repository scanning, and contributor hydration persist their cursors between
-invocations, so work can resume after a timeout without duplicating
-contributors.
+Starting or retrying a scrape only validates the command and updates the durable
+queue. Both return promptly; a best-effort post-response dispatch starts work
+immediately, while Supabase Cron provides the recovery path. Repository
+discovery, organization repository scanning, and contributor hydration persist
+their cursors between invocations, so work can resume after a timeout without
+duplicating contributors.
 
 ## Engineering decisions
 

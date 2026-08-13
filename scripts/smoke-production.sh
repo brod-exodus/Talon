@@ -11,6 +11,7 @@ SMOKE_CANCEL_REPO="${SMOKE_CANCEL_REPO:-$SMOKE_REPO}"
 POLL_SECONDS="${POLL_SECONDS:-5}"
 MAX_POLLS="${MAX_POLLS:-60}"
 CANCEL_SETTLE_SECONDS="${CANCEL_SETTLE_SECONDS:-2}"
+RETRY_MAX_SECONDS="${RETRY_MAX_SECONDS:-10}"
 KEEP_SMOKE_ARTIFACTS="${KEEP_SMOKE_ARTIFACTS:-false}"
 TEMP_DIR="$(mktemp -d)"
 COOKIE_JAR="$TEMP_DIR/cookies.txt"
@@ -149,15 +150,21 @@ printf '%s' "$CANCELED_SCRAPE" | assert_json 'response.status === "canceled"' ||
 }
 
 echo "[5/10] Retry the canceled scrape"
-RETRY_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/retry")"
-printf '%s' "$RETRY_RESPONSE" | assert_json 'response.job?.id && typeof response.workerTriggered === "boolean"' || {
+RETRY_STARTED_AT="$(date +%s)"
+RETRY_HTTP_STATUS="$(talon_curl -sS -o "$TEMP_DIR/retry.json" -w "%{http_code}" \
+  -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/retry")"
+RETRY_ELAPSED_SECONDS="$(( $(date +%s) - RETRY_STARTED_AT ))"
+RETRY_RESPONSE="$(<"$TEMP_DIR/retry.json")"
+[[ "$RETRY_HTTP_STATUS" == "202" ]] || { echo "Retry returned HTTP $RETRY_HTTP_STATUS: $RETRY_RESPONSE"; exit 1; }
+[[ "$RETRY_ELAPSED_SECONDS" -le "$RETRY_MAX_SECONDS" ]] || {
+  echo "Retry took ${RETRY_ELAPSED_SECONDS}s; expected at most ${RETRY_MAX_SECONDS}s"
+  exit 1
+}
+printf '%s' "$RETRY_RESPONSE" | assert_json 'response.job?.id && response.status === "queued" && response.dispatch === "immediate"' || {
   echo "Retry failed: $RETRY_RESPONSE"
   exit 1
 }
-RETRY_STATUS="$(printf '%s' "$RETRY_RESPONSE" | json_field workerResult.status || true)"
-if [[ "$RETRY_STATUS" != "succeeded" ]]; then
-  talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel"
-fi
+talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel"
 
 echo "[6/10] Queue and safely replay the completion scrape: $SMOKE_REPO"
 START_IDEMPOTENCY_KEY="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"

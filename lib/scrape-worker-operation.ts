@@ -3,7 +3,7 @@ import { runScrapeWorker, type ScrapeWorkerResult } from "@/lib/scrape-worker"
 import { logError, logInfo } from "@/lib/logger"
 import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
 
-export type ScrapeWorkerTrigger = "cron" | "manual" | "queue"
+export type ScrapeWorkerTrigger = "cron" | "manual" | "queue" | "retry"
 
 export type ScrapeWorkerOperation = {
   workerId: string
