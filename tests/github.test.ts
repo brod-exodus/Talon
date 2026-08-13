@@ -158,6 +158,61 @@ test("organizationExists returns false for a missing organization", async () => 
   assert.equal(await client.organizationExists("missing-org"), false)
 })
 
+test("organization repository pages expose a resumable cursor without fetching ahead", async () => {
+  const urls: string[] = []
+  const repositories = Array.from({ length: 100 }, (_, index) => ({
+    full_name: `example/repo-${index}`,
+    fork: index === 0,
+    archived: index === 1,
+  }))
+  const fetchImpl = async (url: string | URL | Request) => {
+    urls.push(String(url))
+    return new Response(JSON.stringify(repositories), {
+      headers: {
+        Link: '<https://api.github.com/organizations/1/repos?per_page=100&page=4>; rel="next"',
+      },
+    })
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  const result = await client.getOrgReposPage("example", 3)
+
+  assert.equal(result.page, 3)
+  assert.equal(result.repositories.length, 100)
+  assert.equal(result.repositories[0]?.fork, true)
+  assert.equal(result.repositories[1]?.archived, true)
+  assert.equal(result.hasNext, true)
+  assert.deepEqual(urls, [
+    "https://api.github.com/orgs/example/repos?per_page=100&sort=full_name&direction=asc&page=3",
+  ])
+})
+
+test("the full organization repository helper remains compatible across pages", async () => {
+  const urls: string[] = []
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    full_name: `example/repo-${index}`,
+    fork: false,
+    archived: false,
+  }))
+  const fetchImpl = async (url: string | URL | Request) => {
+    urls.push(String(url))
+    const page = new URL(String(url)).searchParams.get("page")
+    if (page === "1") {
+      return new Response(JSON.stringify(firstPage), {
+        headers: { Link: '<https://api.github.com/organizations/1/repos?per_page=100&page=2>; rel="next"' },
+      })
+    }
+    return new Response(JSON.stringify([{ full_name: "example/final", fork: false, archived: false }]))
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  const repositories = await client.getOrgRepos("example")
+
+  assert.equal(repositories.length, 101)
+  assert.equal(urls.length, 2)
+  assert.match(urls[1] ?? "", /page=2$/)
+})
+
 test("extractContactsFromBio pulls email, explicit twitter links, linkedin, and website", () => {
   const result = extractContactsFromBio(
     "Founder. Reach me at jane@example.com, https://x.com/janedoe, linkedin.com/in/jane-doe https://janedoe.dev"

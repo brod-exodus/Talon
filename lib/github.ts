@@ -133,6 +133,12 @@ export type GitHubContributorPage = {
   hasNext: boolean
 }
 
+export type GitHubRepositoryPage = {
+  repositories: Repository[]
+  page: number
+  hasNext: boolean
+}
+
 type GitHubRepositoryResponse = {
   full_name: string
   fork: boolean
@@ -439,19 +445,32 @@ class GitHubClient {
     const all: Repository[] = []
     let page = 1
     while (true) {
-      const { data: batch, headers } = await this.fetchJson<GitHubRepositoryResponse[]>(
-        `${this.baseUrl}/orgs/${encodeURIComponent(org)}/repos?per_page=100&page=${page}`
-      )
-      if (!batch || batch.length === 0) break
-      all.push(...batch.map((repo) => ({
-        full_name: repo.full_name,
-        fork: repo.fork,
-        archived: repo.archived,
-      })))
-      if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
+      const result = await this.getOrgReposPage(org, page)
+      if (!result.repositories.length) break
+      all.push(...result.repositories)
+      if (!result.hasNext) break
       page++
     }
     return all
+  }
+
+  async getOrgReposPage(org: string, page = 1): Promise<GitHubRepositoryPage> {
+    const safePage = Math.max(1, Math.floor(page))
+    const { data, headers } = await this.fetchJson<GitHubRepositoryResponse[]>(
+      `${this.baseUrl}/orgs/${encodeURIComponent(org)}/repos?per_page=100&sort=full_name&direction=asc&page=${safePage}`
+    )
+    const repositories = Array.isArray(data)
+      ? data.map((repo) => ({
+          full_name: repo.full_name,
+          fork: repo.fork,
+          archived: repo.archived,
+        }))
+      : []
+    return {
+      repositories,
+      page: safePage,
+      hasNext: repositories.length === 100 && Boolean(headers.get("link")?.includes('rel="next"')),
+    }
   }
 
   async getRepoContributors(repo: string): Promise<Contributor[]> {

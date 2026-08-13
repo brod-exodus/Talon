@@ -15,6 +15,7 @@ import { createGitHubClient, extractContactsFromBio, extractSocialContacts, GitH
 import {
   planHydrationStep,
   planOrganizationDiscoveryStep,
+  planOrganizationRepositoryPage,
   planRepositoryContributorPage,
   SCRAPE_HYDRATION_BATCH_SIZE,
 } from "@/lib/scrape-step"
@@ -25,6 +26,8 @@ type ScrapeJobState = {
   phase?: "discover" | "hydrate"
   repoIndex?: number
   repositories?: string[]
+  repositoryPage?: number
+  repositoryDiscoveryComplete?: boolean
   contributorPage?: number
 }
 
@@ -205,18 +208,54 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   const org = job.target
   const minContributions = job.min_contributions
   const initialState = (job.state ?? {}) as ScrapeJobState
-  let repositories = initialState.repositories
-  if (!repositories?.length) {
+  let repositories = initialState.repositories ?? []
+  const isLegacyDiscoveryComplete =
+    repositories.length > 0 &&
+    initialState.repositoryPage === undefined &&
+    initialState.repositoryDiscoveryComplete === undefined
+  const repositoryDiscoveryComplete = initialState.repositoryDiscoveryComplete ?? isLegacyDiscoveryComplete
+
+  if (!repositoryDiscoveryComplete) {
+    await ensureNotCanceled(job.id)
+    const pagePlan = planOrganizationRepositoryPage(initialState.repositoryPage ?? 1, true)
     const githubClient = createWorkerGitHubClient()
-    const allRepos = await githubClient.getOrgRepos(org)
-    if (!allRepos?.length) {
+    const page = await githubClient.getOrgReposPage(org, pagePlan.scannedPage)
+    if (pagePlan.scannedPage === 1 && !page.repositories.length) {
       throw new Error(`No repositories found for organization "${org}". Please check the organization name.`)
     }
-    repositories = allRepos.filter((repo) => !repo.fork && !repo.archived).map((repo) => repo.full_name)
-    if (!repositories.length) {
+
+    repositories = Array.from(new Set([
+      ...repositories,
+      ...page.repositories.filter((repo) => !repo.fork && !repo.archived).map((repo) => repo.full_name),
+    ]))
+    const completedPage = planOrganizationRepositoryPage(page.page, page.hasNext)
+    if (completedPage.completesDiscovery && !repositories.length) {
       throw new Error(`No non-forked repositories found for organization "${org}".`)
     }
-    await saveScrapeCheckpoint(job, { state: { ...initialState, repositories } })
+
+    await saveScrapeCheckpoint(job, {
+      state: {
+        ...initialState,
+        phase: "discover",
+        repositories,
+        repositoryPage: completedPage.nextPage,
+        repositoryDiscoveryComplete: completedPage.completesDiscovery,
+      },
+    })
+    await recordScrapeJobEvent(
+      job.id,
+      job.scrape_id,
+      "organization_repository_page_scanned",
+      "Scanned organization repository page",
+      {
+        organization: org,
+        page: completedPage.scannedPage,
+        hasNext: page.hasNext,
+        repositoriesFound: page.repositories.length,
+        eligibleRepositories: repositories.length,
+      }
+    )
+    return false
   }
 
   const repos = repositories
@@ -240,6 +279,8 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
         phase: discovery.completesDiscovery ? "hydrate" : "discover",
         repoIndex: discovery.nextRepoIndex,
         repositories: repos,
+        repositoryPage: initialState.repositoryPage,
+        repositoryDiscoveryComplete: true,
       },
       progress: {
         current: discovery.nextRepoIndex,
@@ -259,7 +300,16 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
 
   const logins = await getScrapeJobContributionCandidates(job.id, minContributions)
   const hydrated = await hydrateCandidates(
-    { ...job, state: { phase: "hydrate", repoIndex: repos.length, repositories: repos } },
+    {
+      ...job,
+      state: {
+        phase: "hydrate",
+        repoIndex: repos.length,
+        repositories: repos,
+        repositoryPage: initialState.repositoryPage,
+        repositoryDiscoveryComplete: true,
+      },
+    },
     logins,
     50,
     50

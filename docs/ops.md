@@ -189,6 +189,21 @@ This change has no database migration, environment variable, or scheduler
 change. Deploy the application normally and run `pnpm smoke:production`.
 Rollback only requires redeploying the previous application version.
 
+### Resumable organization repository discovery
+
+Organization scrapes enumerate one GitHub repository page per worker step and
+persist the next page plus the deduplicated eligible repository list. Forked and
+archived repositories remain excluded. Pages use a deterministic repository-name
+sort to reduce cursor drift while a long enumeration is running. Only after
+GitHub reports the final page does Talon begin scanning contributor totals for
+the discovered repositories.
+
+Jobs started by the prior release remain compatible: a populated repository
+list without the new page fields is treated as already enumerated. This change
+has no database migration, environment variable, or scheduler change. Deploy
+normally, run `pnpm smoke:production`, and rollback by redeploying the previous
+application version if necessary.
+
 Security hardening migrations include:
 
 ```text
