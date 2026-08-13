@@ -28,6 +28,10 @@ for command in curl node; do
   command -v "$command" >/dev/null 2>&1 || { echo "$command is required"; exit 1; }
 done
 
+talon_curl() {
+  command curl -H "Origin: $BASE_URL" "$@"
+}
+
 json_field() {
   local path="$1"
   node -e '
@@ -58,11 +62,11 @@ cleanup() {
   if [[ "$KEEP_SMOKE_ARTIFACTS" != "true" && "$LOGGED_IN" == "true" ]]; then
     for job_id in "${JOB_IDS[@]:-}"; do
       [[ -n "$job_id" ]] || continue
-      curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$job_id/cancel"
+      talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$job_id/cancel"
     done
     for scrape_id in "${SCRAPE_IDS[@]:-}"; do
       [[ -n "$scrape_id" ]] || continue
-      curl -sS -o /dev/null -b "$COOKIE_JAR" -X DELETE "$BASE_URL/api/scrape/$scrape_id"
+      talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X DELETE "$BASE_URL/api/scrape/$scrape_id"
     done
   fi
 
@@ -75,7 +79,7 @@ echo "[1/10] Login to $BASE_URL"
 LOGIN_BODY="$(ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" node -e '
   process.stdout.write(JSON.stringify({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }))
 ')"
-LOGIN_STATUS="$(curl -sS -o "$TEMP_DIR/login.json" -w "%{http_code}" \
+LOGIN_STATUS="$(talon_curl -sS -o "$TEMP_DIR/login.json" -w "%{http_code}" \
   -c "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/auth/login" \
   -H "Content-Type: application/json" \
@@ -84,17 +88,28 @@ LOGIN_STATUS="$(curl -sS -o "$TEMP_DIR/login.json" -w "%{http_code}" \
 LOGGED_IN=true
 
 echo "[2/10] Verify production health, scheduler history, and credentials"
-HEALTH_STATUS="$(curl -sS -o "$TEMP_DIR/health.json" -w "%{http_code}" -b "$COOKIE_JAR" "$BASE_URL/api/health")"
+HEALTH_STATUS="$(talon_curl -sS -D "$TEMP_DIR/health-headers.txt" -o "$TEMP_DIR/health.json" -w "%{http_code}" -b "$COOKIE_JAR" "$BASE_URL/api/health")"
 [[ "$HEALTH_STATUS" == "200" ]] || { echo "Health check failed: HTTP $HEALTH_STATUS"; cat "$TEMP_DIR/health.json"; exit 1; }
 assert_json 'response.status !== "error" && response.checks?.github?.status === "ok" && response.checks?.database?.status === "ok" && response.checks?.databaseSchema?.status === "ok" && response.checks?.scrapeWorker?.status === "ok" && response.checks?.keepalive?.status === "ok"' < "$TEMP_DIR/health.json" || {
   echo "Health response did not confirm GitHub, Supabase, schema version, keepalive, and worker scheduling"
   cat "$TEMP_DIR/health.json"
   exit 1
 }
+node -e '
+  const fs = require("node:fs")
+  const headers = fs.readFileSync(process.argv[1], "utf8").toLowerCase()
+  for (const name of ["content-security-policy:", "x-content-type-options:", "x-frame-options:"]) {
+    if (!headers.includes(name)) process.exit(1)
+  }
+' "$TEMP_DIR/health-headers.txt" || {
+  echo "Health response is missing required browser security headers"
+  cat "$TEMP_DIR/health-headers.txt"
+  exit 1
+}
 
 echo "[3/10] Verify authenticated keepalive when CRON_SECRET is available"
 if [[ -n "${CRON_SECRET:-}" ]]; then
-  KEEPALIVE_STATUS="$(curl -sS -o "$TEMP_DIR/keepalive.json" -w "%{http_code}" \
+  KEEPALIVE_STATUS="$(talon_curl -sS -o "$TEMP_DIR/keepalive.json" -w "%{http_code}" \
     -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/keepalive")"
   [[ "$KEEPALIVE_STATUS" == "200" ]] || { echo "Keepalive failed: HTTP $KEEPALIVE_STATUS"; cat "$TEMP_DIR/keepalive.json"; exit 1; }
   assert_json 'response.success === true && typeof response.timestamp === "string" && ["healthy", "breached", "insufficient_data"].includes(response.sloMonitor?.state)' < "$TEMP_DIR/keepalive.json"
@@ -106,7 +121,7 @@ echo "[4/10] Queue and cancel a scrape: $SMOKE_CANCEL_REPO"
 CANCEL_START_BODY="$(SMOKE_TARGET="$SMOKE_CANCEL_REPO" node -e '
   process.stdout.write(JSON.stringify({ type: "repository", target: process.env.SMOKE_TARGET, minContributions: 1 }))
 ')"
-CANCEL_START_RESPONSE="$(curl -sS -b "$COOKIE_JAR" \
+CANCEL_START_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/scrape" \
   -H "Content-Type: application/json" \
   --data-binary "$CANCEL_START_BODY")"
@@ -116,34 +131,34 @@ CANCEL_JOB_ID="$(printf '%s' "$CANCEL_START_RESPONSE" | json_field jobId || true
 SCRAPE_IDS+=("$CANCEL_SCRAPE_ID")
 JOB_IDS+=("$CANCEL_JOB_ID")
 
-CANCEL_RESPONSE="$(curl -sS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel")"
+CANCEL_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel")"
 printf '%s' "$CANCEL_RESPONSE" | assert_json 'response.job?.status === "canceled"' || {
   echo "Cancellation failed: $CANCEL_RESPONSE"
   exit 1
 }
 sleep "$CANCEL_SETTLE_SECONDS"
-CANCELED_SCRAPE="$(curl -sS -b "$COOKIE_JAR" "$BASE_URL/api/scrape/$CANCEL_SCRAPE_ID?page=1&pageSize=1")"
+CANCELED_SCRAPE="$(talon_curl -sS -b "$COOKIE_JAR" "$BASE_URL/api/scrape/$CANCEL_SCRAPE_ID?page=1&pageSize=1")"
 printf '%s' "$CANCELED_SCRAPE" | assert_json 'response.status === "canceled"' || {
   echo "Canceled scrape did not remain canceled: $CANCELED_SCRAPE"
   exit 1
 }
 
 echo "[5/10] Retry the canceled scrape"
-RETRY_RESPONSE="$(curl -sS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/retry")"
+RETRY_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/retry")"
 printf '%s' "$RETRY_RESPONSE" | assert_json 'response.job?.id && typeof response.workerTriggered === "boolean"' || {
   echo "Retry failed: $RETRY_RESPONSE"
   exit 1
 }
 RETRY_STATUS="$(printf '%s' "$RETRY_RESPONSE" | json_field workerResult.status || true)"
 if [[ "$RETRY_STATUS" != "succeeded" ]]; then
-  curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel"
+  talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$CANCEL_JOB_ID/cancel"
 fi
 
 echo "[6/10] Queue the completion scrape: $SMOKE_REPO"
 START_BODY="$(SMOKE_TARGET="$SMOKE_REPO" node -e '
   process.stdout.write(JSON.stringify({ type: "repository", target: process.env.SMOKE_TARGET, minContributions: 1 }))
 ')"
-START_RESPONSE="$(curl -sS -b "$COOKIE_JAR" \
+START_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/scrape" \
   -H "Content-Type: application/json" \
   --data-binary "$START_BODY")"
@@ -155,7 +170,7 @@ JOB_IDS+=("$JOB_ID")
 
 echo "[7/10] Wait for queued -> running -> completed: $SCRAPE_ID"
 for ((poll = 1; poll <= MAX_POLLS; poll++)); do
-  RESPONSE="$(curl -sS -b "$COOKIE_JAR" "$BASE_URL/api/scrape/$SCRAPE_ID?page=1&pageSize=500")"
+  RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" "$BASE_URL/api/scrape/$SCRAPE_ID?page=1&pageSize=500")"
   SCRAPE_STATUS="$(printf '%s' "$RESPONSE" | json_field status || true)"
   if [[ "$SCRAPE_STATUS" == "completed" ]]; then
     printf '%s' "$RESPONSE" > "$TEMP_DIR/contributors.json"
@@ -186,14 +201,14 @@ CSV_OUTPUT="$CSV_FILE" node --experimental-strip-types --input-type=module -e '
 [[ -s "$CSV_FILE" ]] || { echo "CSV export was empty"; exit 1; }
 
 echo "[9/10] Create and verify a public read-only share"
-SHARE_RESPONSE="$(curl -sS -b "$COOKIE_JAR" \
+SHARE_RESPONSE="$(talon_curl -sS -b "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/share" \
   -H "Content-Type: application/json" \
   --data-binary "$(SCRAPE_ID="$SCRAPE_ID" node -e 'process.stdout.write(JSON.stringify({ scrapeId: process.env.SCRAPE_ID, expiresInDays: 1, allowDownload: true }))')")"
 SHARE_TOKEN="$(printf '%s' "$SHARE_RESPONSE" | json_field token || true)"
 SHARE_ID="$(printf '%s' "$SHARE_RESPONSE" | json_field share.id || true)"
 [[ -n "$SHARE_TOKEN" && -n "$SHARE_ID" ]] || { echo "Share creation failed: $SHARE_RESPONSE"; exit 1; }
-PUBLIC_SHARE="$(curl -sS "$BASE_URL/api/share/$SHARE_TOKEN")"
+PUBLIC_SHARE="$(talon_curl -sS "$BASE_URL/api/share/$SHARE_TOKEN")"
 printf '%s' "$PUBLIC_SHARE" | SCRAPE_ID="$SCRAPE_ID" node -e '
   const fs = require("node:fs")
   const response = JSON.parse(fs.readFileSync(0, "utf8"))
@@ -203,12 +218,12 @@ printf '%s' "$PUBLIC_SHARE" | SCRAPE_ID="$SCRAPE_ID" node -e '
     "notes" in contributor || "status" in contributor || "contacted" in contributor || "contactedDate" in contributor
   )) process.exit(1)
 '
-REVOKE_STATUS="$(curl -sS -o "$TEMP_DIR/revoke-share.json" -w "%{http_code}" -b "$COOKIE_JAR" \
+REVOKE_STATUS="$(talon_curl -sS -o "$TEMP_DIR/revoke-share.json" -w "%{http_code}" -b "$COOKIE_JAR" \
   -X DELETE "$BASE_URL/api/share" \
   -H "Content-Type: application/json" \
   --data-binary "$(SHARE_ID="$SHARE_ID" node -e 'process.stdout.write(JSON.stringify({ shareId: process.env.SHARE_ID }))')")"
 [[ "$REVOKE_STATUS" == "200" ]] || { echo "Share revocation failed: $(cat "$TEMP_DIR/revoke-share.json")"; exit 1; }
-REVOKED_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL/api/share/$SHARE_TOKEN")"
+REVOKED_STATUS="$(talon_curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL/api/share/$SHARE_TOKEN")"
 [[ "$REVOKED_STATUS" == "410" ]] || { echo "Revoked share returned HTTP $REVOKED_STATUS instead of 410"; exit 1; }
 
 echo "[10/10] Clean up smoke artifacts"
@@ -217,10 +232,10 @@ if [[ "$KEEP_SMOKE_ARTIFACTS" == "true" ]]; then
 else
   cleanup_status=0
   for job_id in "$CANCEL_JOB_ID" "$JOB_ID"; do
-    curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$job_id/cancel" || cleanup_status=1
+    talon_curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE_URL/api/scrape-jobs/$job_id/cancel" || cleanup_status=1
   done
   for scrape_id in "$CANCEL_SCRAPE_ID" "$SCRAPE_ID"; do
-    DELETE_STATUS="$(curl -sS -o "$TEMP_DIR/delete.json" -w "%{http_code}" -b "$COOKIE_JAR" -X DELETE "$BASE_URL/api/scrape/$scrape_id")"
+    DELETE_STATUS="$(talon_curl -sS -o "$TEMP_DIR/delete.json" -w "%{http_code}" -b "$COOKIE_JAR" -X DELETE "$BASE_URL/api/scrape/$scrape_id")"
     [[ "$DELETE_STATUS" == "200" ]] || cleanup_status=1
   done
   [[ "$cleanup_status" == "0" ]] || { echo "Smoke passed, but cleanup needs attention"; exit 1; }

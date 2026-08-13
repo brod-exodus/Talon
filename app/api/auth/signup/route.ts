@@ -5,6 +5,7 @@ import { checkLoginRateLimit, recordLoginFailure, resetLoginRateLimit } from "@/
 import { supabaseAdmin } from "@/lib/supabase"
 import { ensurePrivateWorkspaceForUser } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
+import { requireSameOrigin } from "@/lib/request-origin"
 
 const PASSWORD_MIN_LENGTH = 8
 
@@ -27,6 +28,9 @@ function normalizeDisplayName(value: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  const originError = requireSameOrigin(request)
+  if (originError) return originError
+
   const rateLimit = await checkLoginRateLimit(request)
   if (!rateLimit.allowed) {
     return NextResponse.json(

@@ -6,6 +6,7 @@ import { supabaseAuth } from "@/lib/supabase"
 import { ensurePrivateWorkspaceForUser, getPrimaryTeamMembershipForEmail } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
 import { type AuthRole } from "@/lib/auth-token"
+import { requireSameOrigin } from "@/lib/request-origin"
 
 function normalizeLoginEmail(value: unknown): string | null {
   if (typeof value !== "string") return null
@@ -25,6 +26,9 @@ function appRoleFromUser(user: { user_metadata?: Record<string, unknown> | null 
 }
 
 export async function POST(request: NextRequest) {
+  const originError = requireSameOrigin(request)
+  if (originError) return originError
+
   const rateLimit = await checkLoginRateLimit(request)
   if (!rateLimit.allowed) {
     await recordAuditEvent({

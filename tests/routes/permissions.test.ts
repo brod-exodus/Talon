@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { NextRequest } from "next/server"
 
 const permissionMocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
@@ -18,9 +19,10 @@ vi.mock("@/lib/request-membership", () => ({
 import { requirePermission } from "@/lib/permissions"
 import { type AuthRole } from "@/lib/auth-token"
 
-const request = new Request("https://talon.example/api/scrape", {
+const request = new NextRequest("https://talon.example/api/scrape", {
   method: "POST",
-}) as import("next/server").NextRequest
+  headers: { Origin: "https://talon.example" },
+})
 
 function currentMembership(role: AuthRole) {
   return {
@@ -118,5 +120,34 @@ describe("live request authorization", () => {
 
     expect(response?.status).toBe(503)
     await expect(response?.json()).resolves.toEqual({ error: "Authorization could not be verified" })
+  })
+
+  test("rejects an authenticated cross-site mutation before reading membership", async () => {
+    const crossSiteRequest = new NextRequest("https://talon.example/api/scrape", {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+    })
+
+    const response = await requirePermission(crossSiteRequest, "write")
+
+    expect(response?.status).toBe(403)
+    await expect(response?.json()).resolves.toEqual({ error: "Cross-site request rejected" })
+    expect(permissionMocks.getCurrentRequestMembership).not.toHaveBeenCalled()
+  })
+
+  test("allows a same-origin mutation to continue through live authorization", async () => {
+    const sameOriginRequest = new NextRequest("https://talon.example/api/scrape", {
+      method: "POST",
+      headers: {
+        Origin: "https://talon.example",
+        "Sec-Fetch-Site": "same-origin",
+      },
+    })
+
+    expect(await requirePermission(sameOriginRequest, "write")).toBeNull()
+    expect(permissionMocks.getCurrentRequestMembership).toHaveBeenCalledOnce()
   })
 })

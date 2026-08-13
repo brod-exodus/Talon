@@ -15,6 +15,7 @@ echo "[1/6] Login"
 LOGIN_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" \
   -c "$COOKIE_JAR" \
   -X POST "$BASE_URL/api/auth/login" \
+  -H "Origin: $BASE_URL" \
   -H "Content-Type: application/json" \
   -d "{\"password\":\"$ADMIN_PASSWORD\"}")"
 if [[ "$LOGIN_STATUS" != "200" ]]; then
