@@ -164,6 +164,55 @@ async function lastSystemRunCheck(
   }
 }
 
+async function sloAlertingCheck(): Promise<HealthCheck> {
+  const { data, error } = await supabaseAdmin
+    .from("system_runs")
+    .select("completed_at, details")
+    .eq("kind", "keepalive")
+    .eq("status", "success")
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return { status: "warn", message: "Could not read SLO alert history" }
+
+  const details = data?.details && typeof data.details === "object" && !Array.isArray(data.details)
+    ? data.details as Record<string, unknown>
+    : null
+  const monitor = details?.sloMonitor && typeof details.sloMonitor === "object" && !Array.isArray(details.sloMonitor)
+    ? details.sloMonitor as Record<string, unknown>
+    : null
+  if (!monitor) {
+    return {
+      status: "warn",
+      message: "No SLO alert evaluation has been recorded",
+      detail: "Run the authenticated keepalive after deploying this release.",
+    }
+  }
+
+  const state = typeof monitor.state === "string" ? monitor.state : "unavailable"
+  const notification = typeof monitor.notification === "string" ? monitor.notification : "unknown"
+  if (["failed", "invalid_configuration", "history_unavailable", "not_evaluated"].includes(notification)) {
+    return {
+      status: "warn",
+      message: "SLO alert monitoring needs attention",
+      detail: `Last evaluation: ${state}; notification: ${notification.replaceAll("_", " ")}`,
+    }
+  }
+  if (notification === "not_configured") {
+    return {
+      status: "warn",
+      message: "SLO breach detected without Slack alerting",
+      detail: "Configure SLACK_WEBHOOK_URL to receive state-change notifications.",
+    }
+  }
+
+  return {
+    status: "ok",
+    message: "SLO alert monitor evaluated successfully",
+    detail: `Last evaluation: ${state}; notification: ${notification.replaceAll("_", " ")}`,
+  }
+}
+
 async function queueCheck(): Promise<HealthCheck> {
   const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
@@ -269,7 +318,7 @@ export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
-  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, scrapeSlos] = await Promise.all([
+  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, scrapeSlos, sloAlerting] = await Promise.all([
     dbCheck(),
     schemaVersionCheck(),
     githubCheck(),
@@ -277,6 +326,7 @@ export async function GET(request: NextRequest) {
     lastSystemRunCheck("scrape_worker", 10),
     queueCheck(),
     scrapeSloChecks(),
+    sloAlertingCheck(),
   ])
   const checks: Record<string, HealthCheck> = {
     supabaseUrl: envCheck("NEXT_PUBLIC_SUPABASE_URL", { required: true }),
@@ -292,6 +342,7 @@ export async function GET(request: NextRequest) {
     keepalive,
     scrapeWorker,
     scrapeQueue,
+    sloAlerting,
     ...scrapeSlos,
   }
 

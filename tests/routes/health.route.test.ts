@@ -22,6 +22,7 @@ const healthMocks = vi.hoisted(() => ({
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
     systemRuns: {} as Record<string, string | null>,
+    keepaliveDetails: null as Record<string, unknown> | null,
     queueRows: [] as QueueRow[],
     queueError: null as Error | null,
   },
@@ -46,7 +47,15 @@ vi.mock("@/lib/supabase", () => ({
         }
         if (table === "system_runs") {
           const completedAt = healthMocks.state.systemRuns[runKind]
-          return { data: completedAt ? { completed_at: completedAt } : null, error: null }
+          return {
+            data: completedAt
+              ? {
+                  completed_at: completedAt,
+                  ...(selection.includes("details") ? { details: healthMocks.state.keepaliveDetails } : {}),
+                }
+              : null,
+            error: null,
+          }
         }
         if (table === "scrape_jobs") {
           return { data: healthMocks.state.queueRows, error: healthMocks.state.queueError }
@@ -130,6 +139,14 @@ describe("GET /api/health", () => {
       keepalive: recentRun,
       scrape_worker: recentRun,
     }
+    healthMocks.state.keepaliveDetails = {
+      sloMonitor: {
+        state: "healthy",
+        fingerprint: "reliability:healthy;latency:healthy",
+        lastNotifiedFingerprint: null,
+        notification: "unchanged",
+      },
+    }
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -177,6 +194,11 @@ describe("GET /api/health", () => {
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
+    expect(body.checks.sloAlerting).toEqual({
+      status: "ok",
+      message: "SLO alert monitor evaluated successfully",
+      detail: "Last evaluation: healthy; notification: unchanged",
+    })
     expect(body.checks.scrapeQueue.message).toBe("0 queued (0 due), 0 running, 0 failed")
     const serialized = JSON.stringify(body)
     expect(serialized).not.toContain("github-test-token")
@@ -285,6 +307,26 @@ describe("GET /api/health", () => {
       status: "warn",
       message: "Repository scrape latency is above target",
       detail: "p50 6 minutes; p95 8 minutes; Target p95 ≤3 minutes over 7 days",
+    })
+  })
+
+  test("warns when the most recent keepalive could not deliver an SLO alert", async () => {
+    healthMocks.state.keepaliveDetails = {
+      sloMonitor: {
+        state: "breached",
+        notification: "failed",
+      },
+    }
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.sloAlerting).toEqual({
+      status: "warn",
+      message: "SLO alert monitoring needs attention",
+      detail: "Last evaluation: breached; notification: failed",
     })
   })
 })

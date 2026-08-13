@@ -218,6 +218,21 @@ limited evidence. A missed historical SLO produces **Attention**, not HTTP `503`
 because it should prompt investigation without claiming the live service is
 unavailable.
 
+The daily keepalive also persists an aggregate SLO snapshot in
+`system_runs.details.sloMonitor`. When `SLACK_WEBHOOK_URL` is configured, Talon
+sends one notification for each new breach fingerprint and one notification
+after a notified breach recovers. Repeated healthy checks and an unchanged
+breach do not generate messages. Notification failures do not make the
+keepalive fail; the stored `notification` status remains `failed` so the same
+breach is retried on the next daily run. Messages contain only aggregate counts
+and timing metrics—never repository names, contributor data, or secrets.
+
+After deployment, call `/api/keepalive` with `CRON_SECRET` or wait for the daily
+schedule, then inspect the latest successful `keepalive` row in `system_runs`.
+Its `details.sloMonitor` object reports the evaluated state, fingerprint, sample
+size, metrics, and notification outcome. No database migration is required for
+this feature because the state uses the existing JSON `details` column.
+
 When an SLO is missed:
 
 1. Compare p50 and p95. A high p95 with a healthy p50 usually indicates outliers;
