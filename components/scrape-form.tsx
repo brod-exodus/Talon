@@ -208,8 +208,8 @@ export function ScrapeForm() {
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
         const projectMsg = scrapeProjectName ? ` Added to ${scrapeProjectName}.` : ""
         toast({
-          title: "Scrape queued",
-          description: `Queued ${target} for processing.${projectMsg}${rateLimitMsg}`,
+          title: "Scrape starting",
+          description: `${target} is queued and its worker is starting now.${projectMsg}${rateLimitMsg}`,
         })
 
         setTarget("")
