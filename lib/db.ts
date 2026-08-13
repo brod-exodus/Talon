@@ -318,46 +318,14 @@ export async function enqueueScrape(input: {
 }
 
 export async function claimNextScrapeJob(workerId: string, teamId?: string): Promise<ScrapeJobRow | null> {
-  const now = new Date().toISOString()
-  let query = supabaseAdmin
-    .from("scrape_jobs")
-    .select("*")
-    .eq("status", "queued")
-    .lte("run_after", now)
-    .order("run_after", { ascending: true })
-    .order("created_at", { ascending: true })
-    .limit(5)
-  if (teamId) query = query.eq("team_id", teamId)
-  const { data: candidates, error: selectError } = await query
-  if (selectError) throw selectError
-
-  for (const candidate of (candidates ?? []) as ScrapeJobRow[]) {
-    const { data: claimed, error: updateError } = await supabaseAdmin
-      .from("scrape_jobs")
-      .update({
-        status: "running",
-        attempts: candidate.attempts + 1,
-        locked_at: now,
-        locked_by: workerId,
-        updated_at: now,
-      })
-      .eq("id", candidate.id)
-      .match(teamId ? { team_id: teamId } : {})
-      .eq("status", "queued")
-      .select("*")
-      .maybeSingle()
-    if (updateError) throw updateError
-    if (claimed) {
-      const job = claimed as ScrapeJobRow
-      await recordScrapeJobEvent(job.id, job.scrape_id, "claimed", "Worker claimed scrape job", {
-        workerId,
-        attempt: job.attempts,
-      })
-      return job
-    }
-  }
-
-  return null
+  const { data, error } = await supabaseAdmin
+    .rpc("claim_scrape_job", {
+      p_worker_id: workerId,
+      p_team_id: teamId ?? null,
+    })
+    .maybeSingle()
+  if (error) throw error
+  return data ? data as ScrapeJobRow : null
 }
 
 export async function getScrapeJobForWorker(id: string, workerId: string): Promise<ScrapeJobRow> {

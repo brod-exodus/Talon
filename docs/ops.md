@@ -144,6 +144,19 @@ Migration 030 is additive and may remain installed during an application
 rollback. The prior application does not call its new functions, so rolling back
 only requires redeploying the previous application version.
 
+### Atomic concurrent job claims
+
+Migration `031_atomic_job_claim.sql` replaces the worker's read-then-update
+claim loop with one database transaction. The claim selects the oldest due job
+using `FOR UPDATE SKIP LOCKED`, marks it running, increments its attempt count,
+and records the claim event before returning it to the worker. Concurrent worker
+invocations therefore claim different jobs instead of contending for the same
+five candidates or incorrectly reporting an empty queue.
+
+Apply migration 031 before deploying the compatible application. No environment
+variable or scheduler change is required. The migration is additive and may
+remain installed during an application rollback.
+
 Security hardening migrations include:
 
 ```text
@@ -156,6 +169,7 @@ db/migrations/027_schema_version_contract.sql
 db/migrations/028_idempotent_scrape_enqueue.sql
 db/migrations/029_operation_correlation.sql
 db/migrations/030_lease_safe_job_transitions.sql
+db/migrations/031_atomic_job_claim.sql
 ```
 
 They create or enforce:
