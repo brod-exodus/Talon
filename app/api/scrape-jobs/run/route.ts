@@ -7,6 +7,7 @@ import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 const MAX_JOBS_PER_INVOCATION = 1
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   const isCronRequest = hasCronSecret(request)
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
       teamSlug,
       processed: results.length,
       statuses: results.map((result) => result.status),
+      steps: results.reduce((total, result) => total + (result.steps ?? 0), 0),
+      maxElapsedMs: Math.max(0, ...results.map((result) => result.elapsedMs ?? 0)),
     },
     })
     for (const result of results) {
@@ -67,6 +70,8 @@ export async function POST(request: NextRequest) {
       recoveredStaleJobs,
       processed: results.length,
       statuses: results.map((result) => result.status),
+      steps: results.reduce((total, result) => total + (result.steps ?? 0), 0),
+      maxElapsedMs: Math.max(0, ...results.map((result) => result.elapsedMs ?? 0)),
     })
     return NextResponse.json({ workerId, recoveredStaleJobs, processed: results.length, results })
   } catch (error) {

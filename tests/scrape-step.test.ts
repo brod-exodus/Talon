@@ -1,6 +1,10 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { planHydrationStep, planOrganizationDiscoveryStep } from "../lib/scrape-step.ts"
+import {
+  planHydrationStep,
+  planOrganizationDiscoveryStep,
+  SCRAPE_HYDRATION_BATCH_SIZE,
+} from "../lib/scrape-step.ts"
 
 const candidates = Array.from({ length: 25 }, (_, index) => ({
   login: `user-${index + 1}`,
@@ -26,7 +30,15 @@ test("planHydrationStep marks the final resumable batch complete", () => {
   assert.equal(step.completesHydration, true)
 })
 
-test("planOrganizationDiscoveryStep processes one repository per invocation", () => {
+test("the default hydration batch keeps GitHub concurrency bounded at twenty profiles", () => {
+  const step = planHydrationStep(candidates, new Set())
+
+  assert.equal(SCRAPE_HYDRATION_BATCH_SIZE, 20)
+  assert.equal(step.batch.length, 20)
+  assert.equal(step.completesHydration, false)
+})
+
+test("planOrganizationDiscoveryStep advances one repository step at a time", () => {
   assert.deepEqual(planOrganizationDiscoveryStep(3, 1), {
     repoIndex: 1,
     hasRepository: true,
