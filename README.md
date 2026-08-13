@@ -163,12 +163,25 @@ Production end-to-end scrape smoke:
 BASE_URL="https://your-domain.example" \
 ADMIN_EMAIL="owner@example.com" \
 ADMIN_PASSWORD="..." \
-SMOKE_REPO="vercel/next.js" \
+SMOKE_REPO="octocat/Hello-World" \
 pnpm smoke:production
 ```
 
-The production smoke creates a real public-repository scrape and waits for the
-scheduled worker to complete it.
+The production smoke verifies health and recent scheduler activity, then tests
+cancel, retry, completion, contributor loading, CSV generation, and public
+read-only sharing. It deletes the test scrapes and cascading share link when it
+finishes. Set `KEEP_SMOKE_ARTIFACTS=true` only when you intentionally want to
+inspect them afterward.
+
+To invoke and verify `/api/keepalive` directly in addition to checking its
+persistent health history, provide the production cron secret:
+
+```bash
+CRON_SECRET="..." pnpm smoke:production
+```
+
+Useful tuning variables are `SMOKE_CANCEL_REPO`, `POLL_SECONDS`, and
+`MAX_POLLS`. Use only public GitHub repositories for smoke checks.
 
 ## Operations and security
 
