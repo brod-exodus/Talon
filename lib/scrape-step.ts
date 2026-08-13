@@ -31,3 +31,12 @@ export function planOrganizationDiscoveryStep(repoCount: number, repoIndex: numb
     nextRepoIndex: Math.min(safeIndex + 1, safeCount),
   }
 }
+
+export function planRepositoryContributorPage(page: number, hasNext: boolean) {
+  const scannedPage = Math.max(1, Math.floor(page))
+  return {
+    scannedPage,
+    nextPage: scannedPage + 1,
+    completesDiscovery: !hasNext,
+  }
+}

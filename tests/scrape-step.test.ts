@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   planHydrationStep,
   planOrganizationDiscoveryStep,
+  planRepositoryContributorPage,
   SCRAPE_HYDRATION_BATCH_SIZE,
 } from "../lib/scrape-step.ts"
 
@@ -74,5 +75,26 @@ test("planOrganizationDiscoveryStep advances one repository step at a time", () 
     hasRepository: true,
     completesDiscovery: true,
     nextRepoIndex: 3,
+  })
+})
+
+test("repository discovery advances one persisted GitHub page at a time", () => {
+  assert.deepEqual(planRepositoryContributorPage(2, true), {
+    scannedPage: 2,
+    nextPage: 3,
+    completesDiscovery: false,
+  })
+  assert.deepEqual(planRepositoryContributorPage(3, false), {
+    scannedPage: 3,
+    nextPage: 4,
+    completesDiscovery: true,
+  })
+})
+
+test("repository discovery normalizes an invalid initial page", () => {
+  assert.deepEqual(planRepositoryContributorPage(0, true), {
+    scannedPage: 1,
+    nextPage: 2,
+    completesDiscovery: false,
   })
 })

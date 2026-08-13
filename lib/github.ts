@@ -127,6 +127,12 @@ export interface Repository {
   archived: boolean
 }
 
+export type GitHubContributorPage = {
+  contributors: Contributor[]
+  page: number
+  hasNext: boolean
+}
+
 type GitHubRepositoryResponse = {
   full_name: string
   fork: boolean
@@ -452,15 +458,26 @@ class GitHubClient {
     const all: Contributor[] = []
     let page = 1
     while (true) {
-      const { data: batch, headers } = await this.fetchJson<Contributor[]>(
-        `${this.baseUrl}/repos/${this.repoPath(repo)}/contributors?per_page=100&page=${page}`
-      )
-      if (!batch || batch.length === 0) break
-      all.push(...batch)
-      if (batch.length < 100 || !headers.get("link")?.includes('rel="next"')) break
+      const result = await this.getRepoContributorsPage(repo, page)
+      if (!result.contributors.length) break
+      all.push(...result.contributors)
+      if (!result.hasNext) break
       page++
     }
     return all
+  }
+
+  async getRepoContributorsPage(repo: string, page = 1): Promise<GitHubContributorPage> {
+    const safePage = Math.max(1, Math.floor(page))
+    const { data, headers } = await this.fetchJson<Contributor[]>(
+      `${this.baseUrl}/repos/${this.repoPath(repo)}/contributors?per_page=100&page=${safePage}`
+    )
+    const contributors = Array.isArray(data) ? data : []
+    return {
+      contributors,
+      page: safePage,
+      hasNext: contributors.length === 100 && Boolean(headers.get("link")?.includes('rel="next"')),
+    }
   }
 
   async getUserDetails(username: string): Promise<Contributor> {
