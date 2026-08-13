@@ -104,7 +104,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
 
   const getProgressLabel = (scrape: ActiveScrape) => {
     if (!scrape.job) return "Processing contributors"
-    if (scrape.job.status === "queued") return "Waiting to start"
+    if (scrape.job.status === "queued") return "Starting shortly"
     return "Processing contributors"
   }
 

@@ -2,8 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { requirePermission } from "@/lib/permissions"
-import { runScrapeWorker } from "@/lib/scrape-worker"
-import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
+import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 const MAX_JOBS_PER_INVOCATION = 1
@@ -25,14 +24,21 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const systemRunId = await startSystemRun("scrape_worker", {
+  const {
+    workerId,
+    recoveredStaleJobs,
+    results,
+    hasFailedResult,
+    steps,
+    maxElapsedMs,
+  } = await runScrapeWorkerOperation({
     trigger: isCronRequest ? "cron" : "manual",
+    teamId,
     teamSlug,
+    maxJobs: MAX_JOBS_PER_INVOCATION,
   })
-  try {
-    const { workerId, recoveredStaleJobs, results } = await runScrapeWorker(MAX_JOBS_PER_INVOCATION, teamId)
-    const hasFailedResult = results.some((result) => result.status === "failed")
-    await recordAuditEvent({
+
+  await recordAuditEvent({
     request,
     action: "scrape_worker.run",
     outcome: hasFailedResult ? "failure" : "success",
@@ -43,13 +49,13 @@ export async function POST(request: NextRequest) {
       teamSlug,
       processed: results.length,
       statuses: results.map((result) => result.status),
-      steps: results.reduce((total, result) => total + (result.steps ?? 0), 0),
-      maxElapsedMs: Math.max(0, ...results.map((result) => result.elapsedMs ?? 0)),
+      steps,
+      maxElapsedMs,
     },
-    })
-    for (const result of results) {
-      if (result.status !== "failed") continue
-      await recordAuditEvent({
+  })
+  for (const result of results) {
+    if (result.status !== "failed") continue
+    await recordAuditEvent({
       request,
       action: "scrape.failure",
       outcome: "failure",
@@ -62,20 +68,8 @@ export async function POST(request: NextRequest) {
         teamId: result.teamId,
         error: result.error ?? "Unknown scrape job error",
       },
-      })
-    }
-
-    await finishSystemRun(systemRunId, hasFailedResult ? "failure" : "success", {
-      workerId,
-      recoveredStaleJobs,
-      processed: results.length,
-      statuses: results.map((result) => result.status),
-      steps: results.reduce((total, result) => total + (result.steps ?? 0), 0),
-      maxElapsedMs: Math.max(0, ...results.map((result) => result.elapsedMs ?? 0)),
     })
-    return NextResponse.json({ workerId, recoveredStaleJobs, processed: results.length, results })
-  } catch (error) {
-    await finishSystemRun(systemRunId, "failure", {}, error)
-    throw error
   }
+
+  return NextResponse.json({ workerId, recoveredStaleJobs, processed: results.length, results })
 }

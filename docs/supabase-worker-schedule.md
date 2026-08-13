@@ -1,7 +1,9 @@
 # Supabase Worker Schedule
 
-Talon's scrape starter only queues durable work. Supabase Cron invokes one
-bounded worker step every minute so jobs continue without an open browser.
+Talon's scrape starter queues durable work and dispatches a worker immediately
+after returning the response. Supabase Cron also invokes the worker every minute
+as a recovery path, so jobs continue without an open browser even if the
+immediate invocation is interrupted.
 
 ## Configure once in Supabase
 
