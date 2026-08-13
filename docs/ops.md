@@ -41,6 +41,16 @@ Run this after every production deploy:
 
 Apply migrations in order from `db/migrations`.
 
+Before opening a release PR, validate the repository contract:
+
+```bash
+pnpm migrations:check
+```
+
+This rejects missing or duplicate migration numbers, an application/version
+mismatch, and new migrations that do not record themselves in
+`talon_schema_migrations`.
+
 Security hardening migrations include:
 
 ```text
@@ -49,6 +59,7 @@ db/migrations/010_service_role_rls_lockdown.sql
 db/migrations/024_system_runs.sql
 db/migrations/025_contactable_scrape_contributors_rpc.sql
 db/migrations/026_share_lifecycle_and_retention.sql
+db/migrations/027_schema_version_contract.sql
 ```
 
 They create or enforce:
@@ -105,6 +116,60 @@ select
 Use `select cleanup_talon_retention();` only when you intentionally want to run
 the cleanup immediately. The function is restricted to the database owner and
 Talon's service role.
+
+## Database schema deployments
+
+Apply migration `027` before deploying the application release that introduces
+schema health checks. First confirm migrations `001` through `026` have been
+applied; migration `027` then records that historical baseline and exposes the
+current version only to Talon's service role.
+
+Use this read-only preflight before adopting the v27 ledger. It must return no
+rows:
+
+```sql
+WITH prerequisites(required_object, is_present) AS (
+  VALUES
+    ('table public.scrapes', to_regclass('public.scrapes') IS NOT NULL),
+    ('table public.contributors', to_regclass('public.contributors') IS NOT NULL),
+    ('table public.scrape_jobs', to_regclass('public.scrape_jobs') IS NOT NULL),
+    ('table public.scrape_job_contributions', to_regclass('public.scrape_job_contributions') IS NOT NULL),
+    ('table public.scrape_job_events', to_regclass('public.scrape_job_events') IS NOT NULL),
+    ('table public.shared_scrapes', to_regclass('public.shared_scrapes') IS NOT NULL),
+    ('table public.teams', to_regclass('public.teams') IS NOT NULL),
+    ('table public.team_memberships', to_regclass('public.team_memberships') IS NOT NULL),
+    ('table public.audit_events', to_regclass('public.audit_events') IS NOT NULL),
+    ('table public.auth_rate_limits', to_regclass('public.auth_rate_limits') IS NOT NULL),
+    ('table public.activity_events', to_regclass('public.activity_events') IS NOT NULL),
+    ('table public.project_contributors_cache', to_regclass('public.project_contributors_cache') IS NOT NULL),
+    ('table public.project_lists', to_regclass('public.project_lists') IS NOT NULL),
+    ('table public.project_contributor_tracking', to_regclass('public.project_contributor_tracking') IS NOT NULL),
+    ('table public.system_runs', to_regclass('public.system_runs') IS NOT NULL),
+    ('function public.talon_current_user_team_ids()', to_regprocedure('public.talon_current_user_team_ids()') IS NOT NULL),
+    ('function public.get_contactable_scrape_contributors_page(text,integer,integer)', to_regprocedure('public.get_contactable_scrape_contributors_page(text,integer,integer)') IS NOT NULL),
+    ('function public.cleanup_talon_retention()', to_regprocedure('public.cleanup_talon_retention()') IS NOT NULL)
+)
+SELECT required_object AS missing_object
+FROM prerequisites
+WHERE NOT is_present
+ORDER BY required_object;
+```
+
+For every future database change:
+
+1. Create the next contiguous `NNN_snake_case.sql` file.
+2. Make the migration safe to apply before its compatible application deploy.
+3. Insert its own version and name into `talon_schema_migrations`.
+4. Increase `EXPECTED_SCHEMA_VERSION` in `lib/schema-version.ts`.
+5. Run `pnpm migrations:check`, apply the migration, then deploy the application.
+6. Open **Settings → Production Readiness** and verify **Database Schema** says
+   the current and expected versions match.
+
+If the database is behind, `/api/health` returns HTTP `503`. If the database is
+ahead after an application rollback, health reports a warning so the operator
+can verify backward compatibility. Additive migrations should normally remain
+in place during an application rollback; do not reverse a migration by deleting
+production data or columns unless its documented rollback explicitly requires it.
 
 ## Auth Lockouts
 
