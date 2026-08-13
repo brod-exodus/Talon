@@ -24,6 +24,7 @@ Describe how to quickly roll this back if the deploy is unhealthy.
 - [ ] Settings reports `Database Schema` healthy after deployment
 - [ ] Vercel env vars are present and correct for this change
 - [ ] `/api/health` is `ok` after deploy
+- [ ] Repository scrape reliability and latency SLOs were reviewed
 - [ ] Post-deploy smoke checks completed
 
 ## Migrations Applied

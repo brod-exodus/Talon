@@ -83,7 +83,8 @@ The portfolio deployment favors free infrastructure:
 - `system_runs` preserves operational outcomes beyond Vercel Hobby log
   retention.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
-  failures, database connectivity, and GitHub rate limits.
+  failures, database connectivity, GitHub rate limits, and seven-day repository
+  scrape reliability/latency SLOs.
 
 The tradeoff is throughput: one bounded job step runs per scheduled invocation.
 This is appropriate for a portfolio deployment, not a formal high-volume SLA.

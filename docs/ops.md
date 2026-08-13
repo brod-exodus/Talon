@@ -200,6 +200,36 @@ Useful actions to check during incident response:
 
 ## Scrape Recovery
 
+### Repository scrape SLOs
+
+Settings → Production Readiness calculates two rolling seven-day indicators
+from terminal repository scrapes:
+
+- **Reliability:** at least 95% of completed-or-failed repository scrapes should
+  complete successfully.
+- **Latency:** the 95th-percentile end-to-end completion time should be no more
+  than three minutes.
+
+Canceled scrapes are excluded because they reflect an operator decision rather
+than service reliability. Organization scrapes are excluded because repository
+count makes their runtime fundamentally different. Talon waits for at least five
+observations before evaluating either target; smaller samples remain visible as
+limited evidence. A missed historical SLO produces **Attention**, not HTTP `503`,
+because it should prompt investigation without claiming the live service is
+unavailable.
+
+When an SLO is missed:
+
+1. Compare p50 and p95. A high p95 with a healthy p50 usually indicates outliers;
+   both being high indicates a systemic slowdown.
+2. Inspect failed jobs and recent job events before retrying anything.
+3. Check GitHub rate-limit capacity, queue age, and worker freshness in the same
+   panel.
+4. Record the affected time window, targets, and representative scrape IDs in
+   the incident or PR notes.
+5. After a fix deploys, confirm new scrapes improve the rolling window; do not
+   delete failed history merely to make the indicator green.
+
 If a scrape is stuck:
 
 1. Open Settings Health and inspect queue depth, oldest queued age, stale locks, and the last successful worker run.
