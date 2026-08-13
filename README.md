@@ -55,14 +55,20 @@ discovery, organization repository scanning, and contributor hydration persist
 their cursors between invocations, so work can resume after a timeout without
 duplicating contributors.
 
+Repository contributor discovery checkpoints every GitHub result page. Worker
+GitHub calls use short attempts and delegate retry delays to the durable queue,
+keeping an individual serverless invocation bounded even for repositories with
+thousands of contributors.
+
 ## Engineering decisions
 
 ### Durable background work
 
-Vercel request duration is not treated as a job runner. Each worker invocation
-does one repository-discovery step or one ten-profile hydration batch, persists
-progress, and requeues unfinished work. Locks older than ten minutes are
-recovered automatically.
+Vercel request duration is not treated as a job runner. Each bounded worker step
+scans one GitHub result page, scans one organization repository, or hydrates one
+twenty-profile batch. The invocation repeats steps only within its execution
+budget, persists progress, and requeues unfinished work. Locks older than ten
+minutes are recovered automatically.
 
 ### Server-managed credentials
 

@@ -172,6 +172,23 @@ cancel/retry portion of `pnpm smoke:production` verifies the surrounding worker
 control flow. The migration is additive and may remain installed during an
 application rollback.
 
+### Resumable repository contributor discovery
+
+Repository scrapes fetch and persist one GitHub contributor page per worker
+step. Each successful page saves the next-page cursor through the lease-safe
+checkpoint before another page is requested. Replaying a page is idempotent
+because repository contribution totals are upserted by job and GitHub login.
+
+Worker GitHub requests use a ten-second attempt timeout and do not perform
+in-process retries. Transient failures return the job to Talon's existing
+durable retry schedule, leaving enough time for the worker to persist a clean
+outcome before the serverless invocation limit. Watched-repository checks keep
+the full-list helper because they are not durable scrape jobs.
+
+This change has no database migration, environment variable, or scheduler
+change. Deploy the application normally and run `pnpm smoke:production`.
+Rollback only requires redeploying the previous application version.
+
 Security hardening migrations include:
 
 ```text

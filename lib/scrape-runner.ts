@@ -15,6 +15,7 @@ import { createGitHubClient, extractContactsFromBio, extractSocialContacts, GitH
 import {
   planHydrationStep,
   planOrganizationDiscoveryStep,
+  planRepositoryContributorPage,
   SCRAPE_HYDRATION_BATCH_SIZE,
 } from "@/lib/scrape-step"
 import { isScrapeJobCancellationRequested } from "@/lib/scrape-job-policy"
@@ -24,6 +25,17 @@ type ScrapeJobState = {
   phase?: "discover" | "hydrate"
   repoIndex?: number
   repositories?: string[]
+  contributorPage?: number
+}
+
+const WORKER_GITHUB_REQUEST_TIMEOUT_MS = 10_000
+const WORKER_GITHUB_MAX_RETRIES = 0
+
+function createWorkerGitHubClient() {
+  return createGitHubClient(undefined, {
+    requestTimeoutMs: WORKER_GITHUB_REQUEST_TIMEOUT_MS,
+    maxRetries: WORKER_GITHUB_MAX_RETRIES,
+  })
 }
 
 export class ScrapeJobCanceledError extends Error {
@@ -134,7 +146,7 @@ async function hydrateCandidates(
   progressBase = 0,
   progressSpan = 100
 ): Promise<boolean> {
-  const githubClient = createGitHubClient()
+  const githubClient = createWorkerGitHubClient()
   const alreadyLinked = await getScrapeContributorUsernames(job.scrape_id)
   const step = planHydrationStep(candidates, alreadyLinked, SCRAPE_HYDRATION_BATCH_SIZE)
 
@@ -195,7 +207,7 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   const initialState = (job.state ?? {}) as ScrapeJobState
   let repositories = initialState.repositories
   if (!repositories?.length) {
-    const githubClient = createGitHubClient()
+    const githubClient = createWorkerGitHubClient()
     const allRepos = await githubClient.getOrgRepos(org)
     if (!allRepos?.length) {
       throw new Error(`No repositories found for organization "${org}". Please check the organization name.`)
@@ -213,7 +225,7 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
     await ensureNotCanceled(job.id)
 
     const repo = repos[discovery.repoIndex]
-    const githubClient = createGitHubClient()
+    const githubClient = createWorkerGitHubClient()
     const contribSumMap = await getScrapeJobContributionMap(job.id)
     const contributors = await githubClient.getRepoContributors(repo)
     const changedTotals: Array<{ login: string; contributions: number }> = []
@@ -262,10 +274,13 @@ async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
   const minContributions = job.min_contributions
   const state = (job.state ?? {}) as ScrapeJobState
   if (state.phase !== "hydrate") {
-    const githubClient = createGitHubClient()
-    const contributors = await githubClient.getRepoContributors(repo)
+    await ensureNotCanceled(job.id)
+    const pagePlan = planRepositoryContributorPage(state.contributorPage ?? 1, true)
+    const githubClient = createWorkerGitHubClient()
+    const page = await githubClient.getRepoContributorsPage(repo, pagePlan.scannedPage)
+    const contributors = page.contributors
 
-    if (!contributors?.length) {
+    if (pagePlan.scannedPage === 1 && !contributors.length) {
       throw new Error(`No contributors found for repository "${repo}". Please check the repository name.`)
     }
 
@@ -273,12 +288,26 @@ async function scrapeRepository(job: ScrapeJobRow): Promise<boolean> {
       .filter((contributor) => contributor.contributions >= minContributions)
       .map((contributor) => ({ login: contributor.login, contributions: contributor.contributions }))
     await upsertScrapeJobContributionTotals(job.id, candidates)
-    await saveScrapeCheckpoint(job, { state: { phase: "hydrate" } })
-    await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
-      repository: repo,
-      contributorCount: contributors.length,
-      candidates: candidates.length,
+    const completedPage = planRepositoryContributorPage(page.page, page.hasNext)
+    await saveScrapeCheckpoint(job, {
+      state: {
+        phase: completedPage.completesDiscovery ? "hydrate" : "discover",
+        contributorPage: completedPage.nextPage,
+      },
     })
+    await recordScrapeJobEvent(
+      job.id,
+      job.scrape_id,
+      "repository_contributor_page_scanned",
+      "Scanned repository contributor page",
+      {
+        repository: repo,
+        page: completedPage.scannedPage,
+        hasNext: page.hasNext,
+        contributorCount: contributors.length,
+        candidates: candidates.length,
+      }
+    )
     return false
   }
 

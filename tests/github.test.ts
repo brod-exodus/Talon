@@ -58,6 +58,76 @@ test("repository API calls use normalized owner and repo path", async () => {
   ])
 })
 
+test("repository contributor pages expose a resumable cursor without fetching ahead", async () => {
+  const urls: string[] = []
+  const contributors = Array.from({ length: 100 }, (_, index) => ({
+    id: index,
+    login: `user-${index}`,
+    avatar_url: "",
+    html_url: "",
+    contributions: index + 1,
+  }))
+  const fetchImpl = async (url: string | URL | Request) => {
+    urls.push(String(url))
+    return new Response(JSON.stringify(contributors), {
+      status: 200,
+      headers: {
+        Link: '<https://api.github.com/repositories/1/contributors?per_page=100&page=3>; rel="next"',
+      },
+    })
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  const result = await client.getRepoContributorsPage("vercel/next.js", 2)
+
+  assert.equal(result.page, 2)
+  assert.equal(result.contributors.length, 100)
+  assert.equal(result.hasNext, true)
+  assert.deepEqual(urls, ["https://api.github.com/repos/vercel/next.js/contributors?per_page=100&page=2"])
+})
+
+test("repository contributor pages stop when GitHub omits a next-page link", async () => {
+  const fetchImpl = async () =>
+    new Response(JSON.stringify([{ id: 1, login: "octocat", avatar_url: "", html_url: "", contributions: 1 }]))
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  const result = await client.getRepoContributorsPage("octocat/Hello-World", 0)
+
+  assert.equal(result.page, 1)
+  assert.equal(result.hasNext, false)
+  assert.equal(result.contributors[0]?.login, "octocat")
+})
+
+test("the full contributor helper remains compatible by following page results", async () => {
+  const urls: string[] = []
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    id: index,
+    login: `user-${index}`,
+    avatar_url: "",
+    html_url: "",
+    contributions: index + 1,
+  }))
+  const fetchImpl = async (url: string | URL | Request) => {
+    urls.push(String(url))
+    const page = new URL(String(url)).searchParams.get("page")
+    if (page === "1") {
+      return new Response(JSON.stringify(firstPage), {
+        headers: { Link: '<https://api.github.com/repositories/1/contributors?per_page=100&page=2>; rel="next"' },
+      })
+    }
+    return new Response(
+      JSON.stringify([{ id: 101, login: "last-user", avatar_url: "", html_url: "", contributions: 1 }])
+    )
+  }
+  const client = createGitHubClient("ghp_test", { fetchImpl: fetchImpl as typeof fetch })
+
+  const contributors = await client.getRepoContributors("vercel/next.js")
+
+  assert.equal(contributors.length, 101)
+  assert.equal(urls.length, 2)
+  assert.match(urls[1] ?? "", /page=2$/)
+})
+
 test("GitHub API errors include the exact failing endpoint", async () => {
   const body = JSON.stringify({ message: "Not Found", status: "404" })
   const fetchImpl = async (url: string | URL | Request) => {
