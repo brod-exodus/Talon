@@ -17,7 +17,7 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 30 as number | null,
+    schemaVersion: 31 as number | null,
     schemaError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
@@ -125,7 +125,7 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 30
+    healthMocks.state.schemaVersion = 31
     healthMocks.state.schemaError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
@@ -190,7 +190,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v30; expected v30",
+      detail: "Current v31; expected v31",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -247,19 +247,19 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v26; expected v30",
+      detail: "Current v26; expected v31",
     })
   })
 
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 31
+    healthMocks.state.schemaVersion = 32
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v31; application expects v30")
+    expect(body.checks.databaseSchema.detail).toBe("Current v32; application expects v31")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {

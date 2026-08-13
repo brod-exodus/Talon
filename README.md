@@ -48,7 +48,9 @@ flowchart LR
 
 Starting or retrying a scrape only validates the command and updates the durable
 queue. Both return promptly; a best-effort post-response dispatch starts work
-immediately, while Supabase Cron provides the recovery path. Repository
+immediately, while Supabase Cron provides the recovery path. Workers atomically
+claim the oldest due job with row locking that skips work already being claimed,
+so simultaneous invocations remain useful without double-processing. Repository
 discovery, organization repository scanning, and contributor hydration persist
 their cursors between invocations, so work can resume after a timeout without
 duplicating contributors.
