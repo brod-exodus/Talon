@@ -1,6 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
 import { EXPECTED_SCHEMA_VERSION } from "@/lib/schema-version"
+import {
+  buildScrapeSloSnapshot,
+  SCRAPE_P95_TARGET_MINUTES,
+  SCRAPE_SLO_MIN_SAMPLE,
+  SCRAPE_SLO_WINDOW_DAYS,
+  SCRAPE_SUCCESS_TARGET_PERCENT,
+  type ScrapeSloRow,
+} from "@/lib/scrape-slo"
 import { supabaseAdmin } from "@/lib/supabase"
 
 type CheckStatus = "ok" | "warn" | "error"
@@ -185,6 +193,72 @@ async function queueCheck(): Promise<HealthCheck> {
   }
 }
 
+function scrapeReliabilityCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>): HealthCheck {
+  const target = `Target ≥${SCRAPE_SUCCESS_TARGET_PERCENT}% over ${SCRAPE_SLO_WINDOW_DAYS} days`
+  if (snapshot.sampleSize < SCRAPE_SLO_MIN_SAMPLE) {
+    return {
+      status: "ok",
+      message: "Limited repository scrape sample",
+      detail: `${snapshot.sampleSize} terminal scrape${snapshot.sampleSize === 1 ? "" : "s"}; ${target}`,
+    }
+  }
+
+  const successRate = snapshot.successRate ?? 0
+  return {
+    status: successRate >= SCRAPE_SUCCESS_TARGET_PERCENT ? "ok" : "warn",
+    message: successRate >= SCRAPE_SUCCESS_TARGET_PERCENT
+      ? "Repository scrape reliability meets target"
+      : "Repository scrape reliability is below target",
+    detail: `${successRate}% success (${snapshot.succeeded} succeeded, ${snapshot.failed} failed); ${target}`,
+  }
+}
+
+function scrapeLatencyCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>): HealthCheck {
+  const target = `Target p95 ≤${SCRAPE_P95_TARGET_MINUTES} minutes over ${SCRAPE_SLO_WINDOW_DAYS} days`
+  if (snapshot.durationSampleSize < SCRAPE_SLO_MIN_SAMPLE) {
+    return {
+      status: "ok",
+      message: "Limited repository latency sample",
+      detail: `${snapshot.durationSampleSize} completed scrape${snapshot.durationSampleSize === 1 ? "" : "s"}; ${target}`,
+    }
+  }
+
+  const p95 = snapshot.p95Minutes ?? 0
+  return {
+    status: p95 <= SCRAPE_P95_TARGET_MINUTES ? "ok" : "warn",
+    message: p95 <= SCRAPE_P95_TARGET_MINUTES
+      ? "Repository scrape latency meets target"
+      : "Repository scrape latency is above target",
+    detail: `p50 ${snapshot.p50Minutes} minutes; p95 ${p95} minutes; ${target}`,
+  }
+}
+
+async function scrapeSloChecks(): Promise<{
+  scrapeReliability: HealthCheck
+  scrapeLatency: HealthCheck
+}> {
+  const since = new Date(Date.now() - SCRAPE_SLO_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabaseAdmin
+    .from("scrapes")
+    .select("status, started_at, completed_at")
+    .eq("type", "repository")
+    .in("status", ["completed", "failed"])
+    .gte("started_at", since)
+    .order("started_at", { ascending: false })
+    .limit(1000)
+
+  if (error) {
+    const check = { status: "warn" as const, message: "Could not calculate repository scrape SLOs" }
+    return { scrapeReliability: check, scrapeLatency: check }
+  }
+
+  const snapshot = buildScrapeSloSnapshot((data ?? []) as ScrapeSloRow[])
+  return {
+    scrapeReliability: scrapeReliabilityCheck(snapshot),
+    scrapeLatency: scrapeLatencyCheck(snapshot),
+  }
+}
+
 function overallStatus(checks: Record<string, HealthCheck>): CheckStatus {
   if (Object.values(checks).some((check) => check.status === "error")) return "error"
   if (Object.values(checks).some((check) => check.status === "warn")) return "warn"
@@ -195,13 +269,14 @@ export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
-  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue] = await Promise.all([
+  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, scrapeSlos] = await Promise.all([
     dbCheck(),
     schemaVersionCheck(),
     githubCheck(),
     lastSystemRunCheck("keepalive", 36 * 60),
     lastSystemRunCheck("scrape_worker", 10),
     queueCheck(),
+    scrapeSloChecks(),
   ])
   const checks: Record<string, HealthCheck> = {
     supabaseUrl: envCheck("NEXT_PUBLIC_SUPABASE_URL", { required: true }),
@@ -217,6 +292,7 @@ export async function GET(request: NextRequest) {
     keepalive,
     scrapeWorker,
     scrapeQueue,
+    ...scrapeSlos,
   }
 
   const status = overallStatus(checks)

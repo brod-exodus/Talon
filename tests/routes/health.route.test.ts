@@ -7,12 +7,20 @@ type QueueRow = {
   locked_at: string | null
 }
 
+type SloRow = {
+  status: "completed" | "failed"
+  started_at: string
+  completed_at: string | null
+}
+
 const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
     schemaVersion: 27 as number | null,
     schemaError: null as Error | null,
+    sloRows: [] as SloRow[],
+    sloError: null as Error | null,
     systemRuns: {} as Record<string, string | null>,
     queueRows: [] as QueueRow[],
     queueError: null as Error | null,
@@ -28,8 +36,12 @@ vi.mock("@/lib/supabase", () => ({
     },
     from(table: string) {
       let runKind = ""
+      let selection = ""
       const result = () => {
         if (table === "scrapes") {
+          if (selection.includes("started_at")) {
+            return { data: healthMocks.state.sloRows, error: healthMocks.state.sloError }
+          }
           return { data: [], error: healthMocks.state.databaseError }
         }
         if (table === "system_runs") {
@@ -42,7 +54,8 @@ vi.mock("@/lib/supabase", () => ({
         throw new Error(`Unexpected health query table: ${table}`)
       }
       const builder = {
-        select() {
+        select(columns = "") {
+          selection = columns
           return builder
         },
         eq(column: string, value: string) {
@@ -50,6 +63,9 @@ vi.mock("@/lib/supabase", () => ({
           return builder
         },
         in() {
+          return builder
+        },
+        gte() {
           return builder
         },
         order() {
@@ -102,6 +118,12 @@ describe("GET /api/health", () => {
     healthMocks.state.databaseError = null
     healthMocks.state.schemaVersion = 27
     healthMocks.state.schemaError = null
+    healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
+      status: "completed",
+      started_at: "2026-08-13T17:00:00.000Z",
+      completed_at: new Date(Date.parse("2026-08-13T17:00:00.000Z") + minutes * 60000).toISOString(),
+    }))
+    healthMocks.state.sloError = null
     healthMocks.state.queueError = null
     healthMocks.state.queueRows = []
     healthMocks.state.systemRuns = {
@@ -153,6 +175,8 @@ describe("GET /api/health", () => {
       message: "Database schema matches this application",
       detail: "Current v27; expected v27",
     })
+    expect(body.checks.scrapeReliability.detail).toContain("100% success")
+    expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
     expect(body.checks.scrapeQueue.message).toBe("0 queued (0 due), 0 running, 0 failed")
     const serialized = JSON.stringify(body)
     expect(serialized).not.toContain("github-test-token")
@@ -226,5 +250,41 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(503)
     expect(serialized).toContain("Database schema version is unavailable")
     expect(serialized).not.toContain("internal database detail")
+  })
+
+  test("reports an SLO warning when repository scrape reliability falls below 95%", async () => {
+    healthMocks.state.sloRows = [
+      ...healthMocks.state.sloRows.slice(0, 4),
+      { status: "failed", started_at: "2026-08-13T17:00:00.000Z", completed_at: null },
+    ]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.scrapeReliability).toEqual({
+      status: "warn",
+      message: "Repository scrape reliability is below target",
+      detail: "80% success (4 succeeded, 1 failed); Target ≥95% over 7 days",
+    })
+  })
+
+  test("reports an SLO warning when repository p95 completion exceeds three minutes", async () => {
+    healthMocks.state.sloRows = healthMocks.state.sloRows.map((row, index) => ({
+      ...row,
+      completed_at: new Date(Date.parse(row.started_at) + (index + 4) * 60000).toISOString(),
+    }))
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.scrapeLatency).toEqual({
+      status: "warn",
+      message: "Repository scrape latency is above target",
+      detail: "p50 6 minutes; p95 8 minutes; Target p95 ≤3 minutes over 7 days",
+    })
   })
 })
