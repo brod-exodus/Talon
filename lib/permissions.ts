@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAuthSession, requireAuth } from "@/lib/auth"
 import { roleHasPermission, type Permission } from "@/lib/permission-rules"
 import { getCurrentRequestMembership } from "@/lib/request-membership"
+import { requireSameOrigin } from "@/lib/request-origin"
 
 export { roleHasPermission, sessionHasPermission, type Permission } from "@/lib/permission-rules"
 
@@ -11,6 +12,9 @@ export async function requirePermission(
 ): Promise<NextResponse | null> {
   const authError = requireAuth(request)
   if (authError) return authError
+
+  const originError = requireSameOrigin(request)
+  if (originError) return originError
 
   const session = getAuthSession(request)
   if (session?.actor === "admin") return null

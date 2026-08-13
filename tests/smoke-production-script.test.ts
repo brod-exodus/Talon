@@ -14,12 +14,19 @@ function json(response: import("node:http").ServerResponse, status: number, body
 }
 
 test("production smoke exercises cancel, retry, completion, export, sharing, and cleanup", async () => {
-  const requests: Array<{ method: string; path: string }> = []
+  const requests: Array<{ method: string; path: string; origin?: string }> = []
   let queuedScrapes = 0
   let shareRevoked = false
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1")
-    requests.push({ method: request.method ?? "GET", path: url.pathname })
+    requests.push({
+      method: request.method ?? "GET",
+      path: url.pathname,
+      origin: typeof request.headers.origin === "string" ? request.headers.origin : undefined,
+    })
+    response.setHeader("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+    response.setHeader("X-Content-Type-Options", "nosniff")
+    response.setHeader("X-Frame-Options", "DENY")
 
     if (request.method === "POST" && url.pathname === "/api/auth/login") {
       response.setHeader("Set-Cookie", "talon_session=test; Path=/")
@@ -148,6 +155,9 @@ test("production smoke exercises cancel, retry, completion, export, sharing, and
     assert.equal(requests.filter((entry) => entry.method === "POST" && entry.path === "/api/scrape").length, 2)
     assert.equal(requests.filter((entry) => entry.method === "DELETE" && entry.path.startsWith("/api/scrape/")).length, 2)
     assert.ok(requests.some((entry) => entry.path === "/api/share/smoke-share-token-1234567890123456"))
+    assert.ok(requests
+      .filter((entry) => entry.method === "POST" || entry.method === "PATCH" || entry.method === "DELETE")
+      .every((entry) => entry.origin?.startsWith("http://127.0.0.1:")))
   } finally {
     server.close()
     await once(server, "close")

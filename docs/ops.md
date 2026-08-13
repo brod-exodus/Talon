@@ -177,6 +177,21 @@ Admin login allows 5 failed attempts per hashed client IP in a 15 minute window.
 
 Successful login clears the rate-limit record for that client.
 
+## Browser security boundary
+
+Talon rejects cross-site state-changing browser requests before team
+authorization runs. Same-origin requests continue normally, while originless
+writes fail closed. The production smoke workflow supplies its expected origin;
+cron routes continue to authenticate through `CRON_SECRET`. Public login,
+signup, and logout routes apply the same check.
+
+Every application route also receives a Content Security Policy, clickjacking
+protection, MIME-sniffing protection, a restrictive referrer policy, and browser
+feature restrictions. After deployment, inspect any page response in browser
+developer tools and confirm these headers are present. If a new external font,
+image, script, or browser API is intentionally introduced, update the policy to
+the narrowest required origin rather than adding a wildcard.
+
 ## Security Events
 
 Recent events are visible in Settings under `Recent Security Events`.

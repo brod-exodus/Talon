@@ -63,3 +63,15 @@ test("API routes do not fall back to cookie-only requireAuth", () => {
     assert.doesNotMatch(source, /\brequireAuth\(/, `${file} must use live requirePermission checks`)
   }
 })
+
+test("public authentication mutations enforce the same-origin boundary", () => {
+  for (const key of [
+    "app/api/auth/login/route.ts#POST",
+    "app/api/auth/logout/route.ts#POST",
+    "app/api/auth/signup/route.ts#POST",
+  ]) {
+    const [file] = key.split("#")
+    const handler = handlersForFile(file).find((candidate) => candidate.key === key)
+    assert.match(handler?.body ?? "", /requireSameOrigin\(request\)/, `${key} must reject cross-site writes`)
+  }
+})
