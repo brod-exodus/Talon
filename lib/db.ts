@@ -1,5 +1,4 @@
 import { supabaseAdmin } from "@/lib/supabase"
-import { recordActivityEvent } from "@/lib/activity"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getShareAvailability, shareTokenHash, type ShareAvailability } from "@/lib/share-links"
 import { getDefaultTeamId } from "@/lib/team-context"
@@ -168,6 +167,11 @@ export type ScrapeHydrationCheckpointResult = ScrapeJobTransitionResult & {
   persistedCount: number
   processedCount: number
   candidateCount: number
+}
+
+export type ScrapeCompletionResult = ScrapeJobTransitionResult & {
+  contributorTotal: number
+  contactInfoCount: number
 }
 
 export type ScrapeEnqueueRequest = {
@@ -840,53 +844,6 @@ export type ScrapeContributorProfile = {
   contacts: { email?: string; twitter?: string; linkedin?: string; website?: string }
 }
 
-export async function persistScrapeContributors(
-  id: string,
-  contributors: ScrapeContributorProfile[]
-): Promise<void> {
-  if (!contributors.length) return
-
-  const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
-  if (scrapeError) throw scrapeError
-  const teamId = scrape?.team_id ?? (await getDefaultTeamId())
-
-  const { data: persisted, error: contributorError } = await supabaseAdmin
-    .from("contributors")
-    .upsert(
-      contributors.map((c) => ({
-        team_id: teamId,
-        github_username: c.username,
-        name: c.name || null,
-        avatar_url: c.avatar || null,
-        bio: c.bio ?? null,
-        location: c.location ?? null,
-        company: c.company ?? null,
-        email: c.contacts?.email ?? null,
-        twitter: c.contacts?.twitter ?? null,
-        linkedin: c.contacts?.linkedin ?? null,
-        website: c.contacts?.website ?? null,
-      })),
-      { onConflict: "team_id,github_username" }
-    )
-    .select("id, github_username")
-  if (contributorError) throw contributorError
-
-  const contributorIds = new Map((persisted ?? []).map((row) => [row.github_username, row.id]))
-  const links = contributors.map((contributor) => {
-    const contributorId = contributorIds.get(contributor.username)
-    if (!contributorId) throw new Error(`No id returned while persisting ${contributor.username}`)
-    return {
-      scrape_id: id,
-      contributor_id: contributorId,
-      contributions: contributor.contributions,
-    }
-  })
-  const { error: linkError } = await supabaseAdmin
-    .from("scrape_contributors")
-    .upsert(links, { onConflict: "scrape_id,contributor_id" })
-  if (linkError) throw linkError
-}
-
 export async function getScrapeContributorUsernames(id: string): Promise<Set<string>> {
   const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
@@ -914,95 +871,51 @@ export async function getScrapeContributorUsernames(id: string): Promise<Set<str
   return usernames
 }
 
-export async function getScrapeContributorStats(id: string): Promise<{
-  contributorTotal: number
-  contactInfoCount: number
-}> {
-  const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
-  if (scrapeError) throw scrapeError
-  const teamId = scrape?.team_id ?? (await getDefaultTeamId())
-
-  const { data: links, error: linkError } = await supabaseAdmin
-    .from("scrape_contributors")
-    .select("contributor_id")
-    .eq("scrape_id", id)
-  if (linkError) throw linkError
-  if (!links?.length) return { contributorTotal: 0, contactInfoCount: 0 }
-
-  const contributorIds = links.map((link) => link.contributor_id)
-  let contactInfoCount = 0
-  for (let i = 0; i < contributorIds.length; i += 100) {
-    const batch = contributorIds.slice(i, i + 100)
-    const { data: contributors, error } = await supabaseAdmin
-      .from("contributors")
-      .select("email, twitter, linkedin, website")
-      .eq("team_id", teamId)
-      .in("id", batch)
-    if (error) throw error
-    contactInfoCount += (contributors ?? []).filter((c) =>
-      [c.email, c.twitter, c.linkedin, c.website].some((value) => value != null && String(value).trim() !== "")
-    ).length
-  }
-
-  return { contributorTotal: links.length, contactInfoCount }
-}
-
-export async function completeScrape(
-  job: ScrapeJobRow,
-  contributors: ScrapeContributorProfile[]
-): Promise<ScrapeJobTransitionResult> {
+export async function completeScrape(job: ScrapeJobRow): Promise<ScrapeCompletionResult> {
   const id = job.scrape_id
   const workerId = job.locked_by
   if (!workerId) throw new Error("Scrape job has no active worker lease")
-  await persistScrapeContributors(id, contributors)
-  const { contributorTotal, contactInfoCount } = await getScrapeContributorStats(id)
-  const { data: scrape, error: scrapeFetchError } = await supabaseAdmin
-    .from("scrapes")
-    .select("team_id, type, target")
-    .eq("id", id)
-    .maybeSingle()
-  if (scrapeFetchError) throw scrapeFetchError
-  const resolvedTeamId = scrape?.team_id ?? (await getDefaultTeamId())
   const { data: transitionData, error: transitionError } = await supabaseAdmin
-    .rpc("complete_scrape_job", {
+    .rpc("complete_scrape_job_verified", {
       p_job_id: job.id,
       p_worker_id: workerId,
-      p_contributor_total: contributorTotal,
-      p_contact_info_count: contactInfoCount,
     })
     .single()
   if (transitionError) throw transitionError
   const transitionRow = transitionData as {
     applied: boolean
     result_status: ScrapeJobTransitionResult["status"]
+    contributor_total: number
+    contact_info_count: number
   }
-  const transition = { applied: Boolean(transitionRow.applied), status: transitionRow.result_status }
+  const transition = {
+    applied: Boolean(transitionRow.applied),
+    status: transitionRow.result_status,
+    contributorTotal: transitionRow.contributor_total,
+    contactInfoCount: transitionRow.contact_info_count,
+  }
   if (!transition.applied) return transition
 
-  const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
-    .from("ecosystem_scrapes")
-    .select("ecosystem_id")
-    .eq("scrape_id", id)
-    .eq("team_id", resolvedTeamId)
-  if (affectedProjectError) throw affectedProjectError
+  try {
+    const { data: affectedProjectLinks, error: affectedProjectError } = await supabaseAdmin
+      .from("ecosystem_scrapes")
+      .select("ecosystem_id")
+      .eq("scrape_id", id)
+      .eq("team_id", job.team_id)
+    if (affectedProjectError) throw affectedProjectError
 
-  const affectedProjectIds = Array.from(new Set((affectedProjectLinks ?? []).map((link) => link.ecosystem_id)))
-  await Promise.all(
-    affectedProjectIds.map((ecosystemId) => recomputeEcosystemContributorsCache(ecosystemId, resolvedTeamId))
-  )
-  await recordActivityEvent({
-    teamId: resolvedTeamId,
-    type: "scrape.completed",
-    title: "Scrape completed",
-    description: `Found ${contributorTotal.toLocaleString()} contributor${contributorTotal === 1 ? "" : "s"} in ${scrape?.target ?? "this scrape"}.`,
-    metadata: {
+    const affectedProjectIds = Array.from(new Set((affectedProjectLinks ?? []).map((link) => link.ecosystem_id)))
+    await Promise.all(
+      affectedProjectIds.map((ecosystemId) => recomputeEcosystemContributorsCache(ecosystemId, job.team_id))
+    )
+  } catch (error) {
+    logError("scrape.project_cache_refresh_failed", error, {
+      originRequestId: job.request_id,
+      jobId: job.id,
       scrapeId: id,
-      type: scrape?.type,
-      target: scrape?.target,
-      contributorTotal,
-      contactInfoCount,
-    },
-  })
+      teamId: job.team_id,
+    })
+  }
   return transition
 }
 

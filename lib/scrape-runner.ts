@@ -66,7 +66,7 @@ async function saveScrapeCheckpoint(
 }
 
 async function finishScrape(job: ScrapeJobRow): Promise<boolean> {
-  const transition = await completeScrape(job, [])
+  const transition = await completeScrape(job)
   if (transition.applied) return true
   if (transition.status === "canceled") throw new ScrapeJobCanceledError()
   throw new ScrapeJobLeaseLostError(transition.status)
