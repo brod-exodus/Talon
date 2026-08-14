@@ -110,7 +110,7 @@ type ScrapeContributorPageRow = {
   contributor_total: number
 }
 
-type ContactableScrapeContributorPageRow = Omit<ScrapeContributorPageRow, "bio" | "location" | "company">
+type ContactableScrapeContributorPageRow = Omit<ScrapeContributorPageRow, "bio" | "company">
 
 export type ScrapeJobRow = {
   id: string
@@ -1624,7 +1624,7 @@ export async function getContactableScrapeContributorsPage(
       name: row.name,
       avatar_url: row.avatar_url,
       bio: null,
-      location: null,
+      location: row.location,
       company: null,
       email: row.email,
       twitter: row.twitter,

@@ -686,6 +686,21 @@ If a scrape is stuck:
 6. Check Settings security events for `scrape_worker.run` and `scrape.retry`.
 7. Check Vercel function logs for `/api/scrape`, `/api/scrape-jobs/run`, and `/api/scrape-jobs/[id]/retry`.
 
+### Completed-list location search
+
+Apply migration 041 before deploying the compatible application. It adds the
+self-reported GitHub location to the existing lightweight, contactable-only
+contributor response; it does not restore biography or company fields and does
+not change the worker schedule or environment variables. The migration is safe
+to apply before deployment because older application versions ignore the added
+response field.
+
+After deployment, open a completed scrape and search the Location field. Verify
+that a stored `New York, NY` location matches both `NYC` and `New York`, while an
+unrelated or blank location does not. Talon does not infer a location when the
+GitHub profile omits one. Roll back by redeploying the previous application;
+migration 041 may remain installed.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
