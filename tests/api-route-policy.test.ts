@@ -75,3 +75,15 @@ test("public authentication mutations enforce the same-origin boundary", () => {
     assert.match(handler?.body ?? "", /requireSameOrigin\(request\)/, `${key} must reject cross-site writes`)
   }
 })
+
+test("public signup remains closed unless the server explicitly enables it", () => {
+  const handler = handlersForFile("app/api/auth/signup/route.ts").find(
+    (candidate) => candidate.key === "app/api/auth/signup/route.ts#POST"
+  )
+
+  assert.match(
+    handler?.body ?? "",
+    /if \(!isSelfServiceSignupEnabled\(\)\)/,
+    "signup must fail closed before creating an auth user"
+  )
+})

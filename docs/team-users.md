@@ -5,10 +5,19 @@ Talon supports two login paths during the internal team rollout:
 - Recruiter team users sign in with Supabase Auth email/password.
 - The shared admin password still works as break-glass access when the login email field is left blank.
 
+Public workspace creation is closed by default. Existing users continue to sign
+in normally, and administrators provision new accounts from **Settings → Team
+Access**. Do not enable self-service signup merely to add a teammate.
+
 ## Add A Recruiter
 
-1. In Supabase Auth, create a user with email/password.
-2. In Supabase SQL Editor, add the same lowercase email to the desired team:
+The preferred operator workflow is **Settings → Team Access**. Enter the
+recruiter's email, display name, role, and a temporary password. Talon creates
+the Supabase Auth user and workspace membership through the protected admin
+route.
+
+For break-glass recovery, an operator can still create the user in Supabase Auth
+and add the same lowercase email to the desired team in SQL Editor:
 
 ```sql
 insert into public.team_memberships (team_id, email, role)
@@ -19,7 +28,8 @@ on conflict (team_id, email) do update
 set role = excluded.role;
 ```
 
-3. Ask the recruiter to sign in with their email and password.
+Ask the recruiter to sign in with their email and temporary password, then have
+them change it from Settings.
 
 ## Roles
 

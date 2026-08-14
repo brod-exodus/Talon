@@ -5,6 +5,10 @@
 ### Goal
 Enable reliable account confirmation and password-reset emails so Talon can stop relying on auto-confirmed users.
 
+Keep `TALON_SELF_SERVICE_SIGNUP_ENABLED` disabled until every acceptance check
+below passes. Administrators can continue provisioning accounts from Settings
+without opening public registration.
+
 ### Why this matters
 - Current workflow depends on manual/auto-confirm in Supabase Auth.
 - Recruiter/admin onboarding should be self-serve and auditable.

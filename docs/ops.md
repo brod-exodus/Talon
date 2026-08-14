@@ -446,13 +446,28 @@ Admin login allows 5 failed attempts per hashed client IP in a 15 minute window.
 
 Successful login clears the rate-limit record for that client.
 
+## Registration policy
+
+Self-service registration is closed by default. With
+`TALON_SELF_SERVICE_SIGNUP_ENABLED` absent or set to anything except `true`, the
+login page shows sign-in only and `POST /api/auth/signup` returns `403` before
+calling Supabase Auth. Existing accounts and administrator-created teammates are
+not affected.
+
+Use **Settings → Team Access** to provision a teammate. Only set
+`TALON_SELF_SERVICE_SIGNUP_ENABLED=true` in Vercel when intentionally launching
+self-service workspaces, and redeploy after changing it. Before enabling it,
+verify auth email delivery, abuse controls, GitHub API capacity, and the account
+support path. To roll back, remove the variable or set it to `false` and
+redeploy; no database rollback is required.
+
 ## Browser security boundary
 
 Talon rejects cross-site state-changing browser requests before team
 authorization runs. Same-origin requests continue normally, while originless
 writes fail closed. The production smoke workflow supplies its expected origin;
 cron routes continue to authenticate through `CRON_SECRET`. Public login,
-signup, and logout routes apply the same check.
+conditionally enabled signup, and logout routes apply the same check.
 
 Every application route also receives a Content Security Policy, clickjacking
 protection, MIME-sniffing protection, a restrictive referrer policy, and browser

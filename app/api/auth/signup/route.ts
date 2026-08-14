@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { ensurePrivateWorkspaceForUser } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
 import { requireSameOrigin } from "@/lib/request-origin"
+import { isSelfServiceSignupEnabled } from "@/lib/registration-policy"
 
 const PASSWORD_MIN_LENGTH = 8
 
@@ -30,6 +31,13 @@ function normalizeDisplayName(value: unknown): string | null {
 export async function POST(request: NextRequest) {
   const originError = requireSameOrigin(request)
   if (originError) return originError
+
+  if (!isSelfServiceSignupEnabled()) {
+    return NextResponse.json(
+      { error: "Self-service registration is disabled. Ask a Talon administrator to create your account." },
+      { status: 403 }
+    )
+  }
 
   const rateLimit = await checkLoginRateLimit(request)
   if (!rateLimit.allowed) {
