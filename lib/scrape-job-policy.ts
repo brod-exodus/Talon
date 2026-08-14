@@ -7,6 +7,13 @@ export type ScrapeJobFailurePlan = {
   retryDelayMs: number | null
 }
 
+export function planGitHubCooldownUntil(retryAfterMs: number | undefined, now = Date.now()): string {
+  const requestedDelay = retryAfterMs !== undefined && Number.isFinite(retryAfterMs)
+    ? Math.max(MIN_SCRAPE_RETRY_DELAY_MS, retryAfterMs)
+    : MIN_SCRAPE_RETRY_DELAY_MS
+  return new Date(now + requestedDelay).toISOString()
+}
+
 export function planScrapeJobFailure({
   attempts,
   maxAttempts,

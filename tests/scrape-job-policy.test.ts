@@ -2,6 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   isScrapeJobCancellationRequested,
+  planGitHubCooldownUntil,
   planScrapeJobFailure,
   planStaleScrapeJobRecovery,
 } from "../lib/scrape-job-policy.ts"
@@ -68,6 +69,11 @@ test("retry exhaustion produces a terminal failure without moving run_after", ()
     }),
     { status: "failed", runAfter: currentRunAfter, retryDelayMs: null }
   )
+})
+
+test("GitHub cooldown remains future-dated even when the source job exhausts retries", () => {
+  assert.equal(planGitHubCooldownUntil(300_000, now), "2026-08-13T12:05:00.000Z")
+  assert.equal(planGitHubCooldownUntil(5_000, now), "2026-08-13T12:01:00.000Z")
 })
 
 test("stale locks preserve the retry budget and eventually fail", () => {

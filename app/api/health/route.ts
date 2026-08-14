@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
+import { getActiveGitHubCooldown, type ServiceCooldown } from "@/lib/db"
 import { EXPECTED_SCHEMA_VERSION } from "@/lib/schema-version"
 import {
   buildScrapeSloSnapshot,
@@ -95,10 +96,46 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
   }
 }
 
-async function githubCheck(): Promise<HealthCheck> {
+async function githubCooldownCheck(): Promise<{
+  cooldown: ServiceCooldown | null
+  check: HealthCheck
+}> {
+  try {
+    const cooldown = await getActiveGitHubCooldown()
+    if (!cooldown) {
+      return {
+        cooldown: null,
+        check: { status: "ok", message: "No active GitHub API cooldown" },
+      }
+    }
+    return {
+      cooldown,
+      check: {
+        status: "warn",
+        message: "GitHub API requests are temporarily paused",
+        detail: `Automatic resume ${new Date(cooldown.blockedUntil).toISOString()} · ${cooldown.reason.replaceAll("-", " ")}`,
+      },
+    }
+  } catch {
+    return {
+      cooldown: null,
+      check: { status: "warn", message: "Could not inspect the GitHub API cooldown" },
+    }
+  }
+}
+
+async function githubCheck(cooldown: ServiceCooldown | null): Promise<HealthCheck> {
   const token = process.env.GITHUB_TOKEN
   if (!token) {
     return { status: "error", message: "GITHUB_TOKEN is missing" }
+  }
+
+  if (cooldown) {
+    return {
+      status: "warn",
+      message: "GitHub credential check deferred during API cooldown",
+      detail: `Requests resume automatically at ${new Date(cooldown.blockedUntil).toISOString()}`,
+    }
   }
 
   try {
@@ -213,7 +250,7 @@ async function sloAlertingCheck(): Promise<HealthCheck> {
   }
 }
 
-async function queueCheck(): Promise<HealthCheck> {
+async function queueCheck(githubCooldown: ServiceCooldown | null): Promise<HealthCheck> {
   const { data, error } = await supabaseAdmin
     .from("scrape_jobs")
     .select("status, created_at, run_after, locked_at")
@@ -224,7 +261,9 @@ async function queueCheck(): Promise<HealthCheck> {
 
   const rows = data ?? []
   const queued = rows.filter((row) => row.status === "queued")
-  const dueQueued = queued.filter((row) => new Date(row.run_after).getTime() <= Date.now())
+  const timeDueQueued = queued.filter((row) => new Date(row.run_after).getTime() <= Date.now())
+  const pausedQueued = githubCooldown ? timeDueQueued : []
+  const dueQueued = githubCooldown ? [] : timeDueQueued
   const running = rows.filter((row) => row.status === "running")
   const failed = rows.filter((row) => row.status === "failed")
   const staleRunning = running.filter(
@@ -238,7 +277,7 @@ async function queueCheck(): Promise<HealthCheck> {
   return {
     status,
     message: `${queued.length} queued (${dueQueued.length} due), ${running.length} running, ${failed.length} failed`,
-    detail: `${staleRunning.length} stale running; oldest queued ${oldestQueuedMinutes} minute${oldestQueuedMinutes === 1 ? "" : "s"}`,
+    detail: `${staleRunning.length} stale running; ${pausedQueued.length} waiting on GitHub; oldest queued ${oldestQueuedMinutes} minute${oldestQueuedMinutes === 1 ? "" : "s"}`,
   }
 }
 
@@ -318,13 +357,14 @@ export async function GET(request: NextRequest) {
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
+  const githubCooldown = await githubCooldownCheck()
   const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, scrapeSlos, sloAlerting] = await Promise.all([
     dbCheck(),
     schemaVersionCheck(),
-    githubCheck(),
+    githubCheck(githubCooldown.cooldown),
     lastSystemRunCheck("keepalive", 36 * 60),
     lastSystemRunCheck("scrape_worker", 10),
-    queueCheck(),
+    queueCheck(githubCooldown.cooldown),
     scrapeSloChecks(),
     sloAlertingCheck(),
   ])
@@ -339,6 +379,7 @@ export async function GET(request: NextRequest) {
     database,
     databaseSchema,
     github,
+    githubCooldown: githubCooldown.check,
     keepalive,
     scrapeWorker,
     scrapeQueue,

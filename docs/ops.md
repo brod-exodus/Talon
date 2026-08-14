@@ -327,12 +327,14 @@ db/migrations/033_replay_safe_organization_contributors.sql
 db/migrations/034_lease_safe_hydration.sql
 db/migrations/035_verified_scrape_completion.sql
 db/migrations/036_contributor_profile_freshness_cache.sql
+db/migrations/037_github_rate_limit_cooldown.sql
 ```
 
 They create or enforce:
 
 - `audit_events`: recent admin, cron, scrape, share, watched-repo, and outreach events.
 - `auth_rate_limits`: persistent failed-login counters and temporary lockouts.
+- `service_cooldowns`: private shared backpressure state for GitHub wait responses.
 - Service-role-only app access for private tables, plus future authenticated team-member read policies.
 
 If Settings cannot load recent security events, confirm migration `007` has been applied. If scrapes fail after removing temporary Supabase policies, confirm `SUPABASE_SERVICE_ROLE_KEY` is configured and migration `010` has been applied.
@@ -489,6 +491,38 @@ Useful actions to check during incident response:
 
 ## Scrape Recovery
 
+### Shared GitHub API cooldown
+
+Migration `037_github_rate_limit_cooldown.sql` adds private operational state
+for GitHub wait responses. When a worker receives a primary or secondary rate
+limit, or an explicit `Retry-After`, its lease-safe failure transaction records
+the retry and activates one cooldown for the shared server token. Atomic job
+claims return no work until that timestamp has passed, so queued jobs do not
+burn their own attempts against the same exhausted credential.
+
+Apply migration 037 before deploying the compatible application. It requires
+no environment-variable or scheduler changes. During a cooldown, **Settings →
+Production Readiness** reports when automatic processing resumes, queue depth
+remains visible, and credential checks avoid making another GitHub request.
+Starting a new scrape returns HTTP `429` with the same automatic-resume time;
+existing queued jobs remain durable.
+
+To inspect the private state without exposing credentials:
+
+```sql
+select service, blocked_until, reason, source_job_id, updated_at
+from public.service_cooldowns
+where service = 'github';
+```
+
+An expired row is normal operational history and does not block work. Do not
+delete or shorten an active cooldown to force requests through GitHub's limit.
+After `blocked_until`, run the scheduled worker or wait for the next one-minute
+invocation and confirm the queue begins draining without a manual retry.
+
+Rollback by redeploying the previous application. Migration 037 is additive
+and may remain; the prior claim function does not consult the cooldown table.
+
 ### Repository scrape SLOs
 
 Settings → Production Readiness calculates two rolling seven-day indicators
@@ -527,8 +561,8 @@ When an SLO is missed:
 1. Compare p50 and p95. A high p95 with a healthy p50 usually indicates outliers;
    both being high indicates a systemic slowdown.
 2. Inspect failed jobs and recent job events before retrying anything.
-3. Check GitHub rate-limit capacity, queue age, and worker freshness in the same
-   panel.
+3. Check GitHub rate-limit capacity, shared cooldown, queue age, and worker
+   freshness in the same panel.
 4. Record the affected time window, targets, and representative scrape IDs in
    the incident or PR notes.
 5. After a fix deploys, confirm new scrapes improve the rolling window; do not

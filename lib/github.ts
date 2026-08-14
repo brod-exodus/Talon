@@ -182,10 +182,22 @@ type GitHubRequestLogContext = {
   method: "GET"
 }
 
+export type GitHubRetryReason =
+  | "retry-after"
+  | "primary-rate-limit"
+  | "secondary-rate-limit"
+  | "transient-http"
+  | "terminal-http"
+
+export type GitHubCooldownReason = Extract<
+  GitHubRetryReason,
+  "retry-after" | "primary-rate-limit" | "secondary-rate-limit"
+>
+
 type RetryDecision = {
   retryable: boolean
   delayMs: number
-  reason: string
+  reason: GitHubRetryReason
 }
 
 const DEFAULT_MAX_RETRIES = 3
@@ -195,6 +207,7 @@ const DEFAULT_MAX_RETRY_DELAY_MS = 30000
 export class GitHubApiError extends Error {
   status?: number
   retryAfterMs?: number
+  retryReason?: GitHubRetryReason
   rateLimitResetAt?: Date
   responseBody?: string
   url?: string
@@ -205,6 +218,7 @@ export class GitHubApiError extends Error {
     options: {
       status?: number
       retryAfterMs?: number
+      retryReason?: GitHubRetryReason
       rateLimitResetAt?: Date
       responseBody?: string
       url?: string
@@ -216,6 +230,7 @@ export class GitHubApiError extends Error {
     this.name = "GitHubApiError"
     this.status = options.status
     this.retryAfterMs = options.retryAfterMs
+    this.retryReason = options.retryReason
     this.rateLimitResetAt = options.rateLimitResetAt
     this.responseBody = options.responseBody
     this.url = options.url
@@ -381,6 +396,7 @@ class GitHubClient {
           throw new GitHubApiError(this.requestErrorMessage(response.status, response.statusText, text, context), {
             status: response.status,
             retryAfterMs,
+            retryReason: decision.retryable ? decision.reason : undefined,
             rateLimitResetAt: resetAt,
             responseBody: text,
             url: context.fullGitHubApiUrl,
@@ -517,6 +533,15 @@ class GitHubClient {
   async getRateLimit(): Promise<GitHubRateLimit> {
     return await this.fetch<GitHubRateLimit>(`${this.baseUrl}/rate_limit`)
   }
+}
+
+export function getGitHubCooldownReason(error: unknown): GitHubCooldownReason | null {
+  if (!(error instanceof GitHubApiError) || !error.retryAfterMs) return null
+  return error.retryReason === "retry-after" ||
+    error.retryReason === "primary-rate-limit" ||
+    error.retryReason === "secondary-rate-limit"
+    ? error.retryReason
+    : null
 }
 
 export const createGitHubClient = (token?: string, options?: GitHubClientOptions) => new GitHubClient(token, options)

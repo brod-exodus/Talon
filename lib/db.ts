@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getShareAvailability, shareTokenHash, type ShareAvailability } from "@/lib/share-links"
 import { getDefaultTeamId } from "@/lib/team-context"
-import { planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
+import { planGitHubCooldownUntil, planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
 import { logError } from "@/lib/logger"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
@@ -155,6 +155,14 @@ export type ScrapeJobSummary = {
 export type ScrapeJobTransitionResult = {
   applied: boolean
   status: "queued" | "running" | "succeeded" | "failed" | "canceled"
+}
+
+export type ServiceCooldown = {
+  service: "github"
+  blockedUntil: string
+  reason: "retry-after" | "primary-rate-limit" | "secondary-rate-limit"
+  sourceJobId: string | null
+  updatedAt: string
 }
 
 export type OrganizationContributorCheckpointResult = ScrapeJobTransitionResult & {
@@ -342,6 +350,24 @@ export async function claimNextScrapeJob(workerId: string, teamId?: string): Pro
     .maybeSingle()
   if (error) throw error
   return data ? data as ScrapeJobRow : null
+}
+
+export async function getActiveGitHubCooldown(now = Date.now()): Promise<ServiceCooldown | null> {
+  const { data, error } = await supabaseAdmin
+    .from("service_cooldowns")
+    .select("service, blocked_until, reason, source_job_id, updated_at")
+    .eq("service", "github")
+    .gt("blocked_until", new Date(now).toISOString())
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    service: "github",
+    blockedUntil: data.blocked_until,
+    reason: data.reason,
+    sourceJobId: data.source_job_id,
+    updatedAt: data.updated_at,
+  } as ServiceCooldown
 }
 
 export async function getScrapeJobForWorker(id: string, workerId: string): Promise<ScrapeJobRow> {
@@ -698,7 +724,10 @@ export async function cancelScrapeJob(
 export async function failScrapeJob(
   job: ScrapeJobRow,
   errorMessage: string,
-  options: { retryAfterMs?: number } = {}
+  options: {
+    retryAfterMs?: number
+    githubCooldownReason?: ServiceCooldown["reason"]
+  } = {}
 ): Promise<ScrapeJobTransitionResult> {
   const plan = planScrapeJobFailure({
     attempts: job.attempts,
@@ -708,15 +737,28 @@ export async function failScrapeJob(
   })
   const workerId = job.locked_by
   if (!workerId) throw new Error("Scrape job has no active worker lease")
+  const rpcName = options.githubCooldownReason
+    ? "fail_scrape_job_step_with_github_cooldown"
+    : "fail_scrape_job_step"
+  const cooldownUntil = options.githubCooldownReason
+    ? planGitHubCooldownUntil(options.retryAfterMs)
+    : null
+  const rpcParameters = {
+    p_job_id: job.id,
+    p_worker_id: workerId,
+    p_next_status: plan.status,
+    p_run_after: plan.runAfter,
+    p_error: errorMessage,
+    p_retry_delay_ms: plan.retryDelayMs,
+    ...(options.githubCooldownReason
+      ? {
+          p_cooldown_until: cooldownUntil,
+          p_cooldown_reason: options.githubCooldownReason,
+        }
+      : {}),
+  }
   const { data, error } = await supabaseAdmin
-    .rpc("fail_scrape_job_step", {
-      p_job_id: job.id,
-      p_worker_id: workerId,
-      p_next_status: plan.status,
-      p_run_after: plan.runAfter,
-      p_error: errorMessage,
-      p_retry_delay_ms: plan.retryDelayMs,
-    })
+    .rpc(rpcName, rpcParameters)
     .single()
   if (error) throw error
   const row = data as { applied: boolean; result_status: ScrapeJobTransitionResult["status"] }

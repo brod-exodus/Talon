@@ -7,6 +7,7 @@ const workerMocks = vi.hoisted(() => ({
   getScrapeJobForWorker: vi.fn(),
   cancelScrapeJob: vi.fn(),
   failScrapeJob: vi.fn(),
+  getActiveGitHubCooldown: vi.fn(),
   requeueScrapeJob: vi.fn(),
   runScrapeJob: vi.fn(),
   runBoundedJobSteps: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/db", () => ({
   getScrapeJobForWorker: workerMocks.getScrapeJobForWorker,
   cancelScrapeJob: workerMocks.cancelScrapeJob,
   failScrapeJob: workerMocks.failScrapeJob,
+  getActiveGitHubCooldown: workerMocks.getActiveGitHubCooldown,
   requeueScrapeJob: workerMocks.requeueScrapeJob,
 }))
 vi.mock("@/lib/scrape-runner", () => ({
@@ -42,6 +44,7 @@ vi.mock("@/lib/worker-budget", () => ({
 
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { ScrapeJobLeaseLostError } from "@/lib/scrape-runner"
+import { GitHubApiError } from "@/lib/github"
 
 const job = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -73,6 +76,7 @@ describe("lease-safe scrape worker outcomes", () => {
     workerMocks.runBoundedJobSteps.mockResolvedValue({ completed: false, steps: 1, elapsedMs: 10 })
     workerMocks.requeueScrapeJob.mockResolvedValue({ applied: true, status: "queued" })
     workerMocks.failScrapeJob.mockResolvedValue({ applied: true, status: "queued" })
+    workerMocks.getActiveGitHubCooldown.mockResolvedValue(null)
     workerMocks.cancelScrapeJob.mockResolvedValue({})
   })
 
@@ -171,5 +175,41 @@ describe("lease-safe scrape worker outcomes", () => {
     expect(result.results[0]?.status).toBe("queued")
     expect(result.stopReason).toBe("job_yielded")
     expect(workerMocks.claimNextScrapeJob).toHaveBeenCalledOnce()
+  })
+
+  test("activates a shared cooldown for GitHub rate limits", async () => {
+    workerMocks.runBoundedJobSteps.mockRejectedValue(new GitHubApiError("GitHub rate limited", {
+      status: 403,
+      retryAfterMs: 120_000,
+      retryReason: "primary-rate-limit",
+    }))
+
+    await runScrapeWorker({ maxJobs: 1, teamId: "team-1" })
+
+    expect(workerMocks.failScrapeJob).toHaveBeenCalledWith(
+      expect.objectContaining({ id: job.id }),
+      "GitHub rate limited",
+      {
+        retryAfterMs: 120_000,
+        githubCooldownReason: "primary-rate-limit",
+      }
+    )
+  })
+
+  test("reports a cooldown instead of an empty queue when claims are paused", async () => {
+    workerMocks.claimNextScrapeJob.mockReset()
+    workerMocks.claimNextScrapeJob.mockResolvedValue(null)
+    workerMocks.getActiveGitHubCooldown.mockResolvedValue({
+      service: "github",
+      blockedUntil: "2026-08-13T12:05:00.000Z",
+      reason: "primary-rate-limit",
+      sourceJobId: job.id,
+      updatedAt: "2026-08-13T12:00:00.000Z",
+    })
+
+    const result = await runScrapeWorker({ maxJobs: 1, teamId: "team-1" })
+
+    expect(result.results).toEqual([])
+    expect(result.stopReason).toBe("github_cooldown")
   })
 })

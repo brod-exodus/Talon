@@ -17,7 +17,7 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 36 as number | null,
+    schemaVersion: 37 as number | null,
     schemaError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
@@ -25,10 +25,31 @@ const healthMocks = vi.hoisted(() => ({
     keepaliveDetails: null as Record<string, unknown> | null,
     queueRows: [] as QueueRow[],
     queueError: null as Error | null,
+    githubCooldown: null as {
+      service: "github"
+      blocked_until: string
+      reason: "retry-after" | "primary-rate-limit" | "secondary-rate-limit"
+      source_job_id: string | null
+      updated_at: string
+    } | null,
   },
 }))
 
 vi.mock("@/lib/permissions", () => ({ requirePermission: healthMocks.requirePermission }))
+vi.mock("@/lib/db", () => ({
+  getActiveGitHubCooldown: vi.fn(async () => {
+    const row = healthMocks.state.githubCooldown
+    return row
+      ? {
+          service: "github",
+          blockedUntil: row.blocked_until,
+          reason: row.reason,
+          sourceJobId: row.source_job_id,
+          updatedAt: row.updated_at,
+        }
+      : null
+  }),
+}))
 vi.mock("@/lib/supabase", () => ({
   supabaseAdmin: {
     rpc(name: string) {
@@ -60,6 +81,9 @@ vi.mock("@/lib/supabase", () => ({
         if (table === "scrape_jobs") {
           return { data: healthMocks.state.queueRows, error: healthMocks.state.queueError }
         }
+        if (table === "service_cooldowns") {
+          return { data: healthMocks.state.githubCooldown, error: null }
+        }
         throw new Error(`Unexpected health query table: ${table}`)
       }
       const builder = {
@@ -75,6 +99,9 @@ vi.mock("@/lib/supabase", () => ({
           return builder
         },
         gte() {
+          return builder
+        },
+        gt() {
           return builder
         },
         order() {
@@ -125,7 +152,7 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 36
+    healthMocks.state.schemaVersion = 37
     healthMocks.state.schemaError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
@@ -135,6 +162,7 @@ describe("GET /api/health", () => {
     healthMocks.state.sloError = null
     healthMocks.state.queueError = null
     healthMocks.state.queueRows = []
+    healthMocks.state.githubCooldown = null
     healthMocks.state.systemRuns = {
       keepalive: recentRun,
       scrape_worker: recentRun,
@@ -190,7 +218,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v36; expected v36",
+      detail: "Current v37; expected v37",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -234,7 +262,7 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(503)
     expect(body.checks.scrapeQueue.status).toBe("error")
     expect(body.checks.scrapeQueue.message).toBe("1 queued (1 due), 0 running, 0 failed")
-    expect(body.checks.scrapeQueue.detail).toBe("0 stale running; oldest queued 20 minutes")
+    expect(body.checks.scrapeQueue.detail).toBe("0 stale running; 0 waiting on GitHub; oldest queued 20 minutes")
   })
 
   test("returns 503 when production migrations are behind the application", async () => {
@@ -247,19 +275,19 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v26; expected v36",
+      detail: "Current v26; expected v37",
     })
   })
 
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 37
+    healthMocks.state.schemaVersion = 38
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v37; application expects v36")
+    expect(body.checks.databaseSchema.detail).toBe("Current v38; application expects v37")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {
@@ -328,5 +356,36 @@ describe("GET /api/health", () => {
       message: "SLO alert monitoring needs attention",
       detail: "Last evaluation: breached; notification: failed",
     })
+  })
+
+  test("shows an active GitHub cooldown without making another GitHub request", async () => {
+    healthMocks.state.githubCooldown = {
+      service: "github",
+      blocked_until: "2026-08-13T18:05:00.000Z",
+      reason: "primary-rate-limit",
+      source_job_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      updated_at: "2026-08-13T18:00:00.000Z",
+    }
+    healthMocks.state.queueRows = [{
+      status: "queued",
+      created_at: "2026-08-13T17:40:00.000Z",
+      run_after: "2026-08-13T17:40:00.000Z",
+      locked_at: null,
+    }]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.githubCooldown).toEqual({
+      status: "warn",
+      message: "GitHub API requests are temporarily paused",
+      detail: "Automatic resume 2026-08-13T18:05:00.000Z · primary rate limit",
+    })
+    expect(body.checks.github.message).toBe("GitHub credential check deferred during API cooldown")
+    expect(body.checks.scrapeQueue.message).toBe("1 queued (0 due), 0 running, 0 failed")
+    expect(body.checks.scrapeQueue.detail).toContain("1 waiting on GitHub")
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

@@ -8,6 +8,7 @@ const routeMocks = vi.hoisted(() => ({
   ecosystemExists: vi.fn(),
   getScrapeEnqueueRequest: vi.fn(),
   enqueueScrape: vi.fn(),
+  getActiveGitHubCooldown: vi.fn(),
   recordActivityEvent: vi.fn(),
   recordAuditEvent: vi.fn(),
   runScrapeWorkerOperation: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@/lib/db", () => ({
   ecosystemExists: routeMocks.ecosystemExists,
   getScrapeEnqueueRequest: routeMocks.getScrapeEnqueueRequest,
   enqueueScrape: routeMocks.enqueueScrape,
+  getActiveGitHubCooldown: routeMocks.getActiveGitHubCooldown,
 }))
 vi.mock("@/lib/activity", () => ({ recordActivityEvent: routeMocks.recordActivityEvent }))
 vi.mock("@/lib/audit", () => ({ recordAuditEvent: routeMocks.recordAuditEvent }))
@@ -83,6 +85,7 @@ describe("POST /api/scrape", () => {
     routeMocks.organizationExists.mockResolvedValue(true)
     routeMocks.ecosystemExists.mockResolvedValue(true)
     routeMocks.getScrapeEnqueueRequest.mockResolvedValue(null)
+    routeMocks.getActiveGitHubCooldown.mockResolvedValue(null)
     routeMocks.enqueueScrape.mockImplementation(async (input: { scrapeId: string }) => ({
       scrapeId: input.scrapeId,
       jobId: "00000000-0000-4000-8000-000000000001",
@@ -142,6 +145,26 @@ describe("POST /api/scrape", () => {
     const response = await POST(scrapeRequest({ type: "repository", target: "octocat/Hello-World" }))
 
     expect(response.status).toBe(429)
+    expect(routeMocks.repositoryExists).not.toHaveBeenCalled()
+    expect(routeMocks.enqueueScrape).not.toHaveBeenCalled()
+  })
+
+  test("returns the automatic resume time without touching GitHub during a shared cooldown", async () => {
+    routeMocks.getActiveGitHubCooldown.mockResolvedValue({
+      service: "github",
+      blockedUntil: "2026-08-13T18:05:00.000Z",
+      reason: "primary-rate-limit",
+    })
+
+    const response = await POST(scrapeRequest({ type: "repository", target: "octocat/Hello-World" }))
+
+    expect(response.status).toBe(429)
+    await expect(response.json()).resolves.toEqual({
+      code: "github_cooldown",
+      error: "GitHub has temporarily paused API requests. Talon will resume automatically.",
+      retryAt: "2026-08-13T18:05:00.000Z",
+    })
+    expect(routeMocks.getRateLimit).not.toHaveBeenCalled()
     expect(routeMocks.repositoryExists).not.toHaveBeenCalled()
     expect(routeMocks.enqueueScrape).not.toHaveBeenCalled()
   })
