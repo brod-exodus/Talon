@@ -53,15 +53,19 @@ describe("live request authorization", () => {
     ["owner", "read", true],
     ["owner", "write", true],
     ["owner", "admin", true],
+    ["owner", "manage_members", true],
     ["admin", "read", true],
     ["admin", "write", true],
     ["admin", "admin", true],
+    ["admin", "manage_members", false],
     ["recruiter", "read", true],
     ["recruiter", "write", true],
     ["recruiter", "admin", false],
+    ["recruiter", "manage_members", false],
     ["viewer", "read", true],
     ["viewer", "write", false],
     ["viewer", "admin", false],
+    ["viewer", "manage_members", false],
   ] as const)("uses current %s membership for %s access", async (role, permission, allowed) => {
     permissionMocks.getCurrentRequestMembership.mockResolvedValue(currentMembership(role))
 
@@ -109,6 +113,7 @@ describe("live request authorization", () => {
     })
 
     expect(await requirePermission(request, "admin")).toBeNull()
+    expect(await requirePermission(request, "manage_members")).toBeNull()
     expect(permissionMocks.getCurrentRequestMembership).not.toHaveBeenCalled()
   })
 

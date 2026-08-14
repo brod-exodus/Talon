@@ -95,6 +95,10 @@ Rules:
 - `admin`: plus settings and share controls
 - `owner`: plus team membership management
 
+Implemented through live route authorization. Membership management uses a
+separate owner-only permission; migration `040_atomic_team_member_management.sql`
+enforces the final-owner invariant under concurrent requests.
+
 ## Slice 5: Invite Flow
 
 Target:

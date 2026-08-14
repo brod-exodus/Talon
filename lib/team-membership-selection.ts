@@ -29,6 +29,13 @@ export function privateWorkspaceSlug(email: string): string {
   return `user-${createHash("sha256").update(normalizeMembershipEmail(email)).digest("hex").slice(0, 16)}`
 }
 
+export function selectProvisionedAppRole(
+  existingRole: AuthRole | null,
+  bootstrapRole?: AuthRole | null
+): AuthRole {
+  return existingRole ?? bootstrapRole ?? "owner"
+}
+
 export function selectPrimaryTeamMembership(
   memberships: TeamMembershipCandidate[],
   email: string

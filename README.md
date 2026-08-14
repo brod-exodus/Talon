@@ -296,7 +296,10 @@ authentication, browser writes enforce same-origin requests, security headers
 limit browser capabilities, and correlated operational logs redact secrets,
 URLs, repository targets, and contributor identifiers.
 Role changes and team removals therefore take effect without waiting for a
-session to expire.
+session to expire. Owners alone can manage teammate accounts; operational admins
+cannot promote themselves or alter ownership. Database functions serialize
+membership changes per team and refuse any concurrent transition that would
+leave a team without an owner.
 
 ## Deliberately deferred
 

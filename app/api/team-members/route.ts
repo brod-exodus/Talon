@@ -92,7 +92,7 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
 }
 
 export async function GET(request: NextRequest) {
-  const authError = await requirePermission(request, "admin")
+  const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
   try {
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = await requirePermission(request, "admin")
+  const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
   try {

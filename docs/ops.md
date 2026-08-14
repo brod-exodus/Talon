@@ -461,6 +461,25 @@ verify auth email delivery, abuse controls, GitHub API capacity, and the account
 support path. To roll back, remove the variable or set it to `false` and
 redeploy; no database rollback is required.
 
+## Team ownership safety
+
+Migration `040_atomic_team_member_management.sql` moves role changes and member
+removals into service-role-only database functions. Both functions lock the
+parent team before counting owners, so concurrent requests cannot each remove a
+different owner and leave the team ownerless. The API returns `409` when an
+operation would demote or remove the final application owner.
+
+Only the `owner` application role has the `manage_members` permission. Operational
+admins retain settings, health, audit, scrape, and watched-repository access but
+cannot list or change teammate accounts. The break-glass admin login retains full
+recovery access.
+
+Before changing an owner, promote another member to owner first. If access is
+misconfigured, use the break-glass admin login and **Settings → Team Access** to
+repair roles. Roll back the application if needed, but leave the additive
+migration in place; the previous direct-update route remains compatible with the
+unchanged table schema.
+
 ## Browser security boundary
 
 Talon rejects cross-site state-changing browser requests before team

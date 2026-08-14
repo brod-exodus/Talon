@@ -33,9 +33,18 @@ them change it from Settings.
 
 ## Roles
 
-- `owner`: team administration.
-- `admin`: operational administration.
+- `owner`: full access, including teammate accounts, roles, and ownership.
+- `admin`: operational administration, without teammate or ownership changes.
 - `recruiter`: normal recruiting workflows.
-- `viewer`: read-only role reserved for a future UI permissions slice.
+- `viewer`: read-only access.
 
-Current route access is team-scoped by signed session team. Fine-grained UI and API permission checks are the next slice.
+Every route rechecks the current database membership. A downgrade or removal
+therefore takes effect on the next request without waiting for the signed session
+to expire. Existing database roles also take precedence over older Supabase Auth
+metadata during later logins, so a changed role cannot revert at sign-in. The
+break-glass admin login retains teammate recovery access.
+
+Migration `040_atomic_team_member_management.sql` serializes role changes and
+removals for each team. The database rejects demoting or removing the final
+application owner, including when two requests arrive concurrently. Promote a
+second owner before transferring or removing the current owner.

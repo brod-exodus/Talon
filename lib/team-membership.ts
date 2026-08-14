@@ -6,6 +6,7 @@ import {
   normalizeMembershipEmail,
   privateWorkspaceName,
   privateWorkspaceSlug,
+  selectProvisionedAppRole,
   selectPrimaryTeamMembership,
   type TeamMembershipCandidate,
 } from "@/lib/team-membership-selection"
@@ -109,7 +110,8 @@ export async function ensurePrivateWorkspaceForUser(
 ): Promise<TeamMembershipContext> {
   const normalizedEmail = normalizeMembershipEmail(email)
   if (!normalizedEmail) throw new Error("Cannot provision private workspace without a valid email.")
-  const resolvedAppRole = appRole ?? await getExistingAppRoleForEmail(normalizedEmail) ?? "owner"
+  const existingAppRole = await getExistingAppRoleForEmail(normalizedEmail)
+  const resolvedAppRole = selectProvisionedAppRole(existingAppRole, appRole)
 
   const { data: existingTeam, error: existingTeamError } = await supabaseAdmin
     .from("teams")

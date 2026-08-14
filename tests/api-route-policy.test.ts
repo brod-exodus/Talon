@@ -45,7 +45,7 @@ test("every API handler has an explicit authentication policy", () => {
       assert.match(body, /hasCronSecret\(request\)/, `${key} must authenticate its scheduler request`)
       continue
     }
-    assert.match(body, /await requirePermission\([^\n]+, "(read|write|admin)"\)/, `${key} is missing a live permission check`)
+    assert.match(body, /await requirePermission\([^\n]+, "(read|write|admin|manage_members)"\)/, `${key} is missing a live permission check`)
   }
 })
 
@@ -86,4 +86,20 @@ test("public signup remains closed unless the server explicitly enables it", () 
     /if \(!isSelfServiceSignupEnabled\(\)\)/,
     "signup must fail closed before creating an auth user"
   )
+})
+
+test("every team membership handler is reserved for owners", () => {
+  const handlers = [
+    ...handlersForFile("app/api/team-members/route.ts"),
+    ...handlersForFile("app/api/team-members/[id]/route.ts"),
+  ]
+
+  assert.equal(handlers.length, 4)
+  for (const { key, body } of handlers) {
+    assert.match(
+      body,
+      /await requirePermission\([^\n]+, "manage_members"\)/,
+      `${key} must require live owner-level membership access`
+    )
+  }
 })

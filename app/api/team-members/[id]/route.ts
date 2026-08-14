@@ -62,23 +62,12 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
   return null
 }
 
-async function getTeamMembers(teamId: string): Promise<TeamMemberRow[]> {
-  const { data, error } = await supabaseAdmin
-    .from("team_memberships")
-    .select("id, team_id, email, display_name, role, app_role, invited_by, created_at")
-    .eq("team_id", teamId)
-  if (error) throw error
-  return (data ?? []) as TeamMemberRow[]
-}
-
-function isLastOwner(members: TeamMemberRow[], targetId: string): boolean {
-  const target = members.find((member) => member.id === targetId)
-  if (target?.role !== "owner") return false
-  return members.filter((member) => member.role === "owner").length <= 1
+function isLastOwnerError(error: { code?: string; message?: string }): boolean {
+  return error.code === "P0001" && error.message?.includes("At least one owner must remain") === true
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = await requirePermission(request, "admin")
+  const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
   try {
@@ -91,17 +80,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!role) return NextResponse.json({ error: "Invalid role" }, { status: 400 })
 
     const team = await resolveTeamContext(request)
-    const members = await getTeamMembers(team.teamId)
-    const target = members.find((member) => member.id === memberId)
-    if (!target) return NextResponse.json({ error: "Team member not found" }, { status: 404 })
     const { data, error } = await supabaseAdmin
-      .from("team_memberships")
-      .update({ app_role: role })
-      .eq("id", memberId)
-      .eq("team_id", team.teamId)
-      .select("id, team_id, email, display_name, role, app_role, invited_by, created_at")
-      .single()
-    if (error) throw error
+      .rpc("update_team_member_app_role", {
+        p_team_id: team.teamId,
+        p_member_id: memberId,
+        p_app_role: role,
+      })
+      .maybeSingle()
+    if (error) {
+      if (isLastOwnerError(error)) {
+        return NextResponse.json({ error: "At least one owner must remain on the team" }, { status: 409 })
+      }
+      throw error
+    }
+    if (!data) return NextResponse.json({ error: "Team member not found" }, { status: 404 })
+    const target = data as TeamMemberRow
 
     await recordAuditEvent({
       request,
@@ -113,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     })
 
     const authUser = await findAuthUserByEmail(target.email)
-    return NextResponse.json({ member: mapTeamMember(data as TeamMemberRow, authUser) })
+    return NextResponse.json({ member: mapTeamMember(target, authUser) })
   } catch (error) {
     console.error("[team-members] PATCH error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
@@ -124,7 +117,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authError = await requirePermission(request, "admin")
+  const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
   try {
@@ -133,19 +126,20 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!memberId) return NextResponse.json({ error: "Invalid member id" }, { status: 400 })
 
     const team = await resolveTeamContext(request)
-    const members = await getTeamMembers(team.teamId)
-    const target = members.find((member) => member.id === memberId)
-    if (!target) return NextResponse.json({ error: "Team member not found" }, { status: 404 })
-    if (isLastOwner(members, memberId)) {
-      return NextResponse.json({ error: "At least one owner must remain on the team" }, { status: 400 })
+    const { data, error } = await supabaseAdmin
+      .rpc("remove_team_member", {
+        p_team_id: team.teamId,
+        p_member_id: memberId,
+      })
+      .maybeSingle()
+    if (error) {
+      if (isLastOwnerError(error)) {
+        return NextResponse.json({ error: "At least one owner must remain on the team" }, { status: 409 })
+      }
+      throw error
     }
-
-    const { error } = await supabaseAdmin
-      .from("team_memberships")
-      .delete()
-      .eq("id", memberId)
-      .eq("team_id", team.teamId)
-    if (error) throw error
+    if (!data) return NextResponse.json({ error: "Team member not found" }, { status: 404 })
+    const target = data as TeamMemberRow
 
     await recordAuditEvent({
       request,

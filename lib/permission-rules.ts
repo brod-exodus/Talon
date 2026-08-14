@@ -1,4 +1,4 @@
-export type Permission = "read" | "write" | "admin"
+export type Permission = "read" | "write" | "admin" | "manage_members"
 export type AuthRole = "owner" | "admin" | "recruiter" | "viewer"
 export type AuthSession =
   | {
@@ -17,7 +17,7 @@ export type AuthSession =
     }
 
 const ROLE_PERMISSIONS: Record<AuthRole, Permission[]> = {
-  owner: ["read", "write", "admin"],
+  owner: ["read", "write", "admin", "manage_members"],
   admin: ["read", "write", "admin"],
   recruiter: ["read", "write"],
   viewer: ["read"],
