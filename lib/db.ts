@@ -158,6 +158,12 @@ export type ScrapeJobTransitionResult = {
   status: "queued" | "running" | "succeeded" | "failed" | "canceled"
 }
 
+export type OrganizationContributorCheckpointResult = ScrapeJobTransitionResult & {
+  nextRepoIndex: number
+  nextPage: number
+  discoveryComplete: boolean
+}
+
 export type ScrapeEnqueueRequest = {
   scrapeId: string
   jobId: string
@@ -371,6 +377,49 @@ export async function checkpointScrapeJob(
   return { applied: Boolean(row.applied), status: row.result_status }
 }
 
+export async function checkpointOrganizationContributorPage(
+  job: ScrapeJobRow,
+  checkpoint: {
+    repository: string
+    repoIndex: number
+    page: number
+    hasNext: boolean
+    contributors: Array<{ login: string; contributions: number }>
+  }
+): Promise<OrganizationContributorCheckpointResult> {
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("checkpoint_organization_contributor_page", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_repository: checkpoint.repository,
+      p_expected_repo_index: Math.max(0, Math.floor(checkpoint.repoIndex)),
+      p_expected_page: Math.max(1, Math.floor(checkpoint.page)),
+      p_has_next: checkpoint.hasNext,
+      p_contributions: checkpoint.contributors.map((contributor) => ({
+        login: contributor.login,
+        contributions: Math.max(0, Math.floor(contributor.contributions)),
+      })),
+    })
+    .single()
+  if (error) throw error
+  const row = data as {
+    applied: boolean
+    result_status: ScrapeJobTransitionResult["status"]
+    next_repo_index: number
+    next_page: number
+    discovery_complete: boolean
+  }
+  return {
+    applied: Boolean(row.applied),
+    status: row.result_status,
+    nextRepoIndex: row.next_repo_index,
+    nextPage: row.next_page,
+    discoveryComplete: Boolean(row.discovery_complete),
+  }
+}
+
 export async function recordScrapeJobEvent(
   jobId: string | null,
   scrapeId: string | null,
@@ -426,24 +475,6 @@ async function getScrapeJobTeamId(jobId: string): Promise<string> {
   const { data, error } = await supabaseAdmin.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
   if (error) throw error
   return data?.team_id ?? (await getDefaultTeamId())
-}
-
-export async function getScrapeJobContributionMap(jobId: string): Promise<Map<string, number>> {
-  const map = new Map<string, number>()
-  const pageSize = 1000
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("scrape_job_contributions")
-      .select("github_login, contributions")
-      .eq("job_id", jobId)
-      .range(from, from + pageSize - 1)
-    if (error) throw error
-    for (const row of (data ?? []) as Pick<ScrapeJobContributionRow, "github_login" | "contributions">[]) {
-      map.set(row.github_login, row.contributions)
-    }
-    if (!data || data.length < pageSize) break
-  }
-  return map
 }
 
 export async function upsertScrapeJobContributionTotals(

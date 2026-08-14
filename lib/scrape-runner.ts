@@ -1,8 +1,8 @@
 import {
+  checkpointOrganizationContributorPage,
   checkpointScrapeJob,
   completeScrape,
   getScrapeJobContributionCandidates,
-  getScrapeJobContributionMap,
   getScrapeContributorUsernames,
   getScrapeJobControl,
   persistScrapeContributors,
@@ -264,37 +264,23 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
     await ensureNotCanceled(job.id)
 
     const repo = repos[discovery.repoIndex]
+    const contributorPage = Math.max(1, Math.floor(initialState.contributorPage ?? 1))
     const githubClient = createWorkerGitHubClient()
-    const contribSumMap = await getScrapeJobContributionMap(job.id)
-    const contributors = await githubClient.getRepoContributors(repo)
-    const changedTotals: Array<{ login: string; contributions: number }> = []
-    for (const contributor of contributors) {
-      const contributions = (contribSumMap.get(contributor.login) ?? 0) + contributor.contributions
-      contribSumMap.set(contributor.login, contributions)
-      changedTotals.push({ login: contributor.login, contributions })
-    }
-    await upsertScrapeJobContributionTotals(job.id, changedTotals)
-    await saveScrapeCheckpoint(job, {
-      state: {
-        phase: discovery.completesDiscovery ? "hydrate" : "discover",
-        repoIndex: discovery.nextRepoIndex,
-        repositories: repos,
-        repositoryPage: initialState.repositoryPage,
-        repositoryDiscoveryComplete: true,
-      },
-      progress: {
-        current: discovery.nextRepoIndex,
-        total: repos.length,
-        progress: Math.round((discovery.nextRepoIndex / repos.length) * 50),
-        currentUserLogin: null,
-      },
-    })
-    await recordScrapeJobEvent(job.id, job.scrape_id, "repository_scanned", "Scanned repository contributors", {
+    const page = await githubClient.getRepoContributorsPage(repo, contributorPage)
+    const transition = await checkpointOrganizationContributorPage(job, {
       repository: repo,
-      repoIndex: discovery.nextRepoIndex,
-      repositories: repos.length,
-      contributorCount: contributors.length,
+      repoIndex: discovery.repoIndex,
+      page: page.page,
+      hasNext: page.hasNext,
+      contributors: page.contributors.map((contributor) => ({
+        login: contributor.login,
+        contributions: contributor.contributions,
+      })),
     })
+    if (!transition.applied) {
+      if (transition.status === "canceled") throw new ScrapeJobCanceledError()
+      throw new ScrapeJobLeaseLostError(transition.status)
+    }
     return false
   }
 
