@@ -17,7 +17,7 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 39 as number | null,
+    schemaVersion: 40 as number | null,
     schemaError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
@@ -160,7 +160,7 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 39
+    healthMocks.state.schemaVersion = 40
     healthMocks.state.schemaError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
@@ -228,7 +228,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v39; expected v39",
+      detail: "Current v40; expected v40",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -296,7 +296,7 @@ describe("GET /api/health", () => {
   })
 
   test("returns 503 when production migrations are behind the application", async () => {
-    healthMocks.state.schemaVersion = 38
+    healthMocks.state.schemaVersion = 39
 
     const response = await GET(healthRequest())
     const body = await response.json()
@@ -305,19 +305,19 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v38; expected v39",
+      detail: "Current v39; expected v40",
     })
   })
 
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 40
+    healthMocks.state.schemaVersion = 41
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v40; application expects v39")
+    expect(body.checks.databaseSchema.detail).toBe("Current v41; application expects v40")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {

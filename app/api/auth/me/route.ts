@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getAuthSession } from "@/lib/auth"
-import { requirePermission, sessionHasPermission } from "@/lib/permissions"
+import { requirePermission, roleHasPermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -33,13 +32,18 @@ export async function GET(request: NextRequest) {
   if (authError) return authError
 
   try {
-    const session = getAuthSession(request)
     const team = await resolveTeamContext(request)
-    const permissions = {
-      canRead: sessionHasPermission(session, "read"),
-      canWrite: sessionHasPermission(session, "write"),
-      canAdmin: sessionHasPermission(session, "admin"),
-    }
+    const permissions = team.actor === "admin"
+      ? { canRead: true, canWrite: true, canAdmin: true, canManageMembers: true }
+      : (() => {
+          if (!team.role) throw new Error("Authenticated user is missing a role.")
+          return {
+            canRead: roleHasPermission(team.role, "read"),
+            canWrite: roleHasPermission(team.role, "write"),
+            canAdmin: roleHasPermission(team.role, "admin"),
+            canManageMembers: roleHasPermission(team.role, "manage_members"),
+          }
+        })()
 
     if (team.actor === "user") {
       if (!team.email) throw new Error("Authenticated user is missing an email.")

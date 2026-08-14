@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   privateWorkspaceName,
   privateWorkspaceSlug,
+  selectProvisionedAppRole,
   selectPrimaryTeamMembership,
   type TeamMembershipCandidate,
 } from "../lib/team-membership-selection.ts"
@@ -51,4 +52,10 @@ test("private workspace naming and slugs are stable and account-scoped", () => {
   assert.equal(privateWorkspaceName("brody@example.com"), "brody's Workspace")
   assert.equal(privateWorkspaceSlug("Brody@Example.com"), privateWorkspaceSlug("brody@example.com"))
   assert.match(privateWorkspaceSlug("brody@example.com"), /^user-[a-f0-9]{16}$/)
+})
+
+test("existing database roles take precedence over stale auth metadata", () => {
+  assert.equal(selectProvisionedAppRole("viewer", "owner"), "viewer")
+  assert.equal(selectProvisionedAppRole(null, "recruiter"), "recruiter")
+  assert.equal(selectProvisionedAppRole(null, null), "owner")
 })

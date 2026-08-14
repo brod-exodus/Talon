@@ -11,6 +11,7 @@ export type AuthMe =
         canRead: true
         canWrite: true
         canAdmin: true
+        canManageMembers: true
       }
     }
   | {
@@ -25,6 +26,7 @@ export type AuthMe =
         canRead: boolean
         canWrite: boolean
         canAdmin: boolean
+        canManageMembers: boolean
       }
     }
 
@@ -34,6 +36,7 @@ const DEFAULT_PERMISSIONS = {
   canRead: true,
   canWrite: false,
   canAdmin: false,
+  canManageMembers: false,
 }
 
 export function useAuthMe() {

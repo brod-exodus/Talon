@@ -37,8 +37,8 @@ type AuditCategory = "all" | "auth" | "scrape" | "team" | "sharing" | "watched" 
 type AuditOutcomeFilter = "all" | AuditEvent["outcome"]
 
 const ROLE_OPTIONS: Array<{ value: AuthRole; label: string; description: string }> = [
-  { value: "owner", label: "Owner", description: "Full access, including ownership transfer and billing-era controls." },
-  { value: "admin", label: "Admin", description: "Can manage settings, teammates, scrapes, and watched repos." },
+  { value: "owner", label: "Owner", description: "Full access, including teammate and ownership management." },
+  { value: "admin", label: "Admin", description: "Can manage operations, settings, scrapes, and watched repos." },
   { value: "recruiter", label: "Recruiter", description: "Can run scrapes, manage outreach, and use watched repos." },
   { value: "viewer", label: "Viewer", description: "Read-only access for reviewing lists and shared team context." },
 ]
@@ -131,6 +131,7 @@ export default function SettingsPage() {
   const me = useAuthMe()
   const canWrite = me?.permissions.canWrite ?? false
   const canAdmin = me?.permissions.canAdmin ?? false
+  const canManageMembers = me?.permissions.canManageMembers ?? false
   const [slackWebhook, setSlackWebhook] = useState("")
   const [slackSaved, setSlackSaved] = useState(false)
   const [githubError, setGithubError] = useState("")
@@ -164,11 +165,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (canWrite) void checkRateLimit()
-    if (canAdmin) {
-      void loadTeamMembers()
-      void loadAuditEvents()
-    }
-  }, [canAdmin, canWrite])
+    if (canAdmin) void loadAuditEvents()
+    if (canManageMembers) void loadTeamMembers()
+  }, [canAdmin, canManageMembers, canWrite])
 
   useEffect(() => {
     if (!canAdmin) return
@@ -327,7 +326,7 @@ export default function SettingsPage() {
   }
 
   async function handleAddMember() {
-    if (!canAdmin) return
+    if (!canManageMembers) return
     setSavingMember(true)
     setTeamMembersError("")
     setTeamMembersSaved("")
@@ -371,7 +370,7 @@ export default function SettingsPage() {
   }
 
   async function handleRoleChange(member: TeamMember, role: AuthRole) {
-    if (!canAdmin || member.role === role) return
+    if (!canManageMembers || member.role === role) return
     const roleLabel = ROLE_OPTIONS.find((option) => option.value === role)?.label ?? role
     const currentRoleLabel = ROLE_OPTIONS.find((option) => option.value === member.role)?.label ?? member.role
     const requiresConfirmation = role === "owner" || role === "admin" || member.role === "owner"
@@ -405,7 +404,7 @@ export default function SettingsPage() {
   }
 
   async function handleRemoveMember(member: TeamMember) {
-    if (!canAdmin) return
+    if (!canManageMembers) return
     if (!window.confirm(`Remove ${member.email} from this Talon team?`)) return
     setTeamMembersError("")
     setTeamMembersSaved("")
@@ -736,7 +735,7 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {canAdmin && (
+          {canManageMembers && (
             <Card>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
