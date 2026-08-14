@@ -59,6 +59,13 @@ This rejects missing or duplicate migration numbers, an application/version
 mismatch, and new migrations that do not record themselves in
 `talon_schema_migrations`.
 
+Pull-request CI also starts a fresh local Supabase database and executes every
+canonical migration in order. This catches SQL syntax errors, missing database
+objects, and ordering mistakes before a migration reaches the Production SQL
+Editor. The temporary Supabase migration files are generated from
+`db/migrations`; do not maintain a second committed copy. The CI database uses
+the pinned Supabase CLI and local image and needs no Production credential.
+
 ### Atomic scrape enqueue
 
 Migration `028_idempotent_scrape_enqueue.sql` makes the start-scrape command a
