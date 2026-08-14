@@ -15,6 +15,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  database-migrations:
+    name: Database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: 2.114.0
+
+      - name: Apply migrations to a fresh Supabase database
+        run: |
+          workdir="$RUNNER_TEMP/talon-supabase"
+          mkdir -p "$workdir"
+          supabase init --workdir "$workdir"
+          node --experimental-strip-types scripts/prepare-supabase-migrations.ts "$workdir/supabase/migrations"
+          supabase db start --workdir "$workdir"
+
+      - name: Stop local Supabase database
+        if: always()
+        run: supabase stop --workdir "$RUNNER_TEMP/talon-supabase" --no-backup
+
   verify:
     name: Verify
     runs-on: ubuntu-latest

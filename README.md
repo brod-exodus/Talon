@@ -191,8 +191,11 @@ pnpm verify
 pnpm build
 ```
 
-CI runs whitespace checks, lint, TypeScript, tests, and the production build on
-every pull request. Production changes use `.github/pull_request_template.md`
+CI runs whitespace checks, lint, TypeScript, tests, the production build, and a
+fresh Supabase database migration on every pull request. The database job
+converts the canonical `db/migrations` files into Supabase CLI filenames in a
+temporary directory, then executes the complete sequence against Supabase's
+local database image. Production changes use `.github/pull_request_template.md`
 to document ownership, rollback, migrations, environment changes, and smoke
 results.
 
