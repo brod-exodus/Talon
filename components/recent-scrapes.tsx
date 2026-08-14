@@ -37,6 +37,7 @@ import {
   Copy,
   CheckCheck,
   Search,
+  MapPin,
   AlertTriangle,
   RotateCw,
   FolderPlus,
@@ -51,6 +52,7 @@ import { useAuthMe, useAuthPermissions } from "@/lib/client-permissions"
 import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-viewed"
 import { setBoundedMapEntry } from "@/lib/bounded-cache"
 import { buildCsvContent, hasExportableContact } from "@/lib/csv-export"
+import { contributorMatchesLocation } from "@/lib/contributor-location-search"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,7 @@ type Contributor = {
   name: string
   avatar: string
   contributions: number
+  location?: string | null
   // contacts is optional so missing/null at runtime is handled gracefully
   contacts?: {
     email?: string | null
@@ -687,13 +690,19 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   // ── Per-card filter / sort state ──────────────────────────────────────────
   type ContactFilter = "email" | "linkedin" | "twitter"
   type SortOrder = "high-low" | "low-high"
-  type CardSettings = { filters: Set<ContactFilter>; sort: SortOrder; contributorSearch: string }
+  type CardSettings = {
+    filters: Set<ContactFilter>
+    sort: SortOrder
+    contributorSearch: string
+    locationSearch: string
+  }
 
   const defaultCardSettings = useCallback(
     (): CardSettings => ({
       filters: new Set<ContactFilter>(),
       sort: "high-low",
       contributorSearch: "",
+      locationSearch: "",
     }),
     []
   )
@@ -735,6 +744,15 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const next = new Map(prev)
       const cur = next.get(scrapeId) ?? defaultCardSettings()
       next.set(scrapeId, { ...cur, contributorSearch })
+      return next
+    })
+  }, [defaultCardSettings])
+
+  const setLocationSearch = useCallback((scrapeId: string, locationSearch: string) => {
+    setCardSettings((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(scrapeId) ?? defaultCardSettings()
+      next.set(scrapeId, { ...cur, locationSearch })
       return next
     })
   }, [defaultCardSettings])
@@ -841,7 +859,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const availableProjects = projects.filter((project) => !assignedProjectIds.has(project.id))
       const isAssigning = assigningScrapeIds.has(scrape.id)
 
-      const { filters: activeFilters, sort: sortOrder, contributorSearch } =
+      const { filters: activeFilters, sort: sortOrder, contributorSearch, locationSearch } =
         cardSettings.get(scrape.id) ?? defaultCardSettings()
 
       const filteredByToggles = withContacts
@@ -853,7 +871,11 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           })
         : []
 
-      const filtered = filteredByToggles.filter((c) => contributorMatchesSearch(c, contributorSearch))
+      const filtered = filteredByToggles.filter(
+        (c) =>
+          contributorMatchesSearch(c, contributorSearch) &&
+          contributorMatchesLocation(c.location, locationSearch)
+      )
 
       const sorted = [...filtered].sort((a, b) =>
         sortOrder === "high-low" ? b.contributions - a.contributions : a.contributions - b.contributions
@@ -1034,17 +1056,33 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {/* Filter / sort controls — visible once loaded */}
                       {contributors !== null && (
                         <div className="flex flex-col gap-2 pb-3 border-b border-border">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                            <Input
-                              type="search"
-                              value={contributorSearch}
-                              onChange={(e) => setContributorSearch(scrape.id, e.target.value)}
-                              placeholder="Search name, @user, email, LinkedIn, X…"
-                              aria-label="Filter contributors by name or contact"
-                              className="h-8 pl-8 text-xs bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
-                            />
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              <Input
+                                type="search"
+                                value={contributorSearch}
+                                onChange={(e) => setContributorSearch(scrape.id, e.target.value)}
+                                placeholder="Search name, @user, email, LinkedIn, X…"
+                                aria-label="Filter contributors by name or contact"
+                                className="h-8 pl-8 text-xs bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+                              />
+                            </div>
+                            <div className="relative">
+                              <MapPin className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                              <Input
+                                type="search"
+                                value={locationSearch}
+                                onChange={(e) => setLocationSearch(scrape.id, e.target.value)}
+                                placeholder="Location: NYC, New York, London…"
+                                aria-label="Filter contributors by self-reported GitHub location"
+                                className="h-8 pl-8 text-xs bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+                              />
+                            </div>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Locations are self-reported on GitHub. NYC and New York also match New York City borough names.
+                          </p>
                           <div className="flex flex-wrap items-center gap-2">
                             {(
                               [
@@ -1140,6 +1178,12 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                                 <p className="text-sm text-muted-foreground font-mono">
                                   @{contributor.username} · {contributor.contributions} contributions
                                 </p>
+                                {contributor.location?.trim() && (
+                                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                    <MapPin className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{contributor.location}</span>
+                                  </p>
+                                )}
                               </div>
                             </Link>
                             <div className="flex shrink-0 gap-2">
@@ -1290,7 +1334,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {/* Empty state: loaded but no results */}
                       {!isLoadingContributors && contributors !== null && sorted.length === 0 && (
                         <p className="text-sm text-muted-foreground text-center py-3">
-                          {contributorSearch.trim() && filteredByToggles.length > 0
+                          {(contributorSearch.trim() || locationSearch.trim()) && filteredByToggles.length > 0
                             ? "No contributors match your search."
                             : activeFilters.size > 0
                               ? "No contributors match the active filters."
@@ -1326,6 +1370,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       updateContributorOutreach,
       defaultCardSettings,
       setContributorSearch,
+      setLocationSearch,
       projects,
       assigningScrapeIds,
       addScrapeToProject,

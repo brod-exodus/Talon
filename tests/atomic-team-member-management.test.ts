@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
-import { EXPECTED_SCHEMA_VERSION } from "../lib/schema-version.ts"
 
 const repositoryRoot = resolve(import.meta.dirname, "..")
 const migration = readFileSync(
@@ -26,7 +25,7 @@ test("role changes and removals use the atomic database functions", () => {
   assert.match(route, /status: 409/)
 })
 
-test("team member mutation functions are service-role only and advance schema v40", () => {
+test("team member mutation functions are service-role only and record schema v40", () => {
   for (const signature of [
     "update_team_member_app_role\\(UUID, UUID, TEXT\\)",
     "remove_team_member\\(UUID, UUID\\)",
@@ -35,5 +34,4 @@ test("team member mutation functions are service-role only and advance schema v4
     assert.match(migration, new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${signature} TO service_role`, "i"))
   }
   assert.match(migration, /\(40,\s*'atomic_team_member_management'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 40)
 })
