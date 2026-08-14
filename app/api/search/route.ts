@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
         .from("scrapes")
         .select("id, target, type, status, completed_at, started_at")
         .eq("team_id", teamId)
+        .is("watched_repo_id", null)
         .ilike("target", pattern)
         .order("started_at", { ascending: false })
         .limit(GROUP_LIMIT),

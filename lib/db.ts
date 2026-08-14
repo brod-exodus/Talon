@@ -180,6 +180,17 @@ export type ScrapeHydrationCheckpointResult = ScrapeJobTransitionResult & {
 export type ScrapeCompletionResult = ScrapeJobTransitionResult & {
   contributorTotal: number
   contactInfoCount: number
+  watchedRepoId: string | null
+  newContributorCount: number
+  baselineContributorCount: number
+}
+
+export type WatchedRepoEnqueueResult = {
+  watchedRepoId: string
+  repo: string
+  scrapeId: string
+  jobId: string
+  replayed: boolean
 }
 
 export type ScrapeEnqueueRequest = {
@@ -339,6 +350,32 @@ export async function enqueueScrape(input: {
     replayed: Boolean(row.replayed),
     originRequestId: row.origin_request_id,
   }
+}
+
+export async function enqueueDueWatchedRepoScrapes(input: {
+  teamId?: string
+  force?: boolean
+  requestId: string
+}): Promise<WatchedRepoEnqueueResult[]> {
+  const { data, error } = await supabaseAdmin.rpc("enqueue_due_watched_repo_scrapes", {
+    p_team_id: input.teamId ?? null,
+    p_force: input.force ?? false,
+    p_request_id: input.requestId,
+  })
+  if (error) throw error
+  return (data ?? []).map((row: {
+    watched_repo_id: string
+    repo: string
+    scrape_id: string
+    job_id: string
+    replayed: boolean
+  }) => ({
+    watchedRepoId: row.watched_repo_id,
+    repo: row.repo,
+    scrapeId: row.scrape_id,
+    jobId: row.job_id,
+    replayed: Boolean(row.replayed),
+  }))
 }
 
 export async function claimNextScrapeJob(workerId: string, teamId?: string): Promise<ScrapeJobRow | null> {
@@ -983,12 +1020,18 @@ export async function completeScrape(job: ScrapeJobRow): Promise<ScrapeCompletio
     result_status: ScrapeJobTransitionResult["status"]
     contributor_total: number
     contact_info_count: number
+    result_watched_repo_id: string | null
+    new_contributor_count: number
+    baseline_contributor_count: number
   }
   const transition = {
     applied: Boolean(transitionRow.applied),
     status: transitionRow.result_status,
     contributorTotal: transitionRow.contributor_total,
     contactInfoCount: transitionRow.contact_info_count,
+    watchedRepoId: transitionRow.result_watched_repo_id,
+    newContributorCount: transitionRow.new_contributor_count,
+    baselineContributorCount: transitionRow.baseline_contributor_count,
   }
   if (!transition.applied) return transition
 
@@ -1229,12 +1272,14 @@ export async function getActiveScrapes(teamId?: string): Promise<{
       .select("id, type, target, status, progress, current, total, current_user_login, started_at")
       .eq("team_id", resolvedTeamId)
       .eq("status", "active")
+      .is("watched_repo_id", null)
       .order("started_at", { ascending: false }),
     supabaseAdmin
       .from("scrapes")
       .select("id, status")
       .eq("team_id", resolvedTeamId)
       .in("status", ["completed", "failed", "canceled"])
+      .is("watched_repo_id", null)
       .order("started_at", { ascending: false })
       .limit(50),
   ])
@@ -1296,6 +1341,7 @@ export async function getRecentScrapes({
     .select("id, type, target, completed_at, started_at, contact_info_count, total_contributors")
     .eq("team_id", resolvedTeamId)
     .eq("status", "completed")
+    .is("watched_repo_id", null)
     .order("started_at", { ascending: false })
     .range(safeOffset, safeOffset + safeLimit)
 
@@ -1310,6 +1356,7 @@ export async function getRecentScrapes({
       .select("id, type, target, completed_at, started_at, error, contact_info_count, total_contributors")
       .eq("team_id", resolvedTeamId)
       .in("status", ["failed", "canceled"])
+      .is("watched_repo_id", null)
       .order("started_at", { ascending: false })
       .limit(10),
   ])
@@ -1697,6 +1744,7 @@ export async function getContributorProfile(id: string, teamId?: string): Promis
       .select("id, target, type, status, started_at, completed_at")
       .eq("team_id", resolvedTeamId)
       .in("id", scrapeIds)
+      .is("watched_repo_id", null)
     if (scrapeError) throw scrapeError
     for (const scrape of (scrapes ?? []) as ContributorProfileScrape[]) {
       scrapesById.set(scrape.id, scrape)

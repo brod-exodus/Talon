@@ -523,6 +523,39 @@ invocation and confirm the queue begins draining without a manual retry.
 Rollback by redeploying the previous application. Migration 037 is additive
 and may remain; the prior claim function does not consult the cooldown table.
 
+### Durable watched-repository checks
+
+Migration `038_durable_watched_repo_checks.sql` moves repository monitoring onto
+the existing bounded scrape queue. It adds persistent queued, running,
+succeeded, and failed status to `watched_repos`, associates internal scrapes
+with their watch, and records which scrape first detected each contributor.
+Completion atomically establishes the initial baseline or records only newly
+detected contributors. Slack delivery remains best effort and its outcome is
+persisted separately from the successful check.
+
+Apply migration 038 before deploying the compatible application. It requires
+no new environment variables and no new cron job: the existing one-minute
+`/api/scrape-jobs/run` schedule enqueues due watches before processing queued
+work. After deployment, use **Watched Repos → Check Now** and confirm the card
+moves from Queued to Checking to Monitoring. Internal watch scrapes do not
+appear in ordinary scrape lists or repository scrape SLO calculations.
+
+To inspect the durable state:
+
+```sql
+select repo, interval_hours, check_status, last_check_started_at,
+       last_check_completed_at, last_check_error,
+       last_new_contributors, last_baselined_contributors,
+       last_notification_status
+from public.watched_repos
+order by created_at desc;
+```
+
+Rollback by redeploying the previous application. Migration 038 is additive;
+the previous synchronous route ignores its new columns. Internal `watch-*`
+scrapes already queued by the new release may be allowed to finish or removed
+through the normal retention process.
+
 ### Repository scrape SLOs
 
 Settings → Production Readiness calculates two rolling seven-day indicators
@@ -582,12 +615,15 @@ If a scrape is stuck:
 
 If `Check Now` appears stale:
 
-1. Refresh the app and inspect the watched repo `last checked` value.
+1. Refresh the app and inspect the watched repo status and `last checked` value.
 2. Check Settings security events for `watched_repo.check`.
 3. Confirm `SLACK_WEBHOOK_URL` is valid in Vercel if Slack notifications are expected.
-4. Check Vercel function logs for `/api/watched-repos/check`.
+4. Confirm the one-minute worker schedule is active and Settings shows a recent worker run.
+5. Check Vercel function logs for `/api/watched-repos/check` and `/api/scrape-jobs/run`.
 
-Manual checks force-check active watched repos. Cron checks respect each repo interval.
+Manual checks force-queue active watched repos and return immediately. The UI
+polls persistent status; closing the browser does not interrupt the check. Cron
+checks respect each repository interval.
 
 ## Secret Rotation
 

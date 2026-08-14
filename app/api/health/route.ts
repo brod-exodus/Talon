@@ -331,6 +331,7 @@ async function scrapeSloChecks(): Promise<{
     .select("status, started_at, completed_at")
     .eq("type", "repository")
     .in("status", ["completed", "failed"])
+    .is("watched_repo_id", null)
     .gte("started_at", since)
     .order("started_at", { ascending: false })
     .limit(1000)

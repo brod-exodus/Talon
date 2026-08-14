@@ -5,6 +5,10 @@ after returning the response. Supabase Cron also invokes the worker every minute
 as a recovery path, so jobs continue without an open browser even if the
 immediate invocation is interrupted.
 
+The same invocation also enqueues watched repositories whose configured
+interval has elapsed before it drains the queue. No second Supabase schedule is
+required for watched-repository checks.
+
 ## Configure once in Supabase
 
 1. Enable the `pg_cron` and `pg_net` extensions.

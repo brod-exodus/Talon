@@ -56,6 +56,7 @@ describe("GET /api/keepalive", () => {
           const query = {
             eq: () => query,
             in: () => query,
+            is: () => query,
             gte: () => query,
             order: () => query,
             limit: async () => ({ data: keepaliveMocks.state.sloRows, error: keepaliveMocks.state.sloError }),

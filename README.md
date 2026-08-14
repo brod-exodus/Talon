@@ -39,6 +39,10 @@ flowchart LR
     Worker --> Queue
     Worker --> GitHub["GitHub REST API"]
     Worker --> Data["Contributors and scrape results"]
+    API --> Watches["Watched repository status"]
+    Cron --> Watches
+    Watches --> Queue
+    Data --> Watches
     Data --> UI
     Vercel["Vercel daily cron"] --> Keepalive["Supabase keepalive"]
     API --> Ops["System runs and health diagnostics"]
@@ -68,6 +72,13 @@ Contributor profile hydration is cached per team for seven days using a
 dedicated GitHub-profile freshness timestamp. Overlapping scrapes can therefore
 reuse recently fetched public profile and contact data without extending the
 cache when a recruiter edits notes, status, reminders, or outreach fields.
+
+Watched repositories use the same bounded queue rather than a second long-lived
+request path. Each minute, the scheduler atomically enqueues checks whose chosen
+interval has elapsed. Manual checks return `202` immediately, progress and
+outcomes are stored in Supabase, and interrupted work resumes like any other
+scrape. These internal checks are excluded from ordinary scrape history and SLO
+metrics while remaining visible on the Watched Repos screen.
 
 ## Engineering decisions
 
