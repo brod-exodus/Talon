@@ -475,6 +475,42 @@ export async function checkpointScrapeHydrationBatch(
   }
 }
 
+export async function checkpointCachedScrapeHydrationBatch(
+  job: ScrapeJobRow,
+  contributors: Array<{ login: string; contributions: number }>
+): Promise<ScrapeHydrationCheckpointResult> {
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  if (!contributors.length) throw new Error("Cached hydration checkpoint requires at least one contributor")
+
+  const { data, error } = await supabaseAdmin
+    .rpc("checkpoint_cached_scrape_hydration_batch", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_contributors: contributors.map((contributor) => ({
+        username: contributor.login,
+        contributions: Math.max(0, Math.floor(contributor.contributions)),
+      })),
+    })
+    .single()
+  if (error) throw error
+
+  const row = data as {
+    applied: boolean
+    result_status: ScrapeJobTransitionResult["status"]
+    persisted_count: number
+    processed_count: number
+    candidate_count: number
+  }
+  return {
+    applied: Boolean(row.applied),
+    status: row.result_status,
+    persistedCount: row.persisted_count,
+    processedCount: row.processed_count,
+    candidateCount: row.candidate_count,
+  }
+}
+
 export async function recordScrapeJobEvent(
   jobId: string | null,
   scrapeId: string | null,
@@ -869,6 +905,24 @@ export async function getScrapeContributorUsernames(id: string): Promise<Set<str
     for (const contributor of contributors ?? []) usernames.add(contributor.github_username)
   }
   return usernames
+}
+
+export async function getFreshContributorUsernames(
+  teamId: string,
+  usernames: string[],
+  freshAfter: string
+): Promise<Set<string>> {
+  const uniqueUsernames = Array.from(new Set(usernames))
+  if (!uniqueUsernames.length) return new Set()
+
+  const { data, error } = await supabaseAdmin
+    .from("contributors")
+    .select("github_username")
+    .eq("team_id", teamId)
+    .in("github_username", uniqueUsernames)
+    .gte("profile_refreshed_at", freshAfter)
+  if (error) throw error
+  return new Set((data ?? []).map((contributor) => contributor.github_username))
 }
 
 export async function completeScrape(job: ScrapeJobRow): Promise<ScrapeCompletionResult> {

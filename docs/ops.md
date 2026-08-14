@@ -288,6 +288,27 @@ Migration 035 is additive and retains the previous completion function for
 rollback. Redeploying the prior application version is sufficient; no database
 rollback is required.
 
+### Contributor profile freshness cache
+
+Migration `036_contributor_profile_freshness_cache.sql` records GitHub-profile
+freshness separately from a contributor's general `updated_at` value. A
+successful profile fetch refreshes that timestamp; recruiter workflow edits do
+not. During hydration, Talon atomically links matching team profiles fetched in
+the last seven days and sends GitHub requests only for stale or missing users.
+Existing contributors begin with no freshness timestamp and are refreshed once
+before they become reusable.
+
+Apply migration 036 before deploying the compatible application. It requires no
+environment variable or scheduler change. After deployment, run the same small
+repository scrape twice. The second scrape's `hydrate_started` events should
+report cached profiles, and its `cached_contributors_linked` events should
+replace most or all GitHub profile requests.
+
+The migration is additive and may remain installed during an application
+rollback. Redeploying the previous application version ignores the cache column
+and function; profile refreshes continue to update the timestamp through the
+database trigger.
+
 Security hardening migrations include:
 
 ```text
@@ -305,6 +326,7 @@ db/migrations/032_lease_safe_job_checkpoints.sql
 db/migrations/033_replay_safe_organization_contributors.sql
 db/migrations/034_lease_safe_hydration.sql
 db/migrations/035_verified_scrape_completion.sql
+db/migrations/036_contributor_profile_freshness_cache.sql
 ```
 
 They create or enforce:

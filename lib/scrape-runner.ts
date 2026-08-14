@@ -1,10 +1,12 @@
 import {
+  checkpointCachedScrapeHydrationBatch,
   checkpointOrganizationContributorPage,
   checkpointScrapeHydrationBatch,
   checkpointScrapeJob,
   completeScrape,
   getScrapeJobContributionCandidates,
   getScrapeContributorUsernames,
+  getFreshContributorUsernames,
   getScrapeJobControl,
   recordScrapeJobEvent,
   upsertScrapeJobContributionTotals,
@@ -13,11 +15,13 @@ import {
 } from "@/lib/db"
 import { createGitHubClient, extractContactsFromBio, extractSocialContacts, GitHubApiError } from "@/lib/github"
 import {
+  contributorProfileFreshAfter,
   planHydrationStep,
   planOrganizationDiscoveryStep,
   planOrganizationRepositoryPage,
   planRepositoryContributorPage,
   SCRAPE_HYDRATION_BATCH_SIZE,
+  splitHydrationBatchByProfileCache,
 } from "@/lib/scrape-step"
 import { isScrapeJobCancellationRequested } from "@/lib/scrape-job-policy"
 import { logWarn } from "@/lib/logger"
@@ -151,18 +155,37 @@ async function hydrateCandidates(
   const alreadyLinked = await getScrapeContributorUsernames(job.scrape_id)
   const step = planHydrationStep(candidates, alreadyLinked, SCRAPE_HYDRATION_BATCH_SIZE)
 
-  await recordScrapeJobEvent(job.id, job.scrape_id, "hydrate_started", "Contributor hydration started", {
-    totalCandidates: candidates.length,
-    alreadyLinked: alreadyLinked.size,
-  })
-
   if (!step.batch.length) return true
 
   await ensureNotCanceled(job.id)
   const batch = step.batch
+  const freshUsernames = await getFreshContributorUsernames(
+    job.team_id,
+    batch.map((candidate) => candidate.login),
+    contributorProfileFreshAfter()
+  )
+  const profilePlan = splitHydrationBatchByProfileCache(batch, freshUsernames)
+
+  await recordScrapeJobEvent(job.id, job.scrape_id, "hydrate_started", "Contributor hydration started", {
+    totalCandidates: candidates.length,
+    alreadyLinked: alreadyLinked.size,
+    cachedProfiles: profilePlan.cached.length,
+    githubRefreshes: profilePlan.refresh.length,
+  })
+
+  if (profilePlan.cached.length) {
+    const transition = await checkpointCachedScrapeHydrationBatch(job, profilePlan.cached)
+    if (!transition.applied) {
+      if (transition.status === "canceled") throw new ScrapeJobCanceledError()
+      throw new ScrapeJobLeaseLostError(transition.status)
+    }
+  }
+
+  if (!profilePlan.refresh.length) return step.completesHydration
+  await ensureNotCanceled(job.id)
 
   const batchResults = await Promise.allSettled(
-    batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions, {
+    profilePlan.refresh.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions, {
       requestId: job.request_id,
       jobId: job.id,
       scrapeId: job.scrape_id,
