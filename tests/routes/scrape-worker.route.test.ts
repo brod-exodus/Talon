@@ -6,6 +6,7 @@ const routeMocks = vi.hoisted(() => ({
   teamContextError: vi.fn(),
   runScrapeWorkerOperation: vi.fn(),
   recordAuditEvent: vi.fn(),
+  enqueueDueWatchedRepoScrapes: vi.fn(),
 }))
 
 vi.mock("@/lib/permissions", () => ({ requirePermission: routeMocks.requirePermission }))
@@ -17,6 +18,9 @@ vi.mock("@/lib/scrape-worker-operation", () => ({
   runScrapeWorkerOperation: routeMocks.runScrapeWorkerOperation,
 }))
 vi.mock("@/lib/audit", () => ({ recordAuditEvent: routeMocks.recordAuditEvent }))
+vi.mock("@/lib/db", () => ({
+  enqueueDueWatchedRepoScrapes: routeMocks.enqueueDueWatchedRepoScrapes,
+}))
 
 import { POST } from "@/app/api/scrape-jobs/run/route"
 
@@ -45,6 +49,7 @@ describe("POST /api/scrape-jobs/run", () => {
       elapsedMs: 5,
       stopReason: "queue_empty",
     })
+    routeMocks.enqueueDueWatchedRepoScrapes.mockResolvedValue([])
   })
 
   test("accepts the exact cron bearer secret without requiring a user session", async () => {
@@ -63,6 +68,9 @@ describe("POST /api/scrape-jobs/run", () => {
       teamId: undefined,
       teamSlug: undefined,
       maxJobs: 5,
+      requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    })
+    expect(routeMocks.enqueueDueWatchedRepoScrapes).toHaveBeenCalledWith({
       requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
   })
@@ -94,5 +102,6 @@ describe("POST /api/scrape-jobs/run", () => {
       maxJobs: 5,
       requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
+    expect(routeMocks.enqueueDueWatchedRepoScrapes).not.toHaveBeenCalled()
   })
 })

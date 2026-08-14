@@ -23,16 +23,13 @@ type WatchedRepo = {
   active: boolean
   last_checked_at: string | null
   created_at: string
-}
-
-type WatchedRepoCheckResult = {
-  watchedRepoId: string
-  repo: string
-  newContributors: number
-  baselinedContributors?: number
-  notified?: boolean
-  error?: string
-  checkedAt: string
+  check_status: "idle" | "queued" | "running" | "succeeded" | "failed"
+  last_check_started_at: string | null
+  last_check_completed_at: string | null
+  last_check_error: string | null
+  last_new_contributors: number
+  last_baselined_contributors: number
+  last_notification_status: string | null
 }
 
 const INTERVAL_OPTIONS = [
@@ -42,8 +39,6 @@ const INTERVAL_OPTIONS = [
   { label: "Every 24 hours", value: 24 },
   { label: "Every 48 hours", value: 48 },
 ]
-
-const CHECK_RESULTS_STORAGE_KEY = "talon:watched-repo-check-results:v1"
 
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return "Never checked"
@@ -58,16 +53,20 @@ function formatTimeAgo(dateStr: string | null): string {
 }
 
 function getMonitoringLabel(repo: WatchedRepo): string {
+  if (repo.check_status === "queued") return "Queued"
+  if (repo.check_status === "running") return "Checking"
+  if (repo.check_status === "failed") return "Needs attention"
   return repo.last_checked_at ? "Monitoring new contributors" : "Baseline pending"
 }
 
-function getCheckResultSummary(result: WatchedRepoCheckResult): string {
-  if (result.error) return result.error
-  if ((result.baselinedContributors ?? 0) > 0) {
-    return `Baselined ${result.baselinedContributors} existing contributor(s).`
+function getCheckResultSummary(repo: WatchedRepo): string {
+  if (repo.last_check_error) return repo.last_check_error
+  if (repo.last_baselined_contributors > 0) {
+    return `Baselined ${repo.last_baselined_contributors} existing contributor(s).`
   }
-  if (result.newContributors > 0) {
-    return `${result.newContributors} new contributor(s) found${result.notified ? " and notified" : ""}.`
+  if (repo.last_new_contributors > 0) {
+    const notified = repo.last_notification_status === "sent" ? " and notified" : ""
+    return `${repo.last_new_contributors} new contributor(s) found${notified}.`
   }
   return "No new contributors found."
 }
@@ -83,7 +82,6 @@ export function WatchedRepos() {
   const [isChecking, setIsChecking] = useState(false)
   const [repo, setRepo] = useState("")
   const [intervalHours, setIntervalHours] = useState("24")
-  const [lastCheckResults, setLastCheckResults] = useState<Record<string, WatchedRepoCheckResult>>({})
   const repoInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -109,16 +107,15 @@ export function WatchedRepos() {
     window.setTimeout(() => repoInputRef.current?.focus(), 0)
   }, [searchParams])
 
+  const hasActiveCheck = repos.some((watched) =>
+    watched.check_status === "queued" || watched.check_status === "running"
+  )
+
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(CHECK_RESULTS_STORAGE_KEY)
-      if (!stored) return
-      const parsed = JSON.parse(stored) as Record<string, WatchedRepoCheckResult>
-      setLastCheckResults(parsed)
-    } catch {
-      setLastCheckResults({})
-    }
-  }, [])
+    if (!hasActiveCheck) return
+    const intervalId = window.setInterval(() => void fetchRepos(), 2000)
+    return () => window.clearInterval(intervalId)
+  }, [fetchRepos, hasActiveCheck])
 
   const handleAdd = useCallback(
     async (e: React.FormEvent) => {
@@ -167,12 +164,6 @@ export function WatchedRepos() {
         const res = await fetch(`/api/watched-repos/${id}`, { method: "DELETE" })
         if (!res.ok) throw new Error("Failed to delete")
         setRepos((prev) => prev.filter((r) => r.id !== id))
-        setLastCheckResults((prev) => {
-          const next = { ...prev }
-          delete next[id]
-          window.localStorage.setItem(CHECK_RESULTS_STORAGE_KEY, JSON.stringify(next))
-          return next
-        })
         toast({ title: "Removed", description: `No longer watching ${repoName}` })
       } catch (err) {
         toast({
@@ -188,60 +179,22 @@ export function WatchedRepos() {
   const handleManualCheck = useCallback(async () => {
     if (!canWrite) return
     setIsChecking(true)
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 25000)
     try {
-      const res = await fetch("/api/watched-repos/check", { method: "POST", signal: controller.signal })
+      const res = await fetch("/api/watched-repos/check", { method: "POST" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Check failed")
-
-      const totalNew = (data.results ?? []).reduce(
-        (sum: number, r: { newContributors: number }) => sum + r.newContributors,
-        0
-      )
-      const totalBaselined = (data.results ?? []).reduce(
-        (sum: number, r: { baselinedContributors?: number }) => sum + (r.baselinedContributors ?? 0),
-        0
-      )
-      const errors = (data.results ?? []).filter((r: { error?: string }) => r.error).length
-      const checkedAt = new Date().toISOString()
-      const nextResults = Object.fromEntries(
-        (data.results ?? []).map((result: Omit<WatchedRepoCheckResult, "checkedAt">) => [
-          result.watchedRepoId,
-          { ...result, checkedAt },
-        ])
-      )
-      setLastCheckResults((prev) => {
-        const next = { ...prev, ...nextResults }
-        window.localStorage.setItem(CHECK_RESULTS_STORAGE_KEY, JSON.stringify(next))
-        return next
-      })
       toast({
-        title: errors > 0 ? "Check completed with errors" : "Check complete",
-        description: errors > 0
-          ? `Checked ${data.checked} repo(s). ${errors} repo(s) need attention.`
-          : totalBaselined > 0
-          ? `Checked ${data.checked} repo(s). Baselined ${totalBaselined} existing contributor(s); no baseline notifications sent.`
-          : `Checked ${data.checked} repo(s). ${totalNew} new contributor(s) found.`,
-        variant: errors > 0 ? "destructive" : undefined,
+        title: "Checks queued",
+        description: `${data.queued} new check(s) queued${data.alreadyActive ? `; ${data.alreadyActive} already running` : ""}.`,
       })
       await fetchRepos()
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        toast({
-          title: "Check still running",
-          description: "Manual check is taking longer than expected. Refresh in a moment for updated results.",
-        })
-        await fetchRepos()
-        return
-      }
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : "Check failed",
         variant: "destructive",
       })
     } finally {
-      window.clearTimeout(timeoutId)
       setIsChecking(false)
     }
   }, [canWrite, toast, fetchRepos])
@@ -270,11 +223,11 @@ export function WatchedRepos() {
           variant="outline"
           size="sm"
           onClick={handleManualCheck}
-          disabled={!canWrite || isChecking || repos.length === 0}
+          disabled={!canWrite || isChecking || hasActiveCheck || repos.length === 0}
           className="bg-transparent hover:bg-primary/10 transition-all duration-300 text-xs"
         >
-          <RefreshCw className={`w-3 h-3 mr-2 ${isChecking ? "animate-spin" : ""}`} />
-          {isChecking ? "Checking..." : "Check Now"}
+          <RefreshCw className={`w-3 h-3 mr-2 ${isChecking || hasActiveCheck ? "animate-spin" : ""}`} />
+          {isChecking || hasActiveCheck ? "Checking..." : "Check Now"}
         </Button>
       </div>
 
@@ -376,8 +329,6 @@ export function WatchedRepos() {
         <div className="space-y-2">
           <AnimatePresence>
             {repos.map((r, index) => {
-              const lastResult = lastCheckResults[r.id]
-
               return (
                 <motion.div
                   key={r.id}
@@ -406,7 +357,11 @@ export function WatchedRepos() {
                             <Badge
                               variant="outline"
                               className={`text-xs ${
-                                r.last_checked_at
+                                r.check_status === "failed"
+                                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                  : r.check_status === "queued" || r.check_status === "running"
+                                  ? "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                  : r.last_checked_at
                                   ? "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
                                   : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
                               }`}
@@ -418,19 +373,19 @@ export function WatchedRepos() {
                               {formatTimeAgo(r.last_checked_at)}
                             </span>
                           </div>
-                          {lastResult && (
+                          {r.last_check_completed_at && (
                             <div
                               className={`mt-3 rounded-md border p-2 text-xs ${
-                                lastResult.error
+                                r.last_check_error
                                   ? "border-destructive/20 bg-destructive/10 text-destructive"
                                   : "border-border bg-muted/20 text-muted-foreground"
                               }`}
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-medium text-foreground">Last manual check</span>
-                                <span>{formatTimeAgo(lastResult.checkedAt)}</span>
+                                <span className="font-medium text-foreground">Last check</span>
+                                <span>{formatTimeAgo(r.last_check_completed_at)}</span>
                               </div>
-                              <p className="mt-1">{getCheckResultSummary(lastResult)}</p>
+                              <p className="mt-1">{getCheckResultSummary(r)}</p>
                             </div>
                           )}
                         </div>

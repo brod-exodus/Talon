@@ -3,6 +3,7 @@ import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
+import { enqueueDueWatchedRepoScrapes } from "@/lib/db"
 import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { MAX_JOBS_PER_WORKER_INVOCATION } from "@/lib/worker-budget"
@@ -25,6 +26,10 @@ export async function POST(request: NextRequest) {
       return teamContextError(error)
     }
   }
+
+  const watchedChecks = isCronRequest
+    ? await enqueueDueWatchedRepoScrapes({ requestId })
+    : []
 
   const {
     workerId,
@@ -58,6 +63,7 @@ export async function POST(request: NextRequest) {
       maxElapsedMs,
       elapsedMs,
       stopReason,
+      watchedChecksQueued: watchedChecks.filter((check) => !check.replayed).length,
     },
   })
   for (const result of results) {
@@ -85,5 +91,6 @@ export async function POST(request: NextRequest) {
     results,
     elapsedMs,
     stopReason,
+    watchedChecksQueued: watchedChecks.filter((check) => !check.replayed).length,
   })
 }

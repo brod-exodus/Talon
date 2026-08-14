@@ -24,7 +24,11 @@ import {
   splitHydrationBatchByProfileCache,
 } from "@/lib/scrape-step"
 import { isScrapeJobCancellationRequested } from "@/lib/scrape-job-policy"
-import { logWarn } from "@/lib/logger"
+import { logError, logWarn } from "@/lib/logger"
+import {
+  deliverWatchedRepoNotification,
+  markWatchedRepoNotificationFailed,
+} from "@/lib/watched-repo-notifications"
 
 type ScrapeJobState = {
   phase?: "discover" | "hydrate"
@@ -71,7 +75,29 @@ async function saveScrapeCheckpoint(
 
 async function finishScrape(job: ScrapeJobRow): Promise<boolean> {
   const transition = await completeScrape(job)
-  if (transition.applied) return true
+  if (transition.applied) {
+    if (transition.watchedRepoId && transition.newContributorCount > 0) {
+      try {
+        await deliverWatchedRepoNotification({
+          watchedRepoId: transition.watchedRepoId,
+          scrapeId: job.scrape_id,
+          teamId: job.team_id,
+        })
+      } catch (error) {
+        await markWatchedRepoNotificationFailed({
+          watchedRepoId: transition.watchedRepoId,
+          teamId: job.team_id,
+        }).catch(() => undefined)
+        logError("watched_repos.notification_failed", error, {
+          originRequestId: job.request_id,
+          jobId: job.id,
+          scrapeId: job.scrape_id,
+          teamId: job.team_id,
+        })
+      }
+    }
+    return true
+  }
   if (transition.status === "canceled") throw new ScrapeJobCanceledError()
   throw new ScrapeJobLeaseLostError(transition.status)
 }
