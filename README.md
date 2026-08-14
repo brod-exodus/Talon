@@ -64,6 +64,11 @@ GitHub calls use short attempts and delegate retry delays to the durable queue,
 keeping an individual serverless invocation bounded even for very large
 repositories and organizations.
 
+Contributor profile hydration is cached per team for seven days using a
+dedicated GitHub-profile freshness timestamp. Overlapping scrapes can therefore
+reuse recently fetched public profile and contact data without extending the
+cache when a recruiter edits notes, status, reminders, or outreach fields.
+
 ## Engineering decisions
 
 ### Durable background work

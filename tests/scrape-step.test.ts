@@ -1,11 +1,14 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import {
+  CONTRIBUTOR_PROFILE_CACHE_TTL_MS,
+  contributorProfileFreshAfter,
   planHydrationStep,
   planOrganizationDiscoveryStep,
   planOrganizationRepositoryPage,
   planRepositoryContributorPage,
   SCRAPE_HYDRATION_BATCH_SIZE,
+  splitHydrationBatchByProfileCache,
 } from "../lib/scrape-step.ts"
 
 const candidates = Array.from({ length: 25 }, (_, index) => ({
@@ -62,6 +65,21 @@ test("hydration resumes idempotently across multiple worker invocations", () => 
   const replayedFinalStep = planHydrationStep(largeCandidateSet, persisted, 20)
   assert.deepEqual(replayedFinalStep.batch, [])
   assert.equal(replayedFinalStep.completesHydration, true)
+})
+
+test("profile cache planning refreshes only stale or missing contributors", () => {
+  const batch = candidates.slice(0, 5)
+  const plan = splitHydrationBatchByProfileCache(batch, new Set(["user-1", "user-3", "user-5"]))
+
+  assert.deepEqual(plan.cached.map((candidate) => candidate.login), ["user-1", "user-3", "user-5"])
+  assert.deepEqual(plan.refresh.map((candidate) => candidate.login), ["user-2", "user-4"])
+})
+
+test("contributor profile freshness uses a seven-day window", () => {
+  const now = Date.parse("2026-08-14T12:00:00.000Z")
+
+  assert.equal(CONTRIBUTOR_PROFILE_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000)
+  assert.equal(contributorProfileFreshAfter(now), "2026-08-07T12:00:00.000Z")
 })
 
 test("planOrganizationDiscoveryStep advances one repository step at a time", () => {

@@ -1,8 +1,26 @@
 export const SCRAPE_HYDRATION_BATCH_SIZE = 20
+export const CONTRIBUTOR_PROFILE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 export type ScrapeCandidate = {
   login: string
   contributions: number
+}
+
+export function contributorProfileFreshAfter(now = Date.now()): string {
+  return new Date(now - CONTRIBUTOR_PROFILE_CACHE_TTL_MS).toISOString()
+}
+
+export function splitHydrationBatchByProfileCache(
+  batch: ScrapeCandidate[],
+  freshUsernames: ReadonlySet<string>
+): { cached: ScrapeCandidate[]; refresh: ScrapeCandidate[] } {
+  const cached: ScrapeCandidate[] = []
+  const refresh: ScrapeCandidate[] = []
+  for (const candidate of batch) {
+    if (freshUsernames.has(candidate.login)) cached.push(candidate)
+    else refresh.push(candidate)
+  }
+  return { cached, refresh }
 }
 
 export function planHydrationStep(
