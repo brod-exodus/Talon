@@ -164,6 +164,12 @@ export type OrganizationContributorCheckpointResult = ScrapeJobTransitionResult 
   discoveryComplete: boolean
 }
 
+export type ScrapeHydrationCheckpointResult = ScrapeJobTransitionResult & {
+  persistedCount: number
+  processedCount: number
+  candidateCount: number
+}
+
 export type ScrapeEnqueueRequest = {
   scrapeId: string
   jobId: string
@@ -417,6 +423,51 @@ export async function checkpointOrganizationContributorPage(
     nextRepoIndex: row.next_repo_index,
     nextPage: row.next_page,
     discoveryComplete: Boolean(row.discovery_complete),
+  }
+}
+
+export async function checkpointScrapeHydrationBatch(
+  job: ScrapeJobRow,
+  contributors: ScrapeContributorProfile[]
+): Promise<ScrapeHydrationCheckpointResult> {
+  const workerId = job.locked_by
+  if (!workerId) throw new Error("Scrape job has no active worker lease")
+  if (!contributors.length) throw new Error("Hydration checkpoint requires at least one contributor")
+
+  const { data, error } = await supabaseAdmin
+    .rpc("checkpoint_scrape_hydration_batch", {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_contributors: contributors.map((contributor) => ({
+        username: contributor.username,
+        name: contributor.name,
+        avatar: contributor.avatar,
+        contributions: Math.max(0, Math.floor(contributor.contributions)),
+        bio: contributor.bio ?? null,
+        location: contributor.location ?? null,
+        company: contributor.company ?? null,
+        email: contributor.contacts?.email ?? null,
+        twitter: contributor.contacts?.twitter ?? null,
+        linkedin: contributor.contacts?.linkedin ?? null,
+        website: contributor.contacts?.website ?? null,
+      })),
+    })
+    .single()
+  if (error) throw error
+
+  const row = data as {
+    applied: boolean
+    result_status: ScrapeJobTransitionResult["status"]
+    persisted_count: number
+    processed_count: number
+    candidate_count: number
+  }
+  return {
+    applied: Boolean(row.applied),
+    status: row.result_status,
+    persistedCount: row.persisted_count,
+    processedCount: row.processed_count,
+    candidateCount: row.candidate_count,
   }
 }
 

@@ -1,11 +1,11 @@
 import {
   checkpointOrganizationContributorPage,
+  checkpointScrapeHydrationBatch,
   checkpointScrapeJob,
   completeScrape,
   getScrapeJobContributionCandidates,
   getScrapeContributorUsernames,
   getScrapeJobControl,
-  persistScrapeContributors,
   recordScrapeJobEvent,
   upsertScrapeJobContributionTotals,
   type ScrapeJobRow,
@@ -145,9 +145,7 @@ async function ensureNotCanceled(jobId: string): Promise<void> {
 
 async function hydrateCandidates(
   job: ScrapeJobRow,
-  candidates: Array<{ login: string; contributions: number }>,
-  progressBase = 0,
-  progressSpan = 100
+  candidates: Array<{ login: string; contributions: number }>
 ): Promise<boolean> {
   const githubClient = createWorkerGitHubClient()
   const alreadyLinked = await getScrapeContributorUsernames(job.scrape_id)
@@ -162,21 +160,6 @@ async function hydrateCandidates(
 
   await ensureNotCanceled(job.id)
   const batch = step.batch
-  const processed = step.processedAfterStep
-  const progress = progressBase + Math.round((processed / Math.max(candidates.length, 1)) * progressSpan)
-
-  await saveScrapeCheckpoint(job, {
-    state: {
-      ...((job.state ?? {}) as ScrapeJobState),
-      phase: "hydrate",
-    },
-    progress: {
-      current: processed,
-      total: candidates.length,
-      progress: Math.min(99, progress),
-      currentUserLogin: batch[0]?.login ?? null,
-    },
-  })
 
   const batchResults = await Promise.allSettled(
     batch.map(({ login, contributions }) => hydrateContributor(githubClient, login, contributions, {
@@ -189,12 +172,11 @@ async function hydrateCandidates(
   const rejected = batchResults.find((result) => result.status === "rejected")
 
   if (fulfilled.length) {
-    await persistScrapeContributors(job.scrape_id, fulfilled)
-    await recordScrapeJobEvent(job.id, job.scrape_id, "contributors_persisted", "Persisted hydrated contributors", {
-      count: fulfilled.length,
-      processed,
-      total: candidates.length,
-    })
+    const transition = await checkpointScrapeHydrationBatch(job, fulfilled)
+    if (!transition.applied) {
+      if (transition.status === "canceled") throw new ScrapeJobCanceledError()
+      throw new ScrapeJobLeaseLostError(transition.status)
+    }
   }
 
   if (rejected?.status === "rejected") {
@@ -285,21 +267,16 @@ async function scrapeOrganization(job: ScrapeJobRow): Promise<boolean> {
   }
 
   const logins = await getScrapeJobContributionCandidates(job.id, minContributions)
-  const hydrated = await hydrateCandidates(
-    {
-      ...job,
-      state: {
-        phase: "hydrate",
-        repoIndex: repos.length,
-        repositories: repos,
-        repositoryPage: initialState.repositoryPage,
-        repositoryDiscoveryComplete: true,
-      },
+  const hydrated = await hydrateCandidates({
+    ...job,
+    state: {
+      phase: "hydrate",
+      repoIndex: repos.length,
+      repositories: repos,
+      repositoryPage: initialState.repositoryPage,
+      repositoryDiscoveryComplete: true,
     },
-    logins,
-    50,
-    50
-  )
+  }, logins)
   if (!hydrated) return false
   await ensureNotCanceled(job.id)
   return await finishScrape(job)
