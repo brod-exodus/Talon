@@ -48,6 +48,13 @@ describe("POST /api/scrape-jobs/run", () => {
       maxElapsedMs: 0,
       elapsedMs: 5,
       stopReason: "queue_empty",
+      notificationDeliveries: {
+        workerId: "notification-worker-1",
+        recoveredStaleDeliveries: 0,
+        results: [],
+        elapsedMs: 1,
+        stopReason: "queue_empty",
+      },
     })
     routeMocks.enqueueDueWatchedRepoScrapes.mockResolvedValue([])
   })

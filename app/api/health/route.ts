@@ -281,6 +281,41 @@ async function queueCheck(githubCooldown: ServiceCooldown | null): Promise<Healt
   }
 }
 
+async function notificationQueueCheck(): Promise<HealthCheck> {
+  const { data, error } = await supabaseAdmin
+    .from("notification_deliveries")
+    .select("status, created_at, run_after, locked_at")
+    .in("status", ["queued", "running", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(1000)
+  if (error) {
+    return { status: "error", message: "Could not inspect notification delivery queue", detail: error.message }
+  }
+
+  const rows = data ?? []
+  const queued = rows.filter((row) => row.status === "queued")
+  const due = queued.filter((row) => new Date(row.run_after).getTime() <= Date.now())
+  const running = rows.filter((row) => row.status === "running")
+  const failed = rows.filter((row) => row.status === "failed")
+  const staleRunning = running.filter(
+    (row) => row.locked_at && Date.now() - new Date(row.locked_at).getTime() > 10 * 60 * 1000
+  )
+  const oldestDueMinutes = due[0]
+    ? Math.max(0, Math.round((Date.now() - new Date(due[0].created_at).getTime()) / 60000))
+    : 0
+  const status: CheckStatus = staleRunning.length || oldestDueMinutes > 10
+    ? "error"
+    : failed.length
+      ? "warn"
+      : "ok"
+
+  return {
+    status,
+    message: `${queued.length} queued (${due.length} due), ${running.length} sending, ${failed.length} failed`,
+    detail: `${staleRunning.length} stale sending; oldest due ${oldestDueMinutes} minute${oldestDueMinutes === 1 ? "" : "s"}`,
+  }
+}
+
 function scrapeReliabilityCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>): HealthCheck {
   const target = `Target ≥${SCRAPE_SUCCESS_TARGET_PERCENT}% over ${SCRAPE_SLO_WINDOW_DAYS} days`
   if (snapshot.sampleSize < SCRAPE_SLO_MIN_SAMPLE) {
@@ -359,13 +394,14 @@ export async function GET(request: NextRequest) {
   if (authError) return authError
 
   const githubCooldown = await githubCooldownCheck()
-  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, scrapeSlos, sloAlerting] = await Promise.all([
+  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, notificationQueue, scrapeSlos, sloAlerting] = await Promise.all([
     dbCheck(),
     schemaVersionCheck(),
     githubCheck(githubCooldown.cooldown),
     lastSystemRunCheck("keepalive", 36 * 60),
     lastSystemRunCheck("scrape_worker", 10),
     queueCheck(githubCooldown.cooldown),
+    notificationQueueCheck(),
     scrapeSloChecks(),
     sloAlertingCheck(),
   ])
@@ -384,6 +420,7 @@ export async function GET(request: NextRequest) {
     keepalive,
     scrapeWorker,
     scrapeQueue,
+    notificationQueue,
     sloAlerting,
     ...scrapeSlos,
   }

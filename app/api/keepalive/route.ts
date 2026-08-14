@@ -88,6 +88,17 @@ export async function GET(request: NextRequest) {
       logError("keepalive.retention_failed", retentionError, { requestId })
       return NextResponse.json({ error: "Supabase retention cleanup failed" }, { status: 500 })
     }
+    const { data: notificationRetention, error: notificationRetentionError } = await supabase.rpc(
+      "cleanup_notification_delivery_retention"
+    )
+    if (notificationRetentionError) {
+      logError("keepalive.notification_retention_failed", notificationRetentionError, { requestId })
+      return NextResponse.json({ error: "Notification retention cleanup failed" }, { status: 500 })
+    }
+    const retentionDetails = {
+      ...(retention && typeof retention === "object" && !Array.isArray(retention) ? retention : {}),
+      notificationDeliveries: Number(notificationRetention ?? 0),
+    }
 
     const since = new Date(Date.now() - SCRAPE_SLO_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
     const { data: sloRows, error: sloError } = await supabase
@@ -153,14 +164,14 @@ export async function GET(request: NextRequest) {
       started_at: timestamp,
       completed_at: timestamp,
       request_id: requestId,
-      details: { source: "vercel_cron", retention, sloMonitor },
+      details: { source: "vercel_cron", retention: retentionDetails, sloMonitor },
     })
     if (runError) {
       logError("keepalive.run_persist_failed", runError, { requestId })
       return NextResponse.json({ error: "Supabase keepalive status recording failed" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, timestamp, retention, sloMonitor })
+    return NextResponse.json({ success: true, timestamp, retention: retentionDetails, sloMonitor })
   } catch (error) {
     logError("keepalive.failed", error, { requestId })
     return NextResponse.json({ error: "Supabase keepalive failed" }, { status: 500 })

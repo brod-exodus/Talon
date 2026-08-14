@@ -530,8 +530,8 @@ the existing bounded scrape queue. It adds persistent queued, running,
 succeeded, and failed status to `watched_repos`, associates internal scrapes
 with their watch, and records which scrape first detected each contributor.
 Completion atomically establishes the initial baseline or records only newly
-detected contributors. Slack delivery remains best effort and its outcome is
-persisted separately from the successful check.
+detected contributors. Migration 039 below makes the separate Slack-delivery
+outcome durable.
 
 Apply migration 038 before deploying the compatible application. It requires
 no new environment variables and no new cron job: the existing one-minute
@@ -555,6 +555,47 @@ Rollback by redeploying the previous application. Migration 038 is additive;
 the previous synchronous route ignores its new columns. Internal `watch-*`
 scrapes already queued by the new release may be allowed to finish or removed
 through the normal retention process.
+
+### Durable notification delivery
+
+Migration `039_notification_delivery_outbox.sql` adds a private, secret-free
+outbox for watched-repository Slack alerts. The activity event and its
+deduplicated delivery record commit in the same database transaction. The
+existing one-minute worker claims at most a small bounded batch before scrape
+work, retries temporary failures with exponential backoff, recovers delivery
+leases older than ten minutes, and marks a delivery terminally failed after five
+attempts. No webhook URL, token, contributor profile, or message body is stored
+in the outbox.
+
+Apply migration 039 before deploying the compatible application. It requires
+no new environment variables and no scheduler change. **Settings → Production
+Readiness** shows queue depth, due age, stale sending leases, and terminal
+delivery failures. The daily keepalive removes terminal delivery records after
+90 days.
+
+Inspect delivery state without exposing the configured webhook:
+
+```sql
+select id, kind, status, attempts, max_attempts, run_after,
+       locked_at, last_error, created_at, completed_at
+from public.notification_deliveries
+order by created_at desc
+limit 50;
+```
+
+After correcting a Slack configuration or outage, requeue terminal failures in
+Supabase SQL Editor and wait for the next one-minute worker invocation:
+
+```sql
+select public.retry_failed_notification_deliveries();
+```
+
+Slack incoming webhooks do not accept an idempotency key. Talon therefore
+provides at-least-once delivery: an interruption after Slack accepts a request
+but before the success transition can rarely produce a duplicate, while the
+transactional outbox prevents silent loss. Roll back by redeploying the previous
+application. Migration 039 is additive and may remain, but pending deliveries
+will pause until the compatible worker is deployed again.
 
 ### Repository scrape SLOs
 
@@ -620,6 +661,7 @@ If `Check Now` appears stale:
 3. Confirm `SLACK_WEBHOOK_URL` is valid in Vercel if Slack notifications are expected.
 4. Confirm the one-minute worker schedule is active and Settings shows a recent worker run.
 5. Check Vercel function logs for `/api/watched-repos/check` and `/api/scrape-jobs/run`.
+6. If the check succeeded but Slack did not arrive, inspect the Notification Queue health check and `notification_deliveries` query above.
 
 Manual checks force-queue active watched repos and return immediately. The UI
 polls persistent status; closing the browser does not interrupt the check. Cron

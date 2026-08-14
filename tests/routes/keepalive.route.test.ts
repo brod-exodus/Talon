@@ -37,10 +37,9 @@ describe("GET /api/keepalive", () => {
     keepaliveMocks.state.sloError = null
     keepaliveMocks.state.sloRows = []
     keepaliveMocks.fetch.mockResolvedValue({ ok: true, status: 200 })
-    keepaliveMocks.rpc.mockResolvedValue({
-      data: { shares: 1, systemRuns: 2, scrapeJobs: 3 },
-      error: null,
-    })
+    keepaliveMocks.rpc.mockImplementation(async (name: string) => name === "cleanup_notification_delivery_retention"
+      ? { data: 0, error: null }
+      : { data: { shares: 1, systemRuns: 2, scrapeJobs: 3 }, error: null })
     keepaliveMocks.insertRun.mockResolvedValue({ error: null })
     keepaliveMocks.createClient.mockReturnValue({
       rpc: keepaliveMocks.rpc,
@@ -99,14 +98,14 @@ describe("GET /api/keepalive", () => {
     const body = await response.json()
 
     expect(response.status).toBe(200)
-    expect(body.retention).toEqual({ shares: 1, systemRuns: 2, scrapeJobs: 3 })
+    expect(body.retention).toEqual({ shares: 1, systemRuns: 2, scrapeJobs: 3, notificationDeliveries: 0 })
     expect(keepaliveMocks.rpc).toHaveBeenCalledWith("cleanup_talon_retention")
     expect(keepaliveMocks.insertRun).toHaveBeenCalledWith(expect.objectContaining({
       kind: "keepalive",
       status: "success",
       details: expect.objectContaining({
         source: "vercel_cron",
-        retention: { shares: 1, systemRuns: 2, scrapeJobs: 3 },
+        retention: { shares: 1, systemRuns: 2, scrapeJobs: 3, notificationDeliveries: 0 },
         sloMonitor: expect.objectContaining({
           state: "insufficient_data",
           notification: "unchanged",
@@ -122,6 +121,18 @@ describe("GET /api/keepalive", () => {
 
     expect(response.status).toBe(500)
     await expect(response.json()).resolves.toEqual({ error: "Supabase retention cleanup failed" })
+    expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
+  })
+
+  test("fails visibly when notification retention cannot run", async () => {
+    keepaliveMocks.rpc.mockImplementation(async (name: string) => name === "cleanup_notification_delivery_retention"
+      ? { data: null, error: new Error("notification cleanup missing") }
+      : { data: { shares: 1 }, error: null })
+
+    const response = await GET(request())
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ error: "Notification retention cleanup failed" })
     expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
   })
 

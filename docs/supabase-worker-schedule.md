@@ -9,6 +9,10 @@ The same invocation also enqueues watched repositories whose configured
 interval has elapsed before it drains the queue. No second Supabase schedule is
 required for watched-repository checks.
 
+Before processing scrape work, the invocation also drains a small bounded batch
+of due notification deliveries. This gives watched-repository Slack alerts the
+same one-minute recovery path without creating another cron job.
+
 ## Configure once in Supabase
 
 1. Enable the `pg_cron` and `pg_net` extensions.

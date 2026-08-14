@@ -17,7 +17,7 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 38 as number | null,
+    schemaVersion: 39 as number | null,
     schemaError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
@@ -25,6 +25,8 @@ const healthMocks = vi.hoisted(() => ({
     keepaliveDetails: null as Record<string, unknown> | null,
     queueRows: [] as QueueRow[],
     queueError: null as Error | null,
+    notificationRows: [] as QueueRow[],
+    notificationError: null as Error | null,
     githubCooldown: null as {
       service: "github"
       blocked_until: string
@@ -83,6 +85,9 @@ vi.mock("@/lib/supabase", () => ({
         }
         if (table === "service_cooldowns") {
           return { data: healthMocks.state.githubCooldown, error: null }
+        }
+        if (table === "notification_deliveries") {
+          return { data: healthMocks.state.notificationRows, error: healthMocks.state.notificationError }
         }
         throw new Error(`Unexpected health query table: ${table}`)
       }
@@ -155,7 +160,7 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 38
+    healthMocks.state.schemaVersion = 39
     healthMocks.state.schemaError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
@@ -165,6 +170,8 @@ describe("GET /api/health", () => {
     healthMocks.state.sloError = null
     healthMocks.state.queueError = null
     healthMocks.state.queueRows = []
+    healthMocks.state.notificationRows = []
+    healthMocks.state.notificationError = null
     healthMocks.state.githubCooldown = null
     healthMocks.state.systemRuns = {
       keepalive: recentRun,
@@ -221,7 +228,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v38; expected v38",
+      detail: "Current v39; expected v39",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -231,6 +238,7 @@ describe("GET /api/health", () => {
       detail: "Last evaluation: healthy; notification: unchanged",
     })
     expect(body.checks.scrapeQueue.message).toBe("0 queued (0 due), 0 running, 0 failed")
+    expect(body.checks.notificationQueue.message).toBe("0 queued (0 due), 0 sending, 0 failed")
     const serialized = JSON.stringify(body)
     expect(serialized).not.toContain("github-test-token")
     expect(serialized).not.toContain("service-role-test-value")
@@ -268,8 +276,27 @@ describe("GET /api/health", () => {
     expect(body.checks.scrapeQueue.detail).toBe("0 stale running; 0 waiting on GitHub; oldest queued 20 minutes")
   })
 
+  test("returns 503 when a due notification has remained queued for more than ten minutes", async () => {
+    healthMocks.state.notificationRows = [
+      {
+        status: "queued",
+        created_at: "2026-08-13T17:40:00.000Z",
+        run_after: "2026-08-13T17:40:00.000Z",
+        locked_at: null,
+      },
+    ]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body.checks.notificationQueue.status).toBe("error")
+    expect(body.checks.notificationQueue.message).toBe("1 queued (1 due), 0 sending, 0 failed")
+    expect(body.checks.notificationQueue.detail).toBe("0 stale sending; oldest due 20 minutes")
+  })
+
   test("returns 503 when production migrations are behind the application", async () => {
-    healthMocks.state.schemaVersion = 37
+    healthMocks.state.schemaVersion = 38
 
     const response = await GET(healthRequest())
     const body = await response.json()
@@ -278,19 +305,19 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v37; expected v38",
+      detail: "Current v38; expected v39",
     })
   })
 
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 39
+    healthMocks.state.schemaVersion = 40
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v39; application expects v38")
+    expect(body.checks.databaseSchema.detail).toBe("Current v40; application expects v39")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {
