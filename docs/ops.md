@@ -35,6 +35,15 @@ promptly even when the scrape itself needs many worker steps. The production
 smoke fails if Retry does not return HTTP `202` within ten seconds; override
 `RETRY_MAX_SECONDS` only when diagnosing unusual network latency.
 
+Each worker invocation drains as many as five completed jobs, but every job
+shares the invocation's forty-second time budget and twenty-step GitHub budget.
+The worker reserves ten seconds of headroom before claiming another job and
+stops after a job yields or errors, ensuring later work is never claimed without
+enough time to persist a safe outcome. The worker response, structured log, and
+`system_runs.details` record `elapsedMs` and `stopReason`; expected reasons are
+`queue_empty`, `job_limit`, `time_budget`, `step_budget`, `job_yielded`, and
+`job_error`.
+
 ## Post-Deploy Smoke Checklist
 
 Run this after every production deploy:

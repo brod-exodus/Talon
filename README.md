@@ -50,10 +50,11 @@ Starting or retrying a scrape only validates the command and updates the durable
 queue. Both return promptly; a best-effort post-response dispatch starts work
 immediately, while Supabase Cron provides the recovery path. Workers atomically
 claim the oldest due job with row locking that skips work already being claimed,
-so simultaneous invocations remain useful without double-processing. Repository
-and organization discovery plus contributor hydration persist their cursors
-between invocations, so work can resume after a timeout without duplicating
-contributors.
+so simultaneous invocations remain useful without double-processing. One worker
+can drain up to five jobs that finish quickly, while all jobs share one
+forty-second time budget and one twenty-step GitHub budget. Repository and
+organization discovery plus contributor hydration persist their cursors between
+invocations, so work can resume after a timeout without duplicating contributors.
 
 Repository contributor discovery and organization repository enumeration
 checkpoint every GitHub result page. Organization contributor pages are staged
@@ -102,8 +103,9 @@ The portfolio deployment favors free infrastructure:
   failures, database connectivity, GitHub rate limits, and seven-day repository
   scrape reliability/latency SLOs.
 
-The tradeoff is throughput: one bounded job step runs per scheduled invocation.
-This is appropriate for a portfolio deployment, not a formal high-volume SLA.
+The tradeoff is throughput: workers drain only a small bounded batch and stop
+after the first yielded or failed job. This is appropriate for a portfolio
+deployment, not a formal high-volume SLA.
 
 ### Idempotency and recovery
 

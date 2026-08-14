@@ -1,7 +1,11 @@
 export const WORKER_EXECUTION_BUDGET_MS = 40_000
+// Do not claim another job unless one worst-case GitHub request still fits
+// comfortably inside the 60-second serverless invocation limit.
+export const MIN_JOB_START_BUDGET_MS = 10_000
 // Twenty 20-profile hydration batches consume at most about 800 GitHub GETs,
 // leaving headroom below GitHub's 900-point-per-minute secondary limit.
 export const MAX_JOB_STEPS_PER_INVOCATION = 20
+export const MAX_JOBS_PER_WORKER_INVOCATION = 5
 
 type RunBoundedJobStepsOptions<Job> = {
   initialJob: Job

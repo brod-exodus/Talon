@@ -1,5 +1,10 @@
 import "server-only"
-import { runScrapeWorker, type ScrapeWorkerResult } from "@/lib/scrape-worker"
+import {
+  runScrapeWorker,
+  type ScrapeWorkerResult,
+  type ScrapeWorkerStopReason,
+} from "@/lib/scrape-worker"
+import { MAX_JOBS_PER_WORKER_INVOCATION } from "@/lib/worker-budget"
 import { logError, logInfo } from "@/lib/logger"
 import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
 
@@ -12,13 +17,15 @@ export type ScrapeWorkerOperation = {
   hasFailedResult: boolean
   steps: number
   maxElapsedMs: number
+  elapsedMs: number
+  stopReason: ScrapeWorkerStopReason
 }
 
 export async function runScrapeWorkerOperation({
   trigger,
   teamId,
   teamSlug,
-  maxJobs = 1,
+  maxJobs = MAX_JOBS_PER_WORKER_INVOCATION,
   requestId,
 }: {
   trigger: ScrapeWorkerTrigger
@@ -31,7 +38,11 @@ export async function runScrapeWorkerOperation({
   logInfo("scrape_worker.started", { requestId, systemRunId, details: { trigger, maxJobs } })
 
   try {
-    const { workerId, recoveredStaleJobs, results } = await runScrapeWorker(maxJobs, teamId, requestId)
+    const { workerId, recoveredStaleJobs, results, elapsedMs, stopReason } = await runScrapeWorker({
+      maxJobs,
+      teamId,
+      requestId,
+    })
     const hasFailedResult = results.some((result) => result.status === "failed")
     const steps = results.reduce((total, result) => total + (result.steps ?? 0), 0)
     const maxElapsedMs = Math.max(0, ...results.map((result) => result.elapsedMs ?? 0))
@@ -43,6 +54,8 @@ export async function runScrapeWorkerOperation({
       statuses: results.map((result) => result.status),
       steps,
       maxElapsedMs,
+      elapsedMs,
+      stopReason,
       trigger,
       originRequestIds: results.map((result) => result.originRequestId).filter(Boolean),
     })
@@ -58,6 +71,8 @@ export async function runScrapeWorkerOperation({
         recoveredStaleJobs,
         steps,
         maxElapsedMs,
+        elapsedMs,
+        stopReason,
       },
     })
 
@@ -68,6 +83,8 @@ export async function runScrapeWorkerOperation({
       hasFailedResult,
       steps,
       maxElapsedMs,
+      elapsedMs,
+      stopReason,
     }
   } catch (error) {
     await finishSystemRun(systemRunId, "failure", { trigger }, error)
