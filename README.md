@@ -51,24 +51,26 @@ queue. Both return promptly; a best-effort post-response dispatch starts work
 immediately, while Supabase Cron provides the recovery path. Workers atomically
 claim the oldest due job with row locking that skips work already being claimed,
 so simultaneous invocations remain useful without double-processing. Repository
-discovery, organization repository scanning, and contributor hydration persist
-their cursors between invocations, so work can resume after a timeout without
-duplicating contributors.
+and organization discovery plus contributor hydration persist their cursors
+between invocations, so work can resume after a timeout without duplicating
+contributors.
 
 Repository contributor discovery and organization repository enumeration
-checkpoint every GitHub result page. Worker GitHub calls use short attempts and
-delegate retry delays to the durable queue, keeping an individual serverless
-invocation bounded even for very large repositories and organizations.
+checkpoint every GitHub result page. Organization contributor pages are staged
+by repository and atomically added to the job total only after that repository's
+final page, making retries safe without holding a repository in memory. Worker
+GitHub calls use short attempts and delegate retry delays to the durable queue,
+keeping an individual serverless invocation bounded even for very large
+repositories and organizations.
 
 ## Engineering decisions
 
 ### Durable background work
 
 Vercel request duration is not treated as a job runner. Each bounded worker step
-scans one GitHub result page, scans one organization repository, or hydrates one
-twenty-profile batch. The invocation repeats steps only within its execution
-budget, persists progress, and requeues unfinished work. Locks older than ten
-minutes are recovered automatically.
+scans one GitHub result page or hydrates one twenty-profile batch. The invocation
+repeats steps only within its execution budget, persists progress, and requeues
+unfinished work. Locks older than ten minutes are recovered automatically.
 
 ### Server-managed credentials
 

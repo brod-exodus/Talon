@@ -204,6 +204,28 @@ has no database migration, environment variable, or scheduler change. Deploy
 normally, run `pnpm smoke:production`, and rollback by redeploying the previous
 application version if necessary.
 
+### Replay-safe organization contributor discovery
+
+Migration `033_replay_safe_organization_contributors.sql` adds repository-level
+staging for organization contributor pages and an atomic checkpoint function.
+Each worker step fetches at most one GitHub contributor page. The transaction
+validates the active worker lease and expected repository/page cursor, stages
+that page, and advances the cursor together. Only the final page for a repository
+adds its staged totals to the job-wide aggregate, then removes the repository
+staging rows. A replay therefore replaces staged page values instead of counting
+them twice, and a lost response cannot repeat an already-committed repository.
+
+Apply migration 033 before deploying the compatible application. It requires no
+environment variable or scheduler change. After deployment, run
+`pnpm smoke:production` and exercise an organization with a repository containing
+more than 100 contributors; its event history should show consecutive
+`organization_contributor_page_scanned` entries before hydration begins.
+
+Migration 033 is additive and may remain installed during an application
+rollback. The previous application ignores repository staging and continues to
+write only the job-wide aggregate. Partial staging rows are never visible to it
+and are deleted automatically with the parent job.
+
 Security hardening migrations include:
 
 ```text
@@ -218,6 +240,7 @@ db/migrations/029_operation_correlation.sql
 db/migrations/030_lease_safe_job_transitions.sql
 db/migrations/031_atomic_job_claim.sql
 db/migrations/032_lease_safe_job_checkpoints.sql
+db/migrations/033_replay_safe_organization_contributors.sql
 ```
 
 They create or enforce:

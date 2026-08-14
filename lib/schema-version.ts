@@ -1,2 +1,2 @@
 /** Database schema version required by this application build. */
-export const EXPECTED_SCHEMA_VERSION = 32
+export const EXPECTED_SCHEMA_VERSION = 33
