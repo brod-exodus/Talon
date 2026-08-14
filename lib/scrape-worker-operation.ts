@@ -5,8 +5,12 @@ import {
   type ScrapeWorkerStopReason,
 } from "@/lib/scrape-worker"
 import { MAX_JOBS_PER_WORKER_INVOCATION } from "@/lib/worker-budget"
-import { logError, logInfo } from "@/lib/logger"
+import { logError, logInfo, sanitizeOperationalError } from "@/lib/logger"
 import { finishSystemRun, startSystemRun } from "@/lib/system-runs"
+import {
+  runNotificationDeliveryWorker,
+  type NotificationDeliveryWorkerResult,
+} from "@/lib/notification-delivery-worker"
 
 export type ScrapeWorkerTrigger = "cron" | "manual" | "queue" | "retry"
 
@@ -19,6 +23,7 @@ export type ScrapeWorkerOperation = {
   maxElapsedMs: number
   elapsedMs: number
   stopReason: ScrapeWorkerStopReason
+  notificationDeliveries: NotificationDeliveryWorkerResult & { error?: string }
 }
 
 export async function runScrapeWorkerOperation({
@@ -38,12 +43,40 @@ export async function runScrapeWorkerOperation({
   logInfo("scrape_worker.started", { requestId, systemRunId, details: { trigger, maxJobs } })
 
   try {
+    let notificationDeliveries: NotificationDeliveryWorkerResult & { error?: string } = {
+      workerId: "not-run",
+      recoveredStaleDeliveries: 0,
+      results: [],
+      elapsedMs: 0,
+      stopReason: "queue_empty",
+    }
+    // Keep user-triggered scrape starts and retries fast. The one-minute cron
+    // invocation owns outbound delivery; an explicit manual worker run can
+    // also drain it for operator recovery.
+    if (trigger === "cron" || trigger === "manual") {
+      try {
+        notificationDeliveries = await runNotificationDeliveryWorker()
+      } catch (error) {
+        const sanitized = sanitizeOperationalError(error).message
+        logError("notification_worker.failed", error, { requestId, systemRunId })
+        notificationDeliveries = {
+          workerId: "unavailable",
+          recoveredStaleDeliveries: 0,
+          results: [],
+          elapsedMs: 0,
+          stopReason: "job_error",
+          error: sanitized,
+        }
+      }
+    }
     const { workerId, recoveredStaleJobs, results, elapsedMs, stopReason } = await runScrapeWorker({
       maxJobs,
       teamId,
       requestId,
     })
     const hasFailedResult = results.some((result) => result.status === "failed")
+      || Boolean(notificationDeliveries.error)
+      || notificationDeliveries.results.some((result) => result.status === "failed")
     const steps = results.reduce((total, result) => total + (result.steps ?? 0), 0)
     const maxElapsedMs = Math.max(0, ...results.map((result) => result.elapsedMs ?? 0))
 
@@ -58,6 +91,7 @@ export async function runScrapeWorkerOperation({
       stopReason,
       trigger,
       originRequestIds: results.map((result) => result.originRequestId).filter(Boolean),
+      notificationDeliveries,
     })
 
     logInfo("scrape_worker.finished", {
@@ -73,6 +107,7 @@ export async function runScrapeWorkerOperation({
         maxElapsedMs,
         elapsedMs,
         stopReason,
+        notificationDeliveryStatuses: notificationDeliveries.results.map((result) => result.status),
       },
     })
 
@@ -85,6 +120,7 @@ export async function runScrapeWorkerOperation({
       maxElapsedMs,
       elapsedMs,
       stopReason,
+      notificationDeliveries,
     }
   } catch (error) {
     await finishSystemRun(systemRunId, "failure", { trigger }, error)

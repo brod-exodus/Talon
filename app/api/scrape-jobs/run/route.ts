@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     maxElapsedMs,
     elapsedMs,
     stopReason,
+    notificationDeliveries,
   } = await runScrapeWorkerOperation({
     trigger: isCronRequest ? "cron" : "manual",
     teamId,
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       elapsedMs,
       stopReason,
       watchedChecksQueued: watchedChecks.filter((check) => !check.replayed).length,
+      notificationDeliveries: notificationDeliveries.results.map((result) => result.status),
     },
   })
   for (const result of results) {
@@ -92,5 +94,6 @@ export async function POST(request: NextRequest) {
     elapsedMs,
     stopReason,
     watchedChecksQueued: watchedChecks.filter((check) => !check.replayed).length,
+    notificationDeliveries,
   })
 }

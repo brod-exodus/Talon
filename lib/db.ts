@@ -165,6 +165,30 @@ export type ServiceCooldown = {
   updatedAt: string
 }
 
+export type NotificationDeliveryRow = {
+  id: string
+  team_id: string
+  kind: "watched_repo.slack"
+  dedupe_key: string
+  payload: Record<string, unknown>
+  status: "queued" | "running" | "succeeded" | "failed"
+  attempts: number
+  max_attempts: number
+  run_after: string
+  locked_at: string | null
+  locked_by: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+}
+
+export type NotificationDeliveryTransition = {
+  applied: boolean
+  status: string
+  nextRun?: string | null
+}
+
 export type OrganizationContributorCheckpointResult = ScrapeJobTransitionResult & {
   nextRepoIndex: number
   nextPage: number
@@ -405,6 +429,60 @@ export async function getActiveGitHubCooldown(now = Date.now()): Promise<Service
     sourceJobId: data.source_job_id,
     updatedAt: data.updated_at,
   } as ServiceCooldown
+}
+
+export async function recoverStaleNotificationDeliveries(staleBefore: string): Promise<number> {
+  const { data, error } = await supabaseAdmin.rpc("recover_stale_notification_deliveries", {
+    p_stale_before: staleBefore,
+  })
+  if (error) throw error
+  return Number(data ?? 0)
+}
+
+export async function claimNextNotificationDelivery(workerId: string): Promise<NotificationDeliveryRow | null> {
+  const { data, error } = await supabaseAdmin
+    .rpc("claim_notification_delivery", { p_worker_id: workerId })
+    .maybeSingle()
+  if (error) throw error
+  return data ? data as NotificationDeliveryRow : null
+}
+
+export async function completeNotificationDelivery(
+  delivery: NotificationDeliveryRow,
+  outcome: "sent" | "not_configured" | "not_needed" | "invalid_configuration"
+): Promise<NotificationDeliveryTransition> {
+  if (!delivery.locked_by) throw new Error("Notification delivery has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("complete_notification_delivery", {
+      p_delivery_id: delivery.id,
+      p_worker_id: delivery.locked_by,
+      p_outcome: outcome,
+    })
+    .single()
+  if (error) throw error
+  const row = data as { applied: boolean; result_status: string }
+  return { applied: Boolean(row.applied), status: row.result_status }
+}
+
+export async function failNotificationDelivery(
+  delivery: NotificationDeliveryRow,
+  message: string
+): Promise<NotificationDeliveryTransition> {
+  if (!delivery.locked_by) throw new Error("Notification delivery has no active worker lease")
+  const { data, error } = await supabaseAdmin
+    .rpc("fail_notification_delivery", {
+      p_delivery_id: delivery.id,
+      p_worker_id: delivery.locked_by,
+      p_error: message,
+    })
+    .single()
+  if (error) throw error
+  const row = data as { applied: boolean; result_status: string; next_run: string | null }
+  return {
+    applied: Boolean(row.applied),
+    status: row.result_status,
+    nextRun: row.next_run,
+  }
 }
 
 export async function getScrapeJobForWorker(id: string, workerId: string): Promise<ScrapeJobRow> {

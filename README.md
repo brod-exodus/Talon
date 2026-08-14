@@ -43,6 +43,9 @@ flowchart LR
     Cron --> Watches
     Watches --> Queue
     Data --> Watches
+    Watches --> Outbox["Notification outbox"]
+    Worker --> Outbox
+    Outbox --> Slack["Slack webhook"]
     Data --> UI
     Vercel["Vercel daily cron"] --> Keepalive["Supabase keepalive"]
     API --> Ops["System runs and health diagnostics"]
@@ -116,8 +119,8 @@ The portfolio deployment favors free infrastructure:
   events, and scheduled system runs without recording repository or contributor
   data in logs.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
-  failures, database connectivity, GitHub rate limits, and seven-day repository
-  scrape reliability/latency SLOs.
+  scrape and notification-delivery failures, database connectivity, GitHub rate
+  limits, and seven-day repository scrape reliability/latency SLOs.
 
 The tradeoff is throughput: workers drain only a small bounded batch and stop
 after the first yielded or failed job. This is appropriate for a portfolio
@@ -142,6 +145,15 @@ same lease before updating either the queue job or its parent scrape. Completion
 is database-authoritative: Talon verifies the exact eligible candidate/link set,
 derives contributor and contact totals, and commits the terminal job, scrape,
 event, and activity notification together.
+
+Watched-repository Slack alerts use a transactional outbox. The same database
+transaction that records newly detected contributors creates one deduplicated,
+secret-free delivery record. The existing one-minute worker claims deliveries
+with leases, uses exponential retry backoff, recovers stale claims, and stops
+after five failed attempts. Slack webhooks do not provide an idempotency key, so
+delivery is intentionally at-least-once: a process interruption after Slack
+accepts a message but before Talon records success can rarely produce a
+duplicate, but cannot silently lose the alert.
 
 ## Stack
 

@@ -1,22 +1,25 @@
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase"
+import { normalizeSlackWebhookUrl } from "@/lib/validation"
 
 const MAX_SLACK_CONTRIBUTORS = 50
+
+export type WatchedRepoNotificationOutcome =
+  | "sent"
+  | "not_configured"
+  | "not_needed"
+  | "invalid_configuration"
 
 export async function deliverWatchedRepoNotification(input: {
   watchedRepoId: string
   scrapeId: string
   teamId: string
-}): Promise<void> {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL
-  if (!webhookUrl) {
-    await supabaseAdmin
-      .from("watched_repos")
-      .update({ last_notification_status: "not_configured" })
-      .eq("id", input.watchedRepoId)
-      .eq("team_id", input.teamId)
-    return
-  }
+  timeoutMs?: number
+}): Promise<WatchedRepoNotificationOutcome> {
+  const configuredWebhook = process.env.SLACK_WEBHOOK_URL
+  if (!configuredWebhook) return "not_configured"
+  const webhookUrl = normalizeSlackWebhookUrl(configuredWebhook)
+  if (!webhookUrl) return "invalid_configuration"
 
   const [{ data: watched, error: watchedError }, { data: links, error: linksError }] = await Promise.all([
     supabaseAdmin
@@ -37,14 +40,7 @@ export async function deliverWatchedRepoNotification(input: {
   if (linksError) throw linksError
 
   const usernames = (links ?? []).map((link) => link.github_username)
-  if (!usernames.length) {
-    await supabaseAdmin
-      .from("watched_repos")
-      .update({ last_notification_status: "not_needed" })
-      .eq("id", input.watchedRepoId)
-      .eq("team_id", input.teamId)
-    return
-  }
+  if (!usernames.length) return "not_needed"
 
   const { data: contributors, error: contributorsError } = await supabaseAdmin
     .from("contributors")
@@ -70,24 +66,8 @@ export async function deliverWatchedRepoNotification(input: {
         `🆕 *${usernames.length} new contributor${usernames.length === 1 ? "" : "s"}* ` +
         `detected in *${watched.repo}*:\n${lines.join("\n")}`,
     }),
+    signal: AbortSignal.timeout(Math.max(250, input.timeoutMs ?? 5000)),
   })
   if (!response.ok) throw new Error(`Slack notification returned HTTP ${response.status}`)
-
-  const { error: updateError } = await supabaseAdmin
-    .from("watched_repos")
-    .update({ last_notification_status: "sent" })
-    .eq("id", input.watchedRepoId)
-    .eq("team_id", input.teamId)
-  if (updateError) throw updateError
-}
-
-export async function markWatchedRepoNotificationFailed(input: {
-  watchedRepoId: string
-  teamId: string
-}): Promise<void> {
-  await supabaseAdmin
-    .from("watched_repos")
-    .update({ last_notification_status: "failed" })
-    .eq("id", input.watchedRepoId)
-    .eq("team_id", input.teamId)
+  return "sent"
 }
