@@ -32,7 +32,13 @@ vi.mock("@/lib/scrape-runner", () => ({
   ScrapeJobCanceledError: workerMocks.ScrapeJobCanceledError,
   ScrapeJobLeaseLostError: workerMocks.ScrapeJobLeaseLostError,
 }))
-vi.mock("@/lib/worker-budget", () => ({ runBoundedJobSteps: workerMocks.runBoundedJobSteps }))
+vi.mock("@/lib/worker-budget", () => ({
+  runBoundedJobSteps: workerMocks.runBoundedJobSteps,
+  WORKER_EXECUTION_BUDGET_MS: 40_000,
+  MIN_JOB_START_BUDGET_MS: 10_000,
+  MAX_JOB_STEPS_PER_INVOCATION: 20,
+  MAX_JOBS_PER_WORKER_INVOCATION: 5,
+}))
 
 import { runScrapeWorker } from "@/lib/scrape-worker"
 import { ScrapeJobLeaseLostError } from "@/lib/scrape-runner"
@@ -60,6 +66,7 @@ const job = {
 
 describe("lease-safe scrape worker outcomes", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     workerMocks.recoverStaleScrapeJobs.mockResolvedValue(0)
     workerMocks.recordScrapeJobEvent.mockResolvedValue(undefined)
     workerMocks.claimNextScrapeJob.mockResolvedValueOnce(job).mockResolvedValue(null)
@@ -72,7 +79,7 @@ describe("lease-safe scrape worker outcomes", () => {
   test("reports cancellation when a yield loses its lease to cancel", async () => {
     workerMocks.requeueScrapeJob.mockResolvedValue({ applied: false, status: "canceled" })
 
-    const result = await runScrapeWorker(1, "team-1")
+    const result = await runScrapeWorker({ maxJobs: 1, teamId: "team-1" })
 
     expect(result.results[0]?.status).toBe("canceled")
     expect(workerMocks.requeueScrapeJob).toHaveBeenCalledWith(expect.objectContaining({ id: job.id }))
@@ -82,7 +89,7 @@ describe("lease-safe scrape worker outcomes", () => {
     workerMocks.runBoundedJobSteps.mockRejectedValue(new Error("GitHub failed"))
     workerMocks.failScrapeJob.mockResolvedValue({ applied: false, status: "canceled" })
 
-    const result = await runScrapeWorker(1, "team-1")
+    const result = await runScrapeWorker({ maxJobs: 1, teamId: "team-1" })
 
     expect(result.results[0]?.status).toBe("canceled")
     expect(workerMocks.cancelScrapeJob).not.toHaveBeenCalled()
@@ -91,7 +98,7 @@ describe("lease-safe scrape worker outcomes", () => {
   test("treats a stale worker lease as skipped without another failure transition", async () => {
     workerMocks.runBoundedJobSteps.mockRejectedValue(new ScrapeJobLeaseLostError("queued"))
 
-    const result = await runScrapeWorker(1, "team-1")
+    const result = await runScrapeWorker({ maxJobs: 1, teamId: "team-1" })
 
     expect(result.results[0]?.status).toBe("skipped")
     expect(workerMocks.failScrapeJob).not.toHaveBeenCalled()
@@ -102,5 +109,67 @@ describe("lease-safe scrape worker outcomes", () => {
       expect.stringContaining("job is now queued"),
       expect.any(Object)
     )
+  })
+
+  test("drains multiple completed jobs through one shared time and step budget", async () => {
+    const secondJob = { ...job, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", scrape_id: "scrape-2" }
+    let clock = 0
+    const budgets: Array<{ budgetMs: number; maxSteps: number }> = []
+
+    workerMocks.claimNextScrapeJob.mockReset()
+    workerMocks.claimNextScrapeJob
+      .mockResolvedValueOnce(job)
+      .mockResolvedValueOnce(secondJob)
+      .mockResolvedValueOnce(null)
+    workerMocks.runBoundedJobSteps.mockImplementation(async ({ budgetMs, maxSteps }) => {
+      budgets.push({ budgetMs, maxSteps })
+      clock += 2_000
+      return { completed: true, steps: 2, elapsedMs: 2_000 }
+    })
+
+    const result = await runScrapeWorker({
+      maxJobs: 5,
+      teamId: "team-1",
+      now: () => clock,
+    })
+
+    expect(result.results).toHaveLength(2)
+    expect(result.stopReason).toBe("queue_empty")
+    expect(result.elapsedMs).toBe(4_000)
+    expect(budgets).toEqual([
+      { budgetMs: 40_000, maxSteps: 20 },
+      { budgetMs: 38_000, maxSteps: 18 },
+    ])
+  })
+
+  test("does not claim another job without safe invocation headroom", async () => {
+    let clock = 0
+    workerMocks.claimNextScrapeJob.mockReset()
+    workerMocks.claimNextScrapeJob.mockResolvedValue(job)
+    workerMocks.runBoundedJobSteps.mockImplementation(async () => {
+      clock += 31_000
+      return { completed: true, steps: 1, elapsedMs: 31_000 }
+    })
+
+    const result = await runScrapeWorker({
+      maxJobs: 5,
+      teamId: "team-1",
+      now: () => clock,
+    })
+
+    expect(result.results).toHaveLength(1)
+    expect(result.stopReason).toBe("time_budget")
+    expect(workerMocks.claimNextScrapeJob).toHaveBeenCalledOnce()
+  })
+
+  test("requeues a yielded job without claiming past it", async () => {
+    workerMocks.claimNextScrapeJob.mockReset()
+    workerMocks.claimNextScrapeJob.mockResolvedValue(job)
+
+    const result = await runScrapeWorker({ maxJobs: 5, teamId: "team-1" })
+
+    expect(result.results[0]?.status).toBe("queued")
+    expect(result.stopReason).toBe("job_yielded")
+    expect(workerMocks.claimNextScrapeJob).toHaveBeenCalledOnce()
   })
 })

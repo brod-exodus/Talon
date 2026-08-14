@@ -5,8 +5,8 @@ import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
 import { runScrapeWorkerOperation } from "@/lib/scrape-worker-operation"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
+import { MAX_JOBS_PER_WORKER_INVOCATION } from "@/lib/worker-budget"
 
-const MAX_JOBS_PER_INVOCATION = 1
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
@@ -33,11 +33,13 @@ export async function POST(request: NextRequest) {
     hasFailedResult,
     steps,
     maxElapsedMs,
+    elapsedMs,
+    stopReason,
   } = await runScrapeWorkerOperation({
     trigger: isCronRequest ? "cron" : "manual",
     teamId,
     teamSlug,
-    maxJobs: MAX_JOBS_PER_INVOCATION,
+    maxJobs: MAX_JOBS_PER_WORKER_INVOCATION,
     requestId,
   })
 
@@ -54,6 +56,8 @@ export async function POST(request: NextRequest) {
       statuses: results.map((result) => result.status),
       steps,
       maxElapsedMs,
+      elapsedMs,
+      stopReason,
     },
   })
   for (const result of results) {
@@ -74,5 +78,12 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  return NextResponse.json({ workerId, recoveredStaleJobs, processed: results.length, results })
+  return NextResponse.json({
+    workerId,
+    recoveredStaleJobs,
+    processed: results.length,
+    results,
+    elapsedMs,
+    stopReason,
+  })
 }

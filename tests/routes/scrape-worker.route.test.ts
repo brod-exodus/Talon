@@ -42,6 +42,8 @@ describe("POST /api/scrape-jobs/run", () => {
       hasFailedResult: false,
       steps: 0,
       maxElapsedMs: 0,
+      elapsedMs: 5,
+      stopReason: "queue_empty",
     })
   })
 
@@ -49,13 +51,18 @@ describe("POST /api/scrape-jobs/run", () => {
     const response = await POST(workerRequest("Bearer cron-test-secret"))
 
     expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      processed: 0,
+      elapsedMs: 5,
+      stopReason: "queue_empty",
+    })
     expect(routeMocks.requirePermission).not.toHaveBeenCalled()
     expect(routeMocks.resolveTeamContext).not.toHaveBeenCalled()
     expect(routeMocks.runScrapeWorkerOperation).toHaveBeenCalledWith({
       trigger: "cron",
       teamId: undefined,
       teamSlug: undefined,
-      maxJobs: 1,
+      maxJobs: 5,
       requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
   })
@@ -84,7 +91,7 @@ describe("POST /api/scrape-jobs/run", () => {
       trigger: "manual",
       teamId: "team-1",
       teamSlug: "default",
-      maxJobs: 1,
+      maxJobs: 5,
       requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     })
   })
