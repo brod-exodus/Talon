@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getActiveGitHubCooldown } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
@@ -11,6 +12,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment." },
         { status: 503 }
+      )
+    }
+
+    const cooldown = await getActiveGitHubCooldown()
+    if (cooldown) {
+      return NextResponse.json(
+        {
+          code: "github_cooldown",
+          error: `GitHub checks are paused until ${new Date(cooldown.blockedUntil).toISOString()}.`,
+          retryAt: cooldown.blockedUntil,
+        },
+        { status: 429 }
       )
     }
 

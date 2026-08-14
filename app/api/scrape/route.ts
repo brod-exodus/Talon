@@ -3,7 +3,7 @@ import { after, type NextRequest, NextResponse } from "next/server"
 import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
-import { enqueueScrape, ecosystemExists, getScrapeEnqueueRequest } from "@/lib/db"
+import { enqueueScrape, ecosystemExists, getActiveGitHubCooldown, getScrapeEnqueueRequest } from "@/lib/db"
 import { logError, logInfo } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
@@ -150,6 +150,18 @@ export async function POST(request: NextRequest) {
       if (!projectFound) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 })
       }
+    }
+
+    const githubCooldown = await getActiveGitHubCooldown()
+    if (githubCooldown) {
+      return NextResponse.json(
+        {
+          code: "github_cooldown",
+          error: "GitHub has temporarily paused API requests. Talon will resume automatically.",
+          retryAt: githubCooldown.blockedUntil,
+        },
+        { status: 429 }
+      )
     }
 
     const githubClient = createGitHubClient(token)

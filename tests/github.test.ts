@@ -5,6 +5,7 @@ import {
   extractContactsFromBio,
   extractSocialContacts,
   GitHubApiError,
+  getGitHubCooldownReason,
   getGitHubRetryDecision,
   parseRateLimitResetMs,
   parseRetryAfterMs,
@@ -311,4 +312,18 @@ test("getGitHubRetryDecision does not retry terminal client errors", () => {
     delayMs: 0,
     reason: "terminal-http",
   })
+})
+
+test("only GitHub wait responses activate the shared cooldown", () => {
+  assert.equal(getGitHubCooldownReason(new GitHubApiError("limited", {
+    retryAfterMs: 60_000,
+    retryReason: "primary-rate-limit",
+  })), "primary-rate-limit")
+  assert.equal(getGitHubCooldownReason(new GitHubApiError("unavailable", {
+    retryAfterMs: 60_000,
+    retryReason: "transient-http",
+  })), null)
+  assert.equal(getGitHubCooldownReason(new GitHubApiError("terminal", {
+    retryReason: "terminal-http",
+  })), null)
 })

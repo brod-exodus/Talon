@@ -3,12 +3,13 @@ import {
   cancelScrapeJob,
   claimNextScrapeJob,
   failScrapeJob,
+  getActiveGitHubCooldown,
   getScrapeJobForWorker,
   recoverStaleScrapeJobs,
   recordScrapeJobEvent,
   requeueScrapeJob,
 } from "@/lib/db"
-import { GitHubApiError } from "@/lib/github"
+import { getGitHubCooldownReason, GitHubApiError } from "@/lib/github"
 import { runScrapeJob, ScrapeJobCanceledError, ScrapeJobLeaseLostError } from "@/lib/scrape-runner"
 import {
   MAX_JOBS_PER_WORKER_INVOCATION,
@@ -37,6 +38,7 @@ export type ScrapeWorkerStopReason =
   | "step_budget"
   | "job_yielded"
   | "job_error"
+  | "github_cooldown"
 
 type RunScrapeWorkerOptions = {
   maxJobs?: number
@@ -98,7 +100,7 @@ export async function runScrapeWorker({
 
     const job = await claimNextScrapeJob(workerId, teamId)
     if (!job) {
-      stopReason = "queue_empty"
+      stopReason = await getActiveGitHubCooldown(now()) ? "github_cooldown" : "queue_empty"
       break
     }
 
@@ -179,8 +181,10 @@ export async function runScrapeWorker({
         })
         break
       }
+      const githubCooldownReason = getGitHubCooldownReason(error)
       const transition = await failScrapeJob(job, message, {
         retryAfterMs: error instanceof GitHubApiError ? error.retryAfterMs : undefined,
+        githubCooldownReason: githubCooldownReason ?? undefined,
       })
       results.push({
         jobId: job.id,
