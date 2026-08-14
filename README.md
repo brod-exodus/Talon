@@ -22,6 +22,9 @@ matching. Talon begins with contribution activity:
 
 The deployed portfolio version is operator-controlled. It demonstrates the
 complete workflow without presenting itself as a billing-ready customer SaaS.
+Self-service registration is closed by default; existing users can sign in and
+admins can provision additional accounts without exposing the shared GitHub API
+capacity to anonymous account creation.
 
 ![Talon dashboard showing a completed public repository scrape](docs/images/talon-dashboard.png)
 
@@ -97,6 +100,14 @@ unfinished work. Locks older than ten minutes are recovered automatically.
 `GITHUB_TOKEN`, Supabase keys, and cron credentials remain server-side. Tokens
 never enter browser storage, scrape-job state, operational details, or API
 responses.
+
+### Closed registration
+
+Production signup is disabled unless the server-only
+`TALON_SELF_SERVICE_SIGNUP_ENABLED` setting is explicitly `true`. The login page
+does not advertise workspace creation while registration is closed, and the API
+independently rejects direct signup requests before touching Supabase Auth.
+Existing users and accounts provisioned by an administrator are unaffected.
 
 Public scrape links use random bearer tokens that are shown only when a link is
 created; Supabase stores their SHA-256 hashes. Links expire after 1, 7, or 30
@@ -183,6 +194,13 @@ TALON_ADMIN_PASSWORD
 TALON_SESSION_SECRET
 CRON_SECRET
 GITHUB_TOKEN
+```
+
+Self-service workspace creation is optional and closed by default. Enable it
+only for an intentional rollout:
+
+```text
+TALON_SELF_SERVICE_SIGNUP_ENABLED=true
 ```
 
 Apply every SQL migration in `db/migrations` in numeric order, then start Talon:
