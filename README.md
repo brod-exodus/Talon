@@ -118,7 +118,10 @@ terminal failures remain visible with their recent job events. Yield, failure,
 completion, cancellation, manual retry, and stale-lock recovery use row-locked
 database transactions, so a canceled job or newer worker lease cannot be
 overwritten by an older worker. Cursor and progress checkpoints enforce that
-same lease before updating either the queue job or its parent scrape.
+same lease before updating either the queue job or its parent scrape. Completion
+is database-authoritative: Talon verifies the exact eligible candidate/link set,
+derives contributor and contact totals, and commits the terminal job, scrape,
+event, and activity notification together.
 
 ## Stack
 

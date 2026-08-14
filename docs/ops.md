@@ -248,6 +248,30 @@ Migration 034 is additive and may remain installed during an application
 rollback. The previous application does not call the new checkpoint function,
 so rollback requires only redeploying the prior application version.
 
+### Verified atomic scrape completion
+
+Migration `035_verified_scrape_completion.sql` makes Postgres authoritative for
+the final success decision. The completion transaction locks and validates the
+worker lease, counts eligible candidates from job staging, and requires an exact
+set of scrape links with matching contribution totals. It derives contributor
+and contact counts from those links, then commits the scrape, job, job event, and
+product activity notification together. The application no longer supplies
+completion counts from separate, race-prone reads.
+
+Project contributor caches remain derived data. Talon refreshes affected caches
+after the successful transaction and records a sanitized error if refresh fails;
+that recoverable side effect can no longer make an already-completed job appear
+to fail. Normal project reads retain their existing stale-cache repair path.
+
+Apply migration 035 before deploying the compatible application. It requires no
+environment variable or scheduler change. After deployment, run
+`pnpm smoke:production` and confirm its completion scrape reports matching
+`contributorTotal`, progress 100, and a single `scrape.completed` activity.
+
+Migration 035 is additive and retains the previous completion function for
+rollback. Redeploying the prior application version is sufficient; no database
+rollback is required.
+
 Security hardening migrations include:
 
 ```text
@@ -264,6 +288,7 @@ db/migrations/031_atomic_job_claim.sql
 db/migrations/032_lease_safe_job_checkpoints.sql
 db/migrations/033_replay_safe_organization_contributors.sql
 db/migrations/034_lease_safe_hydration.sql
+db/migrations/035_verified_scrape_completion.sql
 ```
 
 They create or enforce:
