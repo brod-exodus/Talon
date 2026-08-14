@@ -110,14 +110,15 @@ This is appropriate for a portfolio deployment, not a formal high-volume SLA.
 Starting a scrape atomically creates its scrape, queue job, optional project
 link, and initial event. Browser and network retries reuse the original durable
 resources through a team-scoped idempotency key. Contributor totals use
-job-scoped upserts. Persisted contributors are skipped
-when a hydration step resumes. GitHub rate-limit failures use delayed retries,
-manual cancellation is checked between steps, and terminal failures remain
-visible with their recent job events. Yield, failure, completion, cancellation,
-manual retry, and stale-lock recovery use row-locked database transactions, so
-a canceled job or newer worker lease cannot be overwritten by an older worker.
-Cursor and progress checkpoints enforce that same lease before updating either
-the queue job or its parent scrape.
+job-scoped upserts. Hydrated profiles, scrape links, real progress, and their
+event commit atomically after the active worker lease is rechecked; persisted
+contributors are skipped when a hydration step resumes. GitHub rate-limit
+failures use delayed retries, manual cancellation is checked between steps, and
+terminal failures remain visible with their recent job events. Yield, failure,
+completion, cancellation, manual retry, and stale-lock recovery use row-locked
+database transactions, so a canceled job or newer worker lease cannot be
+overwritten by an older worker. Cursor and progress checkpoints enforce that
+same lease before updating either the queue job or its parent scrape.
 
 ## Stack
 

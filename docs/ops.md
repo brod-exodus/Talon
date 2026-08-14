@@ -226,6 +226,28 @@ rollback. The previous application ignores repository staging and continues to
 write only the job-wide aggregate. Partial staging rows are never visible to it
 and are deleted automatically with the parent job.
 
+### Lease-safe contributor hydration
+
+Migration `034_lease_safe_hydration.sql` moves each hydrated profile batch into
+one database checkpoint. After GitHub profile requests finish, the transaction
+locks the queue job and verifies its active worker, cancellation state, hydration
+phase, and exact job contribution candidates. It then upserts public profile
+fields, links contributors to the scrape, calculates progress from the links
+that actually exist, and records the persistence event together. Progress is no
+longer advanced before the network work succeeds, and a canceled or recovered
+worker cannot write a late batch.
+
+Apply migration 034 before deploying the compatible application. It requires no
+environment variable or scheduler change. After deployment, run
+`pnpm smoke:production`; its cancel/retry path and completion scrape exercise the
+surrounding hydration control flow. For a focused check, cancel a scrape during
+profile hydration and confirm its contributor count stops changing after the
+canceled state is visible.
+
+Migration 034 is additive and may remain installed during an application
+rollback. The previous application does not call the new checkpoint function,
+so rollback requires only redeploying the prior application version.
+
 Security hardening migrations include:
 
 ```text
@@ -241,6 +263,7 @@ db/migrations/030_lease_safe_job_transitions.sql
 db/migrations/031_atomic_job_claim.sql
 db/migrations/032_lease_safe_job_checkpoints.sql
 db/migrations/033_replay_safe_organization_contributors.sql
+db/migrations/034_lease_safe_hydration.sql
 ```
 
 They create or enforce:
