@@ -8,7 +8,7 @@ import type { ProjectOutreachStatus } from "@/lib/validation"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
-// scrape_contributors (scrape_id, contributor_id, contributions) with UNIQUE(scrape_id, contributor_id).
+// scrape_contributors (team_id, scrape_id, contributor_id, contributions) with UNIQUE(scrape_id, contributor_id).
 
 // DB row types (snake_case to match Supabase)
 export type ScrapeRow = {

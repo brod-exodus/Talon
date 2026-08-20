@@ -701,6 +701,29 @@ unrelated or blank location does not. Talon does not infer a location when the
 GitHub profile omits one. Roll back by redeploying the previous application;
 migration 041 may remain installed.
 
+### Workspace referential integrity
+
+Apply migration 042 before deploying the compatible application. It validates
+existing workspace-owned relationships, backfills `team_id` on
+`scrape_contributors`, and adds composite foreign keys tying child records to
+parents in the same workspace. No environment variable or scheduler change is
+required. Older application versions remain compatible because the database
+derives `scrape_contributors.team_id` when an older insert omits it.
+
+If the migration reports `Workspace referential-integrity violation found in
+...`, stop and inspect that named relationship rather than deleting records or
+disabling the check. The failure indicates pre-existing cross-workspace data
+that must be assigned to the correct workspace before retrying the migration.
+If it reports a missing table, apply the named historical migration first. The
+schema ledger created by migration 027 records the intended historical baseline
+and cannot prove that every earlier SQL file was successfully applied.
+
+After deployment, confirm Settings reports database schema v42 and run the
+normal production scrape smoke. Also open a Project, a completed scrape, a
+saved contributor list, and Watched Repos to verify their existing relationships
+still load. Roll back the application by redeploying the previous build;
+migration 042 is backward-compatible and should remain installed.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
