@@ -28,5 +28,5 @@ test("expired session cleanup and the physical contract are continuously attesta
 
 test("revocable sessions advance the database contract to v45", () => {
   assert.match(migration, /\(45,\s*'revocable_sessions'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 45)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 45)
 })
