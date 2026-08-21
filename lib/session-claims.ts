@@ -1,4 +1,4 @@
-export const SESSION_VERSION = 2
+export const SESSION_VERSION = 3
 export const SESSION_TTL_SECONDS = 60 * 60 * 12
 const MAX_CLOCK_SKEW_SECONDS = 60
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i

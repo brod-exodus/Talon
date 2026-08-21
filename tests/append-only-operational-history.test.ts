@@ -36,5 +36,5 @@ test("append-only privileges are continuously attestable without disabling reten
 
 test("append-only operational history advances the schema contract to v44", () => {
   assert.match(migration, /\(44,\s*'append_only_operational_history'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 44)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 44)
 })

@@ -269,6 +269,10 @@ export default function SettingsPage() {
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Failed to update password")
+      if (data?.requiresLogin) {
+        window.location.assign("/login")
+        return
+      }
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")

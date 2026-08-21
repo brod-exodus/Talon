@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, test, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 const permissionMocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
+  requireActiveSession: vi.fn(),
   getAuthSession: vi.fn(),
   getCurrentRequestMembership: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({
-  requireAuth: permissionMocks.requireAuth,
   getAuthSession: permissionMocks.getAuthSession,
+}))
+
+vi.mock("@/lib/session-authorization", () => ({
+  requireActiveSession: permissionMocks.requireActiveSession,
 }))
 
 vi.mock("@/lib/request-membership", () => ({
@@ -36,7 +39,7 @@ function currentMembership(role: AuthRole) {
 
 describe("live request authorization", () => {
   beforeEach(() => {
-    permissionMocks.requireAuth.mockReturnValue(null)
+    permissionMocks.requireActiveSession.mockResolvedValue(null)
     permissionMocks.getAuthSession.mockReturnValue({
       version: 1,
       actor: "user",

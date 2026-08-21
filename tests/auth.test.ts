@@ -38,7 +38,7 @@ test("createSessionToken stores user team context in a signed session", () => {
     teamSlug: "default",
   })
   assert.match(session?.sessionId ?? "", /^[0-9a-f-]{36}$/)
-  assert.equal(session?.version, 2)
+  assert.equal(session?.version, 3)
 })
 
 test("each login receives a unique signed session", () => {
@@ -66,14 +66,14 @@ test("signed session claims fail closed instead of falling through to admin", ()
   process.env.TALON_SESSION_SECRET = secret
   const now = Math.floor(Date.now() / 1000)
   const envelope = {
-    version: 2,
+    version: 3,
     sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     issuedAt: now,
     expiresAt: now + 3600,
   }
 
   assert.equal(getAuthSessionFromToken(signPayload({ ...envelope, actor: "unknown" }, secret)), null)
-  assert.equal(getAuthSessionFromToken(signPayload({ ...envelope, version: 1, actor: "admin" }, secret)), null)
+  assert.equal(getAuthSessionFromToken(signPayload({ ...envelope, version: 2, actor: "admin" }, secret)), null)
   assert.equal(getAuthSessionFromToken(signPayload({ ...envelope, sessionId: "not-a-uuid", actor: "admin" }, secret)), null)
   assert.equal(getAuthSessionFromToken(signPayload({
     ...envelope,

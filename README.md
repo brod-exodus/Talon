@@ -319,7 +319,9 @@ Audit and scrape-job history are append-only to the application role; the
 database-owned retention function remains the only routine deletion path.
 Signed sessions use strict versioned claims, bounded issuance and expiry times,
 and a unique random session identifier. Unknown or incomplete actor claims are
-rejected rather than falling through to privileged access.
+rejected rather than falling through to privileged access. A private server-side
+registry makes logout immediately revoke the current session and password changes
+revoke every session for that user; only keyed identity hashes are persisted.
 
 ## Deliberately deferred
 

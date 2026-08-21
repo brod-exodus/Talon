@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { requirePermission } from "@/lib/permissions"
-import { getAuthSession } from "@/lib/auth"
+import { clearAuthCookie, getAuthSession } from "@/lib/auth"
+import { revokeAllAuthSessions } from "@/lib/auth-sessions"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin, supabaseAuth } from "@/lib/supabase"
 import { readJsonObject } from "@/lib/validation"
@@ -69,6 +70,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to update password." }, { status: 500 })
   }
 
+  try {
+    await revokeAllAuthSessions(session, "password_change")
+  } catch {
+    await recordAuditEvent({
+      request,
+      action: "auth.password_change",
+      outcome: "failure",
+      actor: "user",
+      teamId: session.teamId,
+      metadata: { reason: "session_revocation_failed", emailHash: hashAuditValue(session.email) },
+    })
+    const response = NextResponse.json(
+      { error: "Password changed, but existing sessions could not be revoked. Contact an administrator." },
+      { status: 503 }
+    )
+    clearAuthCookie(response)
+    return response
+  }
+
   await recordAuditEvent({
     request,
     action: "auth.password_change",
@@ -78,5 +98,7 @@ export async function POST(request: NextRequest) {
     metadata: { emailHash: hashAuditValue(session.email), teamSlug: session.teamSlug, role: session.role },
   })
 
-  return NextResponse.json({ success: true })
+  const response = NextResponse.json({ success: true, requiresLogin: true })
+  clearAuthCookie(response)
+  return response
 }

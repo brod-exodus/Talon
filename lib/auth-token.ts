@@ -9,7 +9,7 @@ import {
 
 export { SESSION_TTL_SECONDS, type AuthRole, type AuthSession } from "./session-claims.ts"
 
-type SessionInput =
+export type SessionInput =
   | {
       actor?: "admin"
     }
