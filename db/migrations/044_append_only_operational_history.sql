@@ -15,9 +15,13 @@ BEGIN
   END IF;
 END $$;
 
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE
+  ON TABLE public.audit_events, public.scrape_job_events
+  FROM PUBLIC, anon, authenticated;
+
 REVOKE UPDATE, DELETE, TRUNCATE
   ON TABLE public.audit_events, public.scrape_job_events
-  FROM PUBLIC, anon, authenticated, service_role;
+  FROM service_role;
 
 GRANT SELECT, INSERT
   ON TABLE public.audit_events, public.scrape_job_events

@@ -12,7 +12,11 @@ const migration = readFileSync(
 test("application roles cannot rewrite or directly delete operational history", () => {
   assert.match(
     migration,
-    /REVOKE UPDATE, DELETE, TRUNCATE[\s\S]+public\.audit_events, public\.scrape_job_events[\s\S]+service_role/i
+    /REVOKE INSERT, UPDATE, DELETE, TRUNCATE[\s\S]+public\.audit_events, public\.scrape_job_events[\s\S]+FROM PUBLIC, anon, authenticated/i
+  )
+  assert.match(
+    migration,
+    /REVOKE UPDATE, DELETE, TRUNCATE[\s\S]+public\.audit_events, public\.scrape_job_events[\s\S]+FROM service_role/i
   )
   assert.match(
     migration,
