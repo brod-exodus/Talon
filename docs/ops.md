@@ -740,6 +740,19 @@ canonical migration; do not insert or edit schema-ledger rows to hide the
 failure. Roll back the application by redeploying the previous build. Migration
 043 is read-only at runtime and may remain installed.
 
+### Fail-closed service-role workspace scope
+
+Application database helpers reject missing or blank workspace identifiers
+instead of silently using the default workspace. This does not require a
+database migration, environment change, or scheduler change. Break-glass admin
+requests remain compatible because `resolveTeamContext` explicitly resolves the
+default workspace before calling the data layer.
+
+After deployment, run the normal production smoke as both the break-glass admin
+and one provisioned user if available. Confirm each sees only their intended
+workspace. Roll back by redeploying the previous application build; there is no
+database rollback.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

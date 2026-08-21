@@ -1,10 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase"
 import { aggregateEcosystemContributors } from "@/lib/ecosystem-utils"
 import { getShareAvailability, shareTokenHash, type ShareAvailability } from "@/lib/share-links"
-import { getDefaultTeamId } from "@/lib/team-context"
 import { planGitHubCooldownUntil, planScrapeJobFailure, planStaleScrapeJobRecovery } from "@/lib/scrape-job-policy"
 import { logError } from "@/lib/logger"
 import type { ProjectOutreachStatus } from "@/lib/validation"
+import { requireWorkspaceId } from "@/lib/workspace-scope"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
@@ -268,7 +268,7 @@ function toScrapeJobEventSummary(row: ScrapeJobEventRow): ScrapeJobEventSummary 
 }
 
 async function resolveTeamId(teamId?: string): Promise<string> {
-  return teamId ?? (await getDefaultTeamId())
+  return requireWorkspaceId(teamId)
 }
 
 // App-facing contributor shape (from DB + scrape_contributors.contributions)
@@ -681,7 +681,7 @@ export async function recordScrapeJobEvent(
     resolvedTeamId = data?.team_id ?? resolvedTeamId
     resolvedRequestId = data?.request_id ?? resolvedRequestId
   }
-  resolvedTeamId ??= await getDefaultTeamId()
+  resolvedTeamId = requireWorkspaceId(resolvedTeamId)
 
   const { error } = await supabaseAdmin.from("scrape_job_events").insert({
     team_id: resolvedTeamId,
@@ -706,7 +706,8 @@ export async function recordScrapeJobEvent(
 async function getScrapeJobTeamId(jobId: string): Promise<string> {
   const { data, error } = await supabaseAdmin.from("scrape_jobs").select("team_id").eq("id", jobId).maybeSingle()
   if (error) throw error
-  return data?.team_id ?? (await getDefaultTeamId())
+  if (!data?.team_id) throw new Error("Scrape job not found")
+  return requireWorkspaceId(data.team_id)
 }
 
 export async function upsertScrapeJobContributionTotals(
@@ -958,9 +959,9 @@ export async function upsertContributor(profile: {
   twitter: string | null
   linkedin: string | null
   website: string | null
-  team_id?: string
+  team_id: string
 }): Promise<string> {
-  const teamId = profile.team_id ?? (await getDefaultTeamId())
+  const teamId = requireWorkspaceId(profile.team_id)
   const { data: existing } = await supabaseAdmin
     .from("contributors")
     .select("id")
@@ -1040,7 +1041,8 @@ export type ScrapeContributorProfile = {
 export async function getScrapeContributorUsernames(id: string): Promise<Set<string>> {
   const { data: scrape, error: scrapeError } = await supabaseAdmin.from("scrapes").select("team_id").eq("id", id).maybeSingle()
   if (scrapeError) throw scrapeError
-  const teamId = scrape?.team_id ?? (await getDefaultTeamId())
+  if (!scrape?.team_id) throw new Error("Scrape not found")
+  const teamId = requireWorkspaceId(scrape.team_id)
 
   const { data: links, error: linkError } = await supabaseAdmin
     .from("scrape_contributors")
