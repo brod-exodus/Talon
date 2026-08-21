@@ -20,6 +20,17 @@ type HealthCheck = {
   detail?: string
 }
 
+function parseContractIssues(data: unknown): string[] {
+  if (!Array.isArray(data)) return []
+  return data.flatMap((value): string[] => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return []
+    const row = value as Record<string, unknown>
+    return typeof row.requirement_type === "string" && typeof row.requirement_name === "string"
+      ? [`${row.requirement_type} ${row.requirement_name}`]
+      : []
+  })
+}
+
 function envCheck(name: string, options: { required?: boolean; minLength?: number } = {}): HealthCheck {
   const value = process.env[name]
   if (!value) {
@@ -87,13 +98,21 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
       }
     }
 
-    const contractIssues = contractData.flatMap((value): string[] => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return []
-      const row = value as Record<string, unknown>
-      return typeof row.requirement_type === "string" && typeof row.requirement_name === "string"
-        ? [`${row.requirement_type} ${row.requirement_name}`]
-        : []
-    })
+    const { data: appendOnlyData, error: appendOnlyError } = await supabaseAdmin.rpc(
+      "get_talon_append_only_contract_issues"
+    )
+    if (appendOnlyError || !Array.isArray(appendOnlyData)) {
+      return {
+        status: "error",
+        message: "Database schema contract could not be verified",
+        detail: `Current v${currentVersion}; append-only attestation is unavailable. Apply migration ${EXPECTED_SCHEMA_VERSION}.`,
+      }
+    }
+
+    const contractIssues = [
+      ...parseContractIssues(contractData),
+      ...parseContractIssues(appendOnlyData),
+    ]
     if (contractIssues.length > 0) {
       const visibleIssues = contractIssues.slice(0, 5).join(", ")
       const remainder = contractIssues.length > 5 ? `, plus ${contractIssues.length - 5} more` : ""

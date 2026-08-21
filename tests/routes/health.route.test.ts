@@ -17,10 +17,12 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 43 as number | null,
+    schemaVersion: 44 as number | null,
     schemaError: null as Error | null,
     schemaContractIssues: [] as Array<{ requirement_type: string; requirement_name: string }>,
     schemaContractError: null as Error | null,
+    appendOnlyContractIssues: [] as Array<{ requirement_type: string; requirement_name: string }>,
+    appendOnlyContractError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
     systemRuns: {} as Record<string, string | null>,
@@ -64,6 +66,12 @@ vi.mock("@/lib/supabase", () => ({
         return Promise.resolve({
           data: healthMocks.state.schemaContractIssues,
           error: healthMocks.state.schemaContractError,
+        })
+      }
+      if (name === "get_talon_append_only_contract_issues") {
+        return Promise.resolve({
+          data: healthMocks.state.appendOnlyContractIssues,
+          error: healthMocks.state.appendOnlyContractError,
         })
       }
       throw new Error(`Unexpected health RPC: ${name}`)
@@ -170,10 +178,12 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 43
+    healthMocks.state.schemaVersion = 44
     healthMocks.state.schemaError = null
     healthMocks.state.schemaContractIssues = []
     healthMocks.state.schemaContractError = null
+    healthMocks.state.appendOnlyContractIssues = []
+    healthMocks.state.appendOnlyContractError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
       started_at: "2026-08-13T17:00:00.000Z",
@@ -240,7 +250,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v43; expected v43",
+      detail: "Current v44; expected v44",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -308,7 +318,7 @@ describe("GET /api/health", () => {
   })
 
   test("returns 503 when production migrations are behind the application", async () => {
-    healthMocks.state.schemaVersion = 42
+    healthMocks.state.schemaVersion = 43
 
     const response = await GET(healthRequest())
     const body = await response.json()
@@ -317,7 +327,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v42; expected v43",
+      detail: "Current v43; expected v44",
     })
   })
 
@@ -337,7 +347,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database schema contract is incomplete",
-      detail: "Current v43; missing table public.project_contributors_cache, constraint public.scrape_jobs.scrape_jobs_team_scrape_fkey",
+      detail: "Current v44; missing table public.project_contributors_cache, constraint public.scrape_jobs.scrape_jobs_team_scrape_fkey",
     })
   })
 
@@ -352,15 +362,43 @@ describe("GET /api/health", () => {
     expect(serialized).not.toContain("private catalog detail")
   })
 
+  test("returns 503 when append-only ledger privileges drift", async () => {
+    healthMocks.state.appendOnlyContractIssues = [{
+      requirement_type: "table_privilege",
+      requirement_name: "service_role DELETE on public.audit_events must be denied",
+    }]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body.checks.databaseSchema).toEqual({
+      status: "error",
+      message: "Database schema contract is incomplete",
+      detail: "Current v44; missing table_privilege service_role DELETE on public.audit_events must be denied",
+    })
+  })
+
+  test("fails closed when append-only attestation is unavailable", async () => {
+    healthMocks.state.appendOnlyContractError = new Error("private privilege detail")
+
+    const response = await GET(healthRequest())
+    const serialized = JSON.stringify(await response.json())
+
+    expect(response.status).toBe(503)
+    expect(serialized).toContain("append-only attestation is unavailable")
+    expect(serialized).not.toContain("private privilege detail")
+  })
+
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 44
+    healthMocks.state.schemaVersion = 45
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v44; application expects v43")
+    expect(body.checks.databaseSchema.detail).toBe("Current v45; application expects v44")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {
