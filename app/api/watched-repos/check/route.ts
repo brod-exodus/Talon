@@ -68,7 +68,6 @@ export async function POST(request: NextRequest) {
       request,
       action: "watched_repo.check",
       outcome: "success",
-      actor: isCronRequest ? "cron" : "admin",
       teamId,
       metadata: { trigger, teamSlug, queued, alreadyActive: checks.length - queued },
     })

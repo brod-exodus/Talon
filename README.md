@@ -312,6 +312,10 @@ cannot promote themselves or alter ownership. Database functions serialize
 membership changes per team and refuse any concurrent transition that would
 leave a team without an owner.
 
+Audit events derive their actor from the authenticated request, distinguish
+scheduled runs from human actions, and attach a one-way user identifier for
+team-user traceability without storing an email address in the event ledger.
+
 ## Deliberately deferred
 
 Billing, self-serve customer onboarding, formal SLAs, high-volume worker

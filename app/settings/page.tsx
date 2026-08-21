@@ -455,12 +455,26 @@ export default function SettingsPage() {
   }
 
   function formatAuditMetadata(metadata: Record<string, unknown>) {
-    const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined)
+    const entries = Object.entries(metadata).filter(
+      ([key, value]) => key !== "actorEmailHash" && value !== null && value !== undefined
+    )
     if (!entries.length) return "No details"
     return entries
       .slice(0, 3)
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
       .join(" | ")
+  }
+
+  function formatAuditActor(event: AuditEvent) {
+    if (event.actor === "user") {
+      const hash = typeof event.metadata.actorEmailHash === "string"
+        ? event.metadata.actorEmailHash.slice(0, 8)
+        : null
+      return hash ? `Team user · ${hash}` : "Team user"
+    }
+    if (event.actor === "cron") return "Scheduler"
+    if (event.actor === "admin") return "Break-glass admin"
+    return "Unauthenticated"
   }
 
   async function exportAuditEventsCsv() {
@@ -1168,6 +1182,9 @@ export default function SettingsPage() {
                             <p className="text-sm font-medium capitalize">{formatAction(event.action)}</p>
                             <Badge variant="outline" className="text-xs">
                               {formatCategory(getAuditCategory(event.action))}
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {formatAuditActor(event)}
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground">

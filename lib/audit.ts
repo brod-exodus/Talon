@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import { type NextRequest } from "next/server"
+import { getAuthSession, hasCronSecret } from "@/lib/auth"
+import { resolveAuditActor, type AuditActor } from "@/lib/audit-identity"
 import { supabaseAdmin } from "@/lib/supabase"
 import { getRequestId } from "@/lib/request-id"
 import { logWarn, sanitizeOperationalError } from "@/lib/logger"
@@ -40,28 +42,33 @@ export async function recordAuditEvent({
   request,
   action,
   outcome,
-  actor = "admin",
+  actor,
   teamId,
   metadata = {},
 }: {
   request: NextRequest
   action: string
   outcome: AuditOutcome
-  actor?: string
+  actor?: AuditActor
   teamId?: string | null
   metadata?: Record<string, unknown>
 }): Promise<void> {
   const requestId = getRequestId(request)
   try {
     const ip = getClientIp(request)
+    const session = getAuthSession(request)
+    const resolvedActor = resolveAuditActor(session, hasCronSecret(request), actor)
+    const resolvedMetadata = session?.actor === "user"
+      ? { ...metadata, actorEmailHash: hashAuditValue(session.email) }
+      : metadata
     const { error } = await supabaseAdmin.from("audit_events").insert({
       action,
       outcome,
-      actor,
+      actor: resolvedActor,
       team_id: teamId ?? null,
       ip_hash: ip === "unknown" ? null : hashAuditValue(ip),
       user_agent: userAgent(request),
-      metadata,
+      metadata: resolvedMetadata,
       request_id: requestId,
     })
     if (error) throw error
