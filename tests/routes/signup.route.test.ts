@@ -8,7 +8,7 @@ const signupMocks = vi.hoisted(() => ({
   createUser: vi.fn(),
   ensurePrivateWorkspaceForUser: vi.fn(),
   recordAuditEvent: vi.fn(),
-  createSessionToken: vi.fn(),
+  issueSessionToken: vi.fn(),
   setAuthCookie: vi.fn(),
 }))
 
@@ -34,8 +34,11 @@ vi.mock("@/lib/audit", () => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  createSessionToken: signupMocks.createSessionToken,
   setAuthCookie: signupMocks.setAuthCookie,
+}))
+
+vi.mock("@/lib/auth-sessions", () => ({
+  issueSessionToken: signupMocks.issueSessionToken,
 }))
 
 import { POST } from "@/app/api/auth/signup/route"
@@ -69,7 +72,7 @@ describe("self-service signup policy", () => {
       teamSlug: "owner",
       role: "owner",
     })
-    signupMocks.createSessionToken.mockReturnValue("session-token")
+    signupMocks.issueSessionToken.mockResolvedValue("session-token")
     signupMocks.setAuthCookie.mockImplementation((response: NextResponse) => response)
   })
 

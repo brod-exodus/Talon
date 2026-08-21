@@ -328,6 +328,14 @@ db/migrations/034_lease_safe_hydration.sql
 db/migrations/035_verified_scrape_completion.sql
 db/migrations/036_contributor_profile_freshness_cache.sql
 db/migrations/037_github_rate_limit_cooldown.sql
+db/migrations/038_durable_watched_repo_checks.sql
+db/migrations/039_notification_delivery_outbox.sql
+db/migrations/040_atomic_team_member_management.sql
+db/migrations/041_contactable_contributor_locations.sql
+db/migrations/042_workspace_referential_integrity.sql
+db/migrations/043_schema_contract_attestation.sql
+db/migrations/044_append_only_operational_history.sql
+db/migrations/045_revocable_sessions.sql
 ```
 
 They create or enforce:
@@ -364,6 +372,7 @@ row counts in `system_runs.details`. Current retention windows are:
 | Keepalive and worker run history | 30 days |
 | Audit and activity events | 180 days |
 | Inactive authentication rate-limit records | 30 days |
+| Expired authentication sessions | 7 days after expiry |
 | Terminal scrape jobs and their staging/events | 90 days |
 | Completed scrape results and contributors | Kept until an operator deletes them |
 
@@ -786,7 +795,7 @@ to the application role as a workaround.
 
 ### Strict signed-session claims
 
-Session tokens use claim format v2 with a random session ID, issuance time, and
+The strict-claims release introduced claim format v2 with a random session ID, issuance time, and
 bounded expiry. Both middleware and API authorization share the same validator,
 which accepts only explicit `admin` or complete `user` claims. Deploying this
 change intentionally invalidates older v1 cookies; users sign in again once.
@@ -796,6 +805,33 @@ deployment, confirm an existing browser is redirected to login, then verify a
 fresh team-user login and break-glass admin login. Roll back by redeploying the
 previous build; newly issued v2 cookies will be rejected by the previous v1
 application, so users sign in again after either direction of rollback.
+
+### Revocable server-side sessions
+
+Apply migration `045_revocable_sessions.sql` before deploying the compatible
+application. It creates the private `auth_sessions` registry, its retention and
+attestation functions, and advances the database contract to v45. The registry
+stores a session UUID, timestamps, actor type, workspace ID, and a keyed subject
+hash; it never stores the signed cookie or a user email.
+
+Every authenticated API request verifies that its signed v3 session is still
+active. Logout revokes the current session before clearing the cookie. A password
+change revokes every active session for that user and returns the browser to the
+login screen. Registry failures return a temporary authorization error instead
+of allowing access. Middleware still performs the fast signature check before a
+page loads; API authorization is the authoritative revocation boundary.
+
+Deployment intentionally invalidates earlier cookies, so each user signs in once
+after release. Confirm **Settings → Production Readiness** reports schema v45,
+then test login, logout, and password change. After logout, replaying the old
+cookie against an authenticated API must return HTTP 401. The daily keepalive
+removes registry rows seven days after expiry and records the count as
+`retention.authSessions`.
+
+No environment or scheduler change is required. Roll back by redeploying the
+previous application; migration 045 is additive and may remain installed. A
+rolled-back application does not enforce the registry, so complete rollback only
+after considering whether any session was revoked for a security reason.
 
 ## Watched Repo Recovery
 

@@ -95,9 +95,17 @@ export async function GET(request: NextRequest) {
       logError("keepalive.notification_retention_failed", notificationRetentionError, { requestId })
       return NextResponse.json({ error: "Notification retention cleanup failed" }, { status: 500 })
     }
+    const { data: authSessionRetention, error: authSessionRetentionError } = await supabase.rpc(
+      "cleanup_talon_auth_sessions"
+    )
+    if (authSessionRetentionError) {
+      logError("keepalive.auth_session_retention_failed", authSessionRetentionError, { requestId })
+      return NextResponse.json({ error: "Auth session retention cleanup failed" }, { status: 500 })
+    }
     const retentionDetails = {
       ...(retention && typeof retention === "object" && !Array.isArray(retention) ? retention : {}),
       notificationDeliveries: Number(notificationRetention ?? 0),
+      authSessions: Number(authSessionRetention ?? 0),
     }
 
     const since = new Date(Date.now() - SCRAPE_SLO_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()

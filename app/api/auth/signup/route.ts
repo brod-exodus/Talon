@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createSessionToken, setAuthCookie } from "@/lib/auth"
+import { setAuthCookie } from "@/lib/auth"
+import { issueSessionToken } from "@/lib/auth-sessions"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { checkLoginRateLimit, recordLoginFailure, resetLoginRateLimit } from "@/lib/login-rate-limit"
 import { supabaseAdmin } from "@/lib/supabase"
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
 
     const membership = await ensurePrivateWorkspaceForUser(createdUser.user.email ?? email, displayName, "owner")
 
+    const token = await issueSessionToken({ actor: "user", ...membership })
     await resetLoginRateLimit(request)
     await recordAuditEvent({
       request,
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
       teamSlug: membership.teamSlug,
       role: membership.role,
     })
-    setAuthCookie(response, createSessionToken({ actor: "user", ...membership }))
+    setAuthCookie(response, token)
     return response
   } catch (error) {
     console.error("[auth/signup] POST error:", error)

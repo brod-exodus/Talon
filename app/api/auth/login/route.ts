@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createSessionToken, setAuthCookie, validateAdminPassword } from "@/lib/auth"
+import { setAuthCookie, validateAdminPassword } from "@/lib/auth"
+import { issueSessionToken } from "@/lib/auth-sessions"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { checkLoginRateLimit, recordLoginFailure, resetLoginRateLimit } from "@/lib/login-rate-limit"
 import { supabaseAuth } from "@/lib/supabase"
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Private workspace was provisioned, but no team membership could be resolved.")
     }
 
+    const token = await issueSessionToken({ actor: "user", ...membership })
     await resetLoginRateLimit(request)
     await recordAuditEvent({
       request,
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
       teamSlug: membership.teamSlug,
       role: membership.role,
     })
-    setAuthCookie(response, createSessionToken({ actor: "user", ...membership }))
+    setAuthCookie(response, token)
     return response
   }
 
@@ -121,10 +123,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid password" }, { status: 401 })
   }
 
+  const token = await issueSessionToken()
   await resetLoginRateLimit(request)
   await recordAuditEvent({ request, action: "auth.login", outcome: "success", actor: "admin" })
 
   const response = NextResponse.json({ success: true, actor: "admin" })
-  setAuthCookie(response, createSessionToken())
+  setAuthCookie(response, token)
   return response
 }
