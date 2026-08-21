@@ -784,6 +784,19 @@ build if necessary. To investigate a failed retention run, inspect the latest
 keepalive details before changing privileges; do not grant direct delete access
 to the application role as a workaround.
 
+### Strict signed-session claims
+
+Session tokens use claim format v2 with a random session ID, issuance time, and
+bounded expiry. Both middleware and API authorization share the same validator,
+which accepts only explicit `admin` or complete `user` claims. Deploying this
+change intentionally invalidates older v1 cookies; users sign in again once.
+
+No migration, environment variable, or scheduler change is required. After
+deployment, confirm an existing browser is redirected to login, then verify a
+fresh team-user login and break-glass admin login. Roll back by redeploying the
+previous build; newly issued v2 cookies will be rejected by the previous v1
+application, so users sign in again after either direction of rollback.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
