@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
       request,
       action: "auth.login",
       outcome: "failure",
+      actor: "admin",
       metadata: { reason: "invalid_password" },
     })
     return NextResponse.json({ error: "Invalid password" }, { status: 401 })

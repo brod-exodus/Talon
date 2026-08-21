@@ -753,6 +753,18 @@ and one provisioned user if available. Confirm each sees only their intended
 workspace. Roll back by redeploying the previous application build; there is no
 database rollback.
 
+### Audit actor attribution
+
+Audit writes derive the actor from the signed request session. Team-user events
+include a salted, one-way email identifier in metadata; break-glass admin,
+scheduler, and unauthenticated authentication attempts use distinct actor
+labels. The Settings security ledger and CSV export expose this attribution.
+
+No database migration, environment variable, or scheduler change is required.
+After deployment, run one manual watched-repository check as a team user and
+confirm its audit event identifies a team user rather than the break-glass
+admin. Roll back by redeploying the previous application build.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
