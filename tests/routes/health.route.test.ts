@@ -17,8 +17,10 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 42 as number | null,
+    schemaVersion: 43 as number | null,
     schemaError: null as Error | null,
+    schemaContractIssues: [] as Array<{ requirement_type: string; requirement_name: string }>,
+    schemaContractError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
     systemRuns: {} as Record<string, string | null>,
@@ -55,8 +57,16 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabaseAdmin: {
     rpc(name: string) {
-      if (name !== "get_talon_schema_version") throw new Error(`Unexpected health RPC: ${name}`)
-      return Promise.resolve({ data: healthMocks.state.schemaVersion, error: healthMocks.state.schemaError })
+      if (name === "get_talon_schema_version") {
+        return Promise.resolve({ data: healthMocks.state.schemaVersion, error: healthMocks.state.schemaError })
+      }
+      if (name === "get_talon_schema_contract_issues") {
+        return Promise.resolve({
+          data: healthMocks.state.schemaContractIssues,
+          error: healthMocks.state.schemaContractError,
+        })
+      }
+      throw new Error(`Unexpected health RPC: ${name}`)
     },
     from(table: string) {
       let runKind = ""
@@ -160,8 +170,10 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 42
+    healthMocks.state.schemaVersion = 43
     healthMocks.state.schemaError = null
+    healthMocks.state.schemaContractIssues = []
+    healthMocks.state.schemaContractError = null
     healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
       status: "completed",
       started_at: "2026-08-13T17:00:00.000Z",
@@ -228,7 +240,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v42; expected v42",
+      detail: "Current v43; expected v43",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -296,7 +308,7 @@ describe("GET /api/health", () => {
   })
 
   test("returns 503 when production migrations are behind the application", async () => {
-    healthMocks.state.schemaVersion = 41
+    healthMocks.state.schemaVersion = 42
 
     const response = await GET(healthRequest())
     const body = await response.json()
@@ -305,19 +317,50 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v41; expected v42",
+      detail: "Current v42; expected v43",
     })
   })
 
+  test("returns 503 when the migration ledger is current but required schema objects are missing", async () => {
+    healthMocks.state.schemaContractIssues = [
+      { requirement_type: "table", requirement_name: "public.project_contributors_cache" },
+      {
+        requirement_type: "constraint",
+        requirement_name: "public.scrape_jobs.scrape_jobs_team_scrape_fkey",
+      },
+    ]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body.checks.databaseSchema).toEqual({
+      status: "error",
+      message: "Database schema contract is incomplete",
+      detail: "Current v43; missing table public.project_contributors_cache, constraint public.scrape_jobs.scrape_jobs_team_scrape_fkey",
+    })
+  })
+
+  test("fails closed when schema object attestation is unavailable", async () => {
+    healthMocks.state.schemaContractError = new Error("private catalog detail")
+
+    const response = await GET(healthRequest())
+    const serialized = JSON.stringify(await response.json())
+
+    expect(response.status).toBe(503)
+    expect(serialized).toContain("Database schema contract could not be verified")
+    expect(serialized).not.toContain("private catalog detail")
+  })
+
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 43
+    healthMocks.state.schemaVersion = 44
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v43; application expects v42")
+    expect(body.checks.databaseSchema.detail).toBe("Current v44; application expects v43")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {

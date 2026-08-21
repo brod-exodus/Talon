@@ -75,6 +75,35 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
         detail: `Current v${currentVersion}; expected v${EXPECTED_SCHEMA_VERSION}`,
       }
     }
+
+    const { data: contractData, error: contractError } = await supabaseAdmin.rpc(
+      "get_talon_schema_contract_issues"
+    )
+    if (contractError || !Array.isArray(contractData)) {
+      return {
+        status: "error",
+        message: "Database schema contract could not be verified",
+        detail: `Current v${currentVersion}; object attestation is unavailable. Apply migration ${EXPECTED_SCHEMA_VERSION}.`,
+      }
+    }
+
+    const contractIssues = contractData.flatMap((value): string[] => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return []
+      const row = value as Record<string, unknown>
+      return typeof row.requirement_type === "string" && typeof row.requirement_name === "string"
+        ? [`${row.requirement_type} ${row.requirement_name}`]
+        : []
+    })
+    if (contractIssues.length > 0) {
+      const visibleIssues = contractIssues.slice(0, 5).join(", ")
+      const remainder = contractIssues.length > 5 ? `, plus ${contractIssues.length - 5} more` : ""
+      return {
+        status: "error",
+        message: "Database schema contract is incomplete",
+        detail: `Current v${currentVersion}; missing ${visibleIssues}${remainder}`,
+      }
+    }
+
     if (currentVersion > EXPECTED_SCHEMA_VERSION) {
       return {
         status: "warn",

@@ -2,7 +2,6 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
-import { EXPECTED_SCHEMA_VERSION } from "../lib/schema-version.ts"
 
 const migration = readFileSync(
   resolve(import.meta.dirname, "../db/migrations/042_workspace_referential_integrity.sql"),
@@ -68,5 +67,4 @@ test("legacy scrape contributor inserts receive a database-derived team id", () 
 
 test("workspace integrity advances the database contract to schema v42", () => {
   assert.match(migration, /\(42,\s*'workspace_referential_integrity'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 42)
 })
