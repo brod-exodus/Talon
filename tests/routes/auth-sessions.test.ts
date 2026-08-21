@@ -4,6 +4,8 @@ const dbMocks = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   activeResult: { data: null as { session_id: string } | null, error: null as Error | null },
+  selectResult: { data: [] as Array<{ session_id: string; issued_at: string; expires_at: string }>, error: null as Error | null },
+  updateResult: { data: [] as Array<{ session_id: string }> | { session_id: string } | null, error: null as Error | null },
   filters: [] as Array<[string, unknown]>,
 }))
 
@@ -23,16 +25,46 @@ vi.mock("@/lib/supabase", () => ({
           dbMocks.filters.push([column, value])
           return activeBuilder
         },
+        order() {
+          return activeBuilder
+        },
+        limit() {
+          return activeBuilder
+        },
         maybeSingle: async () => dbMocks.activeResult,
+        then<TResult1 = unknown, TResult2 = never>(
+          onfulfilled?: ((value: typeof dbMocks.selectResult) => TResult1 | PromiseLike<TResult1>) | null,
+          onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+        ) {
+          return Promise.resolve(dbMocks.selectResult).then(onfulfilled, onrejected)
+        },
       }
       const updateBuilder = {
         eq(column: string, value: unknown) {
           dbMocks.filters.push([column, value])
           return updateBuilder
         },
-        is: async (column: string, value: unknown) => {
+        neq(column: string, value: unknown) {
           dbMocks.filters.push([column, value])
-          return { error: null }
+          return updateBuilder
+        },
+        is(column: string, value: unknown) {
+          dbMocks.filters.push([column, value])
+          return updateBuilder
+        },
+        gt(column: string, value: unknown) {
+          dbMocks.filters.push([column, value])
+          return updateBuilder
+        },
+        select() {
+          return updateBuilder
+        },
+        maybeSingle: async () => dbMocks.updateResult,
+        then<TResult1 = unknown, TResult2 = never>(
+          onfulfilled?: ((value: typeof dbMocks.updateResult) => TResult1 | PromiseLike<TResult1>) | null,
+          onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+        ) {
+          return Promise.resolve(dbMocks.updateResult).then(onfulfilled, onrejected)
         },
       }
       return {
@@ -51,7 +83,9 @@ import { getAuthSessionFromToken } from "@/lib/auth-token"
 import {
   isAuthSessionActive,
   issueSessionToken,
+  listActiveAuthSessions,
   revokeAllAuthSessions,
+  revokeOtherAuthSessions,
 } from "@/lib/auth-sessions"
 
 describe("revocable session registry", () => {
@@ -61,6 +95,8 @@ describe("revocable session registry", () => {
     vi.stubEnv("TALON_ADMIN_PASSWORD", "test-admin-password")
     dbMocks.insert.mockResolvedValue({ error: null })
     dbMocks.activeResult = { data: null, error: null }
+    dbMocks.selectResult = { data: [], error: null }
+    dbMocks.updateResult = { data: [], error: null }
     dbMocks.filters = []
   })
 
@@ -111,5 +147,40 @@ describe("revocable session registry", () => {
       revoked_at: expect.any(String),
     }))
     expect(dbMocks.filters).toContainEqual(["subject_hash", expect.stringMatching(/^[0-9a-f]{64}$/)])
+  })
+
+  test("lists only unrevoked, unexpired sessions for the keyed subject", async () => {
+    const token = await issueSessionToken()
+    const session = getAuthSessionFromToken(token)
+    expect(session).not.toBeNull()
+    if (!session) return
+    dbMocks.selectResult = {
+      data: [{
+        session_id: session.sessionId,
+        issued_at: "2026-08-21T10:00:00Z",
+        expires_at: "2026-08-21T22:00:00Z",
+      }],
+      error: null,
+    }
+
+    await expect(listActiveAuthSessions(session)).resolves.toEqual([{
+      sessionId: session.sessionId,
+      issuedAt: "2026-08-21T10:00:00Z",
+      expiresAt: "2026-08-21T22:00:00Z",
+    }])
+    expect(dbMocks.filters).toContainEqual(["subject_hash", expect.stringMatching(/^[0-9a-f]{64}$/)])
+    expect(dbMocks.filters).toContainEqual(["revoked_at", null])
+  })
+
+  test("bulk revocation excludes the current session", async () => {
+    const token = await issueSessionToken()
+    const session = getAuthSessionFromToken(token)
+    expect(session).not.toBeNull()
+    if (!session) return
+    dbMocks.updateResult = { data: [{ session_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }], error: null }
+
+    await expect(revokeOtherAuthSessions(session)).resolves.toBe(1)
+    expect(dbMocks.filters).toContainEqual(["session_id", session.sessionId])
+    expect(dbMocks.update).toHaveBeenCalledWith(expect.objectContaining({ revoke_reason: "operator" }))
   })
 })

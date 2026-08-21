@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole, ClipboardCheck } from "lucide-react"
+import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole, ClipboardCheck, MonitorSmartphone, LogOut } from "lucide-react"
 import { useAuthMe } from "@/lib/client-permissions"
 import { type AuthRole } from "@/lib/auth-token"
 
@@ -31,6 +31,13 @@ type TeamMember = {
   invitedBy: string | null
   createdAt: string
   authStatus: "active" | "unconfirmed" | "missing"
+}
+
+type ActiveSession = {
+  sessionId: string
+  issuedAt: string
+  expiresAt: string
+  current: boolean
 }
 
 type AuditCategory = "all" | "auth" | "scrape" | "team" | "sharing" | "watched" | "outreach" | "slack" | "other"
@@ -161,6 +168,10 @@ export default function SettingsPage() {
   const [passwordChanging, setPasswordChanging] = useState(false)
   const [passwordError, setPasswordError] = useState("")
   const [passwordSaved, setPasswordSaved] = useState(false)
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
+  const [activeSessionsLoading, setActiveSessionsLoading] = useState(false)
+  const [activeSessionsError, setActiveSessionsError] = useState("")
+  const [revokingSession, setRevokingSession] = useState<string | null>(null)
   const [deploymentChecklist, setDeploymentChecklist] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
@@ -168,6 +179,10 @@ export default function SettingsPage() {
     if (canAdmin) void loadAuditEvents()
     if (canManageMembers) void loadTeamMembers()
   }, [canAdmin, canManageMembers, canWrite])
+
+  useEffect(() => {
+    if (me?.actor) void loadActiveSessions()
+  }, [me?.actor])
 
   useEffect(() => {
     if (!canAdmin) return
@@ -212,6 +227,41 @@ export default function SettingsPage() {
       setAuditEventsError(err instanceof Error ? err.message : "Failed to load security events")
     } finally {
       setAuditEventsLoading(false)
+    }
+  }
+
+  async function loadActiveSessions() {
+    setActiveSessionsLoading(true)
+    setActiveSessionsError("")
+    try {
+      const response = await fetch("/api/auth/sessions", { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to load active sessions")
+      setActiveSessions(Array.isArray(data?.sessions) ? data.sessions : [])
+    } catch (err) {
+      setActiveSessionsError(err instanceof Error ? err.message : "Failed to load active sessions")
+    } finally {
+      setActiveSessionsLoading(false)
+    }
+  }
+
+  async function revokeSessions(input: { sessionId: string } | { scope: "others" }) {
+    const operation = "scope" in input ? input.scope : input.sessionId
+    setRevokingSession(operation)
+    setActiveSessionsError("")
+    try {
+      const response = await fetch("/api/auth/sessions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Failed to revoke active sessions")
+      await loadActiveSessions()
+    } catch (err) {
+      setActiveSessionsError(err instanceof Error ? err.message : "Failed to revoke active sessions")
+    } finally {
+      setRevokingSession(null)
     }
   }
 
@@ -614,6 +664,78 @@ export default function SettingsPage() {
                 >
                   {passwordChanging ? "Updating..." : "Update Password"}
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {me?.actor && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <MonitorSmartphone className="w-5 h-5" />
+                      Active Sessions
+                    </CardTitle>
+                    <CardDescription>
+                      Review browsers currently signed in to this account and revoke access you no longer recognize.
+                    </CardDescription>
+                  </div>
+                  {activeSessions.filter((session) => !session.current).length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={revokingSession !== null}
+                      onClick={() => void revokeSessions({ scope: "others" })}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      {revokingSession === "others" ? "Signing out..." : "Sign out other sessions"}
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {activeSessionsError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{activeSessionsError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {activeSessionsLoading && activeSessions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Loading active sessions...</p>
+                ) : activeSessions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No active sessions were found.</p>
+                ) : (
+                  <div className="divide-y rounded-lg border">
+                    {activeSessions.map((session) => (
+                      <div key={session.sessionId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                            Session started {new Date(session.issuedAt).toLocaleString()}
+                            {session.current && <Badge variant="secondary">This device</Badge>}
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Expires {new Date(session.expiresAt).toLocaleString()}
+                          </p>
+                        </div>
+                        {!session.current && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={revokingSession !== null}
+                            onClick={() => void revokeSessions({ sessionId: session.sessionId })}
+                          >
+                            {revokingSession === session.sessionId ? "Revoking..." : "Revoke"}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

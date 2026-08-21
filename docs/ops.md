@@ -833,6 +833,21 @@ previous application; migration 045 is additive and may remain installed. A
 rolled-back application does not enforce the registry, so complete rollback only
 after considering whether any session was revoked for a security reason.
 
+### Active session management
+
+Settings shows the active sessions belonging to the signed-in account, marks the
+current browser, and permits revoking one older session or every other session.
+The API derives the keyed subject from the current signed cookie and never accepts
+an email, workspace, or subject hash from the browser, so a caller cannot enumerate
+or revoke another account's sessions. Current-session termination continues to use
+the normal Sign Out action.
+
+Session-management actions are recorded as `auth.session_revoke` audit events with
+only the operation scope, outcome, and aggregate revoked count. Session UUIDs and
+subject hashes are not written to the audit ledger. This feature uses the registry
+from migration 045; it requires no additional migration, environment variable, or
+scheduler change. Roll back by redeploying the previous application build.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
