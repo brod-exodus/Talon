@@ -30,7 +30,7 @@ test("workspace integrity migration rejects existing cross-workspace relationshi
     "project_contributor_tracking -> ecosystems/contributors",
     "watched_repo_contributors -> watched_repos/scrapes",
   ]) {
-    assert.match(migration, new RegExp(relation.replace(/[/-]/g, "\\$&"), "i"))
+    assert.ok(migration.includes(relation), relation)
   }
   assert.match(migration, /Workspace referential-integrity violation found in/i)
 })
@@ -52,8 +52,8 @@ test("workspace-owned links use composite foreign keys instead of trusting appli
     "scrapes_team_watched_repo_fkey",
     "watched_repo_contributors_team_watched_repo_fkey",
   ]) {
-    assert.match(migration, new RegExp(`ADD CONSTRAINT ${constraint}`, "i"), constraint)
-    assert.match(migration, new RegExp(`VALIDATE CONSTRAINT ${constraint}`, "i"), constraint)
+    assert.ok(migration.includes(`ADD CONSTRAINT ${constraint}`), constraint)
+    assert.ok(migration.includes(`VALIDATE CONSTRAINT ${constraint}`), constraint)
   }
 })
 
