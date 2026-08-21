@@ -1,5 +1,4 @@
-const SESSION_VERSION = 1
-const USER_ROLES = new Set(["owner", "admin", "recruiter", "viewer"])
+import { parseSessionClaims } from "./session-claims.ts"
 
 function decodeBase64Url(value: string): Uint8Array | null {
   try {
@@ -14,16 +13,8 @@ function decodeBase64Url(value: string): Uint8Array | null {
 
 function hasValidPayload(payloadBytes: Uint8Array, nowSeconds: number): boolean {
   try {
-    const payload = JSON.parse(new TextDecoder().decode(payloadBytes)) as Record<string, unknown>
-    if (payload.version !== SESSION_VERSION) return false
-    if (typeof payload.expiresAt !== "number" || payload.expiresAt <= nowSeconds) return false
-    if (payload.actor === "admin") return true
-    return payload.actor === "user" &&
-      typeof payload.email === "string" &&
-      typeof payload.teamId === "string" &&
-      typeof payload.teamSlug === "string" &&
-      typeof payload.role === "string" &&
-      USER_ROLES.has(payload.role)
+    const payload = JSON.parse(new TextDecoder().decode(payloadBytes))
+    return parseSessionClaims(payload, nowSeconds) !== null
   } catch {
     return false
   }

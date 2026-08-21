@@ -23,9 +23,6 @@ export {
 }
 
 export function getAuthSession(request: NextRequest): AuthSession | null {
-  if (isAuthOptionalForLocalDev()) {
-    return { version: 1, actor: "admin", expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS }
-  }
   return getAuthSessionFromToken(request.cookies.get(COOKIE_NAME)?.value)
 }
 
