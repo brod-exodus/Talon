@@ -46,5 +46,5 @@ test("schema attestation is service-role only and advances the contract to v43",
     /GRANT EXECUTE ON FUNCTION public\.get_talon_schema_contract_issues\(\) TO service_role/i
   )
   assert.match(migration, /\(43,\s*'schema_contract_attestation'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 43)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 43)
 })

@@ -765,6 +765,25 @@ After deployment, run one manual watched-repository check as a team user and
 confirm its audit event identifies a team user rather than the break-glass
 admin. Roll back by redeploying the previous application build.
 
+### Append-only operational history
+
+Migration `044_append_only_operational_history.sql` removes direct update,
+delete, and truncate privileges on `audit_events` and `scrape_job_events` from
+application roles. The service role retains select and insert access. The
+database-owned `cleanup_talon_retention()` function keeps its controlled
+180-day audit and 90-day terminal-job retention behavior.
+
+Apply migration 044 before deploying this application version. Then open
+**Settings → Production Readiness** and confirm Database Schema reports v44.
+The health check continuously attests the effective table privileges and fails
+closed if they drift. No environment variable or scheduler change is required.
+
+Application rollback is compatible with the additive attestation function and
+restricted privileges, so leave migration 044 in place and redeploy the prior
+build if necessary. To investigate a failed retention run, inspect the latest
+keepalive details before changing privileges; do not grant direct delete access
+to the application role as a workaround.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
