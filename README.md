@@ -210,9 +210,11 @@ pnpm migrations:check
 pnpm dev
 ```
 
-Starting with migration `027`, Talon records its database schema version. The
-admin Production Readiness panel compares Production with the version required
-by the deployed application and blocks health when migrations are missing.
+Starting with migration `027`, Talon records its database schema version.
+Migration `043` also attests the physical schema contract: critical tables,
+columns, functions, validated workspace constraints, and row-level-security
+settings must actually exist. The admin Production Readiness panel blocks
+health when either the version or those required objects are missing.
 
 Open [http://localhost:3000](http://localhost:3000).
 

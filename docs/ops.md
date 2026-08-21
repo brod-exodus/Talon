@@ -724,6 +724,22 @@ saved contributor list, and Watched Repos to verify their existing relationships
 still load. Roll back the application by redeploying the previous build;
 migration 042 is backward-compatible and should remain installed.
 
+### Physical schema contract attestation
+
+Apply migration 043 before deploying the compatible application. The migration
+adds a service-role-only catalog check for Talon's critical tables, columns,
+functions, validated workspace constraints, and row-level-security settings.
+The Production Readiness database check now fails when one of those objects is
+missing even if `talon_schema_migrations` reports the expected version. This
+closes the historical-ledger gap documented above.
+
+No environment variable or scheduler change is required. After deployment,
+confirm Settings reports database schema v43 and does not list missing schema
+requirements. If attestation fails, restore the named object by applying its
+canonical migration; do not insert or edit schema-ledger rows to hide the
+failure. Roll back the application by redeploying the previous build. Migration
+043 is read-only at runtime and may remain installed.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
