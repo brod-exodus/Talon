@@ -55,7 +55,7 @@ AS $$
   ),
   required_columns(table_name, column_name) AS (
     VALUES
-      ('contributors', 'profile_fetched_at'),
+      ('contributors', 'profile_refreshed_at'),
       ('notification_deliveries', 'locked_by'),
       ('scrape_contributors', 'team_id'),
       ('scrape_job_events', 'request_id'),
@@ -108,7 +108,7 @@ AS $$
       ('public.claim_scrape_job(text,uuid)'),
       ('public.complete_scrape_job_verified(uuid,text)'),
       ('public.enqueue_due_watched_repo_scrapes(uuid,boolean,uuid)'),
-      ('public.enqueue_scrape(uuid,uuid,text,text,text,integer,uuid)'),
+      ('public.enqueue_scrape(uuid,uuid,text,text,text,integer,uuid,uuid)'),
       ('public.get_contactable_scrape_contributors_page(text,integer,integer)'),
       ('public.get_talon_schema_version()'),
       ('public.remove_team_member(uuid,uuid)'),
@@ -183,6 +183,21 @@ AS $$
   UNION ALL SELECT * FROM missing_rls
   ORDER BY requirement_type, requirement_name;
 $$;
+
+DO $$
+DECLARE
+  first_issue RECORD;
+BEGIN
+  SELECT * INTO first_issue
+  FROM public.get_talon_schema_contract_issues()
+  LIMIT 1;
+
+  IF FOUND THEN
+    RAISE EXCEPTION 'Talon physical schema contract is incomplete: % %',
+      first_issue.requirement_type,
+      first_issue.requirement_name;
+  END IF;
+END $$;
 
 REVOKE ALL ON FUNCTION public.get_talon_schema_contract_issues() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_talon_schema_contract_issues() TO service_role;
