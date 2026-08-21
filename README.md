@@ -101,6 +101,15 @@ unfinished work. Locks older than ten minutes are recovered automatically.
 never enter browser storage, scrape-job state, operational details, or API
 responses.
 
+### Fail-closed workspace scope
+
+Authenticated routes resolve the caller's live workspace membership before
+accessing data. Because the server-side Supabase client intentionally uses the
+service role and bypasses RLS, database helpers never infer or substitute the
+shared default workspace. A missing workspace identifier stops the operation
+before any query runs; only the explicit break-glass admin context may resolve
+the default workspace.
+
 ### Closed registration
 
 Production signup is disabled unless the server-only
