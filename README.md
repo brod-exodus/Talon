@@ -322,6 +322,8 @@ and a unique random session identifier. Unknown or incomplete actor claims are
 rejected rather than falling through to privileged access. A private server-side
 registry makes logout immediately revoke the current session and password changes
 revoke every session for that user; only keyed identity hashes are persisted.
+Settings lets each account review its active session start and expiry times,
+revoke an individual older session, or sign out every other browser at once.
 
 ## Deliberately deferred
 

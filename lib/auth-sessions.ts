@@ -11,6 +11,12 @@ import { supabaseAdmin } from "@/lib/supabase"
 
 export type SessionRevokeReason = "logout" | "password_change" | "operator"
 
+export type ActiveAuthSession = {
+  sessionId: string
+  issuedAt: string
+  expiresAt: string
+}
+
 function subjectValue(session: AuthSession): string {
   return session.actor === "admin"
     ? "admin"
@@ -87,4 +93,57 @@ export async function revokeAllAuthSessions(
     .eq("subject_hash", sessionSubjectHash(session))
     .is("revoked_at", null)
   if (error) throw new Error("Could not revoke the authenticated sessions.")
+}
+
+export async function listActiveAuthSessions(session: AuthSession): Promise<ActiveAuthSession[]> {
+  if (isAuthOptionalForLocalDev()) return []
+
+  const { data, error } = await supabaseAdmin
+    .from("auth_sessions")
+    .select("session_id, issued_at, expires_at")
+    .eq("subject_hash", sessionSubjectHash(session))
+    .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("issued_at", { ascending: false })
+    .limit(25)
+  if (error) throw new Error("Could not list active sessions.")
+
+  return (data ?? []).map((row) => ({
+    sessionId: row.session_id,
+    issuedAt: row.issued_at,
+    expiresAt: row.expires_at,
+  }))
+}
+
+export async function revokeAuthSessionById(
+  session: AuthSession,
+  sessionId: string
+): Promise<boolean> {
+  if (isAuthOptionalForLocalDev()) return false
+
+  const { data, error } = await supabaseAdmin
+    .from("auth_sessions")
+    .update({ revoked_at: new Date().toISOString(), revoke_reason: "operator" })
+    .eq("session_id", sessionId)
+    .eq("subject_hash", sessionSubjectHash(session))
+    .is("revoked_at", null)
+    .select("session_id")
+    .maybeSingle()
+  if (error) throw new Error("Could not revoke the selected session.")
+  return data?.session_id === sessionId
+}
+
+export async function revokeOtherAuthSessions(session: AuthSession): Promise<number> {
+  if (isAuthOptionalForLocalDev()) return 0
+
+  const { data, error } = await supabaseAdmin
+    .from("auth_sessions")
+    .update({ revoked_at: new Date().toISOString(), revoke_reason: "operator" })
+    .eq("subject_hash", sessionSubjectHash(session))
+    .neq("session_id", session.sessionId)
+    .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .select("session_id")
+  if (error) throw new Error("Could not revoke other active sessions.")
+  return data?.length ?? 0
 }
