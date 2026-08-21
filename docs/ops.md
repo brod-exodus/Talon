@@ -336,6 +336,7 @@ db/migrations/042_workspace_referential_integrity.sql
 db/migrations/043_schema_contract_attestation.sql
 db/migrations/044_append_only_operational_history.sql
 db/migrations/045_revocable_sessions.sql
+db/migrations/046_bounded_active_sessions.sql
 ```
 
 They create or enforce:
@@ -847,6 +848,32 @@ only the operation scope, outcome, and aggregate revoked count. Session UUIDs an
 subject hashes are not written to the audit ledger. This feature uses the registry
 from migration 045; it requires no additional migration, environment variable, or
 scheduler change. Roll back by redeploying the previous application build.
+
+### Bounded active sessions
+
+Apply migration `046_bounded_active_sessions.sql` before deploying the compatible
+application. It installs an `AFTER INSERT` trigger that caps each keyed account
+subject at ten active sessions. The trigger takes a transaction-scoped advisory
+lock for that subject before ranking sessions, so simultaneous successful logins
+cannot both bypass the cap. Newest database-created sessions are retained and
+older excess sessions are revoked with reason `session_limit`.
+
+The migration repairs any existing subject above the limit before enabling the
+trigger. Production Readiness continuously verifies the function, enabled
+trigger, revocation constraint, and live ten-session invariant. After applying
+the migration, confirm Settings reports schema v46 and this query returns no rows:
+
+```sql
+select subject_hash, count(*) as active_sessions
+from public.auth_sessions
+where revoked_at is null and expires_at > now()
+group by subject_hash
+having count(*) > 10;
+```
+
+No environment variable or scheduler change is required. The trigger is
+compatible with the previous application, so migration 046 may remain installed
+during rollback.
 
 ## Watched Repo Recovery
 
