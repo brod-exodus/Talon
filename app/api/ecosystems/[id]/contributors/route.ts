@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getEcosystemContributorPage } from "@/lib/db"
+import { logError, logInfo } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 import type { ProjectOutreachStatus } from "@/lib/validation"
@@ -33,17 +36,19 @@ function parseStatus(value: string | null): ProjectOutreachStatus | "all" {
   return value && allowed.has(value) ? (value as ProjectOutreachStatus) : "all"
 }
 
-function jsonWithDevMetrics(projectId: string, startedAt: number, payload: unknown) {
+function jsonWithDevMetrics(requestId: string, startedAt: number, payload: unknown) {
   if (process.env.NODE_ENV !== "production") {
     const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8")
     const data = payload as { contributors?: unknown[]; total?: number; cacheStatus?: string }
-    console.info("[project-contributors] page", {
-      projectId,
+    logInfo("ecosystem_contributors.page", {
+      requestId,
+      details: {
       returned: data.contributors?.length ?? 0,
       total: data.total ?? 0,
       cacheStatus: data.cacheStatus,
       bytes,
       durationMs: Math.round(performance.now() - startedAt),
+      },
     })
   }
   return NextResponse.json(payload)
@@ -53,6 +58,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -77,10 +83,10 @@ export async function GET(
       status: parseStatus(searchParams.get("status")),
       listId: searchParams.get("listId") || "all",
     })
-    return jsonWithDevMetrics(ecosystemId, startedAt, payload)
+    return jsonWithDevMetrics(requestId, startedAt, payload)
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[ecosystems/[id]/contributors] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch project contributors" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("ecosystem_contributors.read_failed", error, { requestId })
+    return internalErrorResponse("ecosystem_contributors_read_failed", requestId)
   }
 }

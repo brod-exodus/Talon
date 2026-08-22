@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getRecentAuditEvents } from "@/lib/audit"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 function csvCell(value: unknown): string {
@@ -9,6 +12,7 @@ function csvCell(value: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
@@ -44,9 +48,9 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ events })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[audit-events] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch audit events" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("audit.list_failed", error, { requestId })
+    return internalErrorResponse("audit_list_failed", requestId)
   }
 }

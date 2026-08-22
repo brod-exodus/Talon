@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getProjectPipelinePage, type PipelineDueFilter } from "@/lib/db"
+import { logError, logInfo } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 
@@ -20,23 +23,26 @@ function parseDue(value: string | null): PipelineDueFilter {
   return value && allowed.has(value) ? (value as PipelineDueFilter) : "all"
 }
 
-function jsonWithDevMetrics(startedAt: number, filters: Record<string, unknown>, payload: unknown) {
+function jsonWithDevMetrics(requestId: string, startedAt: number, payload: unknown) {
   if (process.env.NODE_ENV !== "production") {
     const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8")
     const data = payload as { items?: unknown[]; total?: number; hasMore?: boolean }
-    console.info("[pipeline] page", {
+    logInfo("pipeline.page", {
+      requestId,
+      details: {
       returned: data.items?.length ?? 0,
       total: data.total ?? 0,
       hasMore: Boolean(data.hasMore),
-      filters,
       bytes,
       durationMs: Math.round(performance.now() - startedAt),
+      },
     })
   }
   return NextResponse.json(payload)
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -53,17 +59,11 @@ export async function GET(request: NextRequest) {
       search: params.get("search") || "",
     }
     const page = await getProjectPipelinePage({ teamId, ...filters })
-    return jsonWithDevMetrics(startedAt, filters, page)
+    return jsonWithDevMetrics(requestId, startedAt, page)
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[pipeline] GET error:", {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
-      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
-    })
-    return NextResponse.json({ error: "Failed to fetch pipeline" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("pipeline.read_failed", error, { requestId })
+    return internalErrorResponse("pipeline_read_failed", requestId)
   }
 }

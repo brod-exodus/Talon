@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getProjectContributorTracking, upsertProjectContributorTracking } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeOptionalIsoDate,
@@ -61,7 +63,7 @@ function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
   return null
 }
 
-function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
+function projectTrackingDbError(error: unknown, action: "fetch" | "update", requestId: string) {
   const issue = projectTrackingDbIssue(error)
   if (issue) {
     return NextResponse.json(
@@ -80,6 +82,7 @@ function projectTrackingDbError(error: unknown, action: "fetch" | "update") {
           ? "Project tracking could not load. Check server logs for Supabase error details."
           : "Failed to update project tracking",
       code: "project_tracking_request_failed",
+      requestId,
     },
     { status: 500 }
   )
@@ -97,6 +100,7 @@ function projectTrackingFetchFallback(error: unknown) {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -109,25 +113,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const tracking = await getProjectContributorTracking(ecosystemId, teamId)
     return NextResponse.json({ tracking })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
     if (error instanceof Error && error.message.includes("Project not found")) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
-    console.error("[ecosystems/[id]/tracking] GET error:", {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
-      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
-    })
+    logError("ecosystem_tracking.read_failed", error, { requestId })
     const fallback = projectTrackingFetchFallback(error)
     if (fallback) return fallback
-    return projectTrackingDbError(error, "fetch")
+    return projectTrackingDbError(error, "fetch", requestId)
   }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -172,21 +171,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     )
     return NextResponse.json({ tracking })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
     if (error instanceof Error && error.message.includes("Project not found")) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
     if (error instanceof Error && error.message.includes("Contributor not found")) {
       return NextResponse.json({ error: "Contributor not found" }, { status: 404 })
     }
-    console.error("[ecosystems/[id]/tracking] PATCH error:", {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
-      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
-    })
-    return projectTrackingDbError(error, "update")
+    logError("ecosystem_tracking.update_failed", error, { requestId })
+    return projectTrackingDbError(error, "update", requestId)
   }
 }

@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { getContributorProfile, updateContributorProfile } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeOptionalIsoDate, normalizeOptionalNotes, normalizeUuid, readJsonObject } from "@/lib/validation"
 
@@ -26,6 +29,7 @@ function normalizeOptionalUrl(value: unknown): string | null | undefined {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -42,10 +46,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return NextResponse.json({ contributor })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[contributors/[id]] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch contributor" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("contributor.read_failed", error, { requestId })
+    return internalErrorResponse("contributor_read_failed", requestId)
   }
 }
 
@@ -72,6 +76,7 @@ function toContributorPreview(contributor: NonNullable<ContributorProfileRespons
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -116,9 +121,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!contributor) return NextResponse.json({ error: "Contributor not found" }, { status: 404 })
     return NextResponse.json({ contributor })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[contributors/[id]] PATCH error:", error)
-    return NextResponse.json({ error: "Failed to update contributor" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("contributor.update_failed", error, { requestId })
+    return internalErrorResponse("contributor_update_failed", requestId)
   }
 }
