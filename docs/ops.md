@@ -1059,6 +1059,19 @@ deployment, open the home page, confirm existing Projects appear in the scrape
 form, and enter a recently completed target to confirm its duplicate warning.
 Roll back by redeploying the prior application version.
 
+### Reliable completed-scrape lists
+
+Completed Scrapes preserves its last valid list when initial loading, background
+polling, or pagination fails. The interface marks retained data with its last
+successful update time and exposes an immediate retry. A failed or malformed
+response is never interpreted as an empty workspace, and pagination state only
+changes after a validated response.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open both Completed Scrapes tabs, load another page when available,
+and confirm the list remains stable across its automatic refresh. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
