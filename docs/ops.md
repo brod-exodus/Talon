@@ -993,6 +993,19 @@ deployment, open Watched Repositories, add a temporary public repository, run
 Check Now, wait for its status to settle, and remove it. Roll back by redeploying
 the prior application version.
 
+### Retryable scrape operations
+
+The admin Scrape Operations panel now distinguishes an unavailable queue from
+an empty queue. A failed initial load remains visible with a retry action, while
+a failed background poll preserves and timestamps the last successful snapshot
+instead of making stale job data look current. Retry and cancellation failures
+also show the API's sanitized public message and always recover their controls.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, start a scrape, confirm its operation updates, and exercise Cancel
+or Retry on an eligible job. Roll back by redeploying the prior application
+version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
