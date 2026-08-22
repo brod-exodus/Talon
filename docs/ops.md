@@ -978,6 +978,21 @@ This release has no migration, environment-variable, or scheduler change. After
 deployment, open Projects, create a temporary Project, open it, return to the
 library, and delete it. Roll back by redeploying the prior application version.
 
+### Retryable watched-repository refreshes
+
+Watched Repositories now reports initial-load and background-poll failures in
+the interface instead of writing them only to the browser console. A failed poll
+preserves the last known repository and check state, shows a retry action, and
+clears the warning after the next successful refresh. Empty-state messaging is
+shown only after a successful response. Add, delete, and manual-check operations
+also validate response bodies, retain user input or repository rows on failure,
+and recover their busy controls.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open Watched Repositories, add a temporary public repository, run
+Check Now, wait for its status to settle, and remove it. Roll back by redeploying
+the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
