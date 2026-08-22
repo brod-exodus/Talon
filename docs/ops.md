@@ -1045,6 +1045,20 @@ deployment, start a public-repository scrape and confirm the success message is
 followed by an Active Scrape entry. Roll back by redeploying the prior
 application version.
 
+### Retryable scrape-form context
+
+The scrape form now reports when recent-scrape duplicate detection or existing
+Project options cannot load. Each warning has an independent retry action, and
+the last successfully loaded context remains available during later failures.
+Malformed payloads are rejected instead of being interpreted as an empty scrape
+history or Project library. These supporting failures do not prevent an
+operator from starting an otherwise valid unassigned scrape.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open the home page, confirm existing Projects appear in the scrape
+form, and enter a recently completed target to confirm its duplicate warning.
+Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

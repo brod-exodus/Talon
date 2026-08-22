@@ -84,24 +84,44 @@ export function ScrapeForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [invalidTargetError, setInvalidTargetError] = useState<InvalidTargetError | null>(null)
   const [existingTargets, setExistingTargets] = useState<Set<string>>(new Set())
+  const [existingTargetsError, setExistingTargetsError] = useState<string | null>(null)
+  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const [existingTargetsRefreshKey, setExistingTargetsRefreshKey] = useState(0)
+  const [projectsRefreshKey, setProjectsRefreshKey] = useState(0)
   const targetInputRef = useRef<HTMLInputElement>(null)
   const pendingRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     let cancelled = false
-    fetch("/api/scrapes/recent?limit=50")
-      .then((res) => res.json())
-      .then((data) => {
+
+    const loadExistingTargets = async () => {
+      try {
+        const response = await fetch("/api/scrapes/recent?limit=50", { cache: "no-store" })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(getPublicApiError(data, "Duplicate detection could not load"))
+        if (!data || !Array.isArray(data.completed)) {
+          throw new Error("Duplicate detection returned an invalid response")
+        }
+        const completed = data.completed as Array<{ type?: unknown; target?: unknown }>
+        if (completed.some((scrape) => typeof scrape.type !== "string" || typeof scrape.target !== "string")) {
+          throw new Error("Duplicate detection returned an invalid response")
+        }
         if (cancelled) return
-        const completed = data.completed || []
-        setExistingTargets(new Set(completed.map((s: { type: string; target: string }) => `${s.type}:${s.target}`)))
-      })
-      .catch(() => {})
+        setExistingTargets(new Set(completed.map((scrape) => `${scrape.type}:${scrape.target}`)))
+        setExistingTargetsError(null)
+      } catch (error) {
+        if (!cancelled) {
+          setExistingTargetsError(error instanceof Error ? error.message : "Duplicate detection could not load")
+        }
+      }
+    }
+
+    loadExistingTargets()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [existingTargetsRefreshKey])
 
   useEffect(() => {
     if (searchParams.get("action") !== "start-scrape") return
@@ -110,21 +130,31 @@ export function ScrapeForm() {
 
   useEffect(() => {
     let cancelled = false
-    fetch("/api/ecosystems")
-      .then((res) => res.json())
-      .then((data) => {
+
+    const loadProjects = async () => {
+      try {
+        const response = await fetch("/api/ecosystems", { cache: "no-store" })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(getPublicApiError(data, "Projects could not load"))
+        if (
+          !Array.isArray(data) ||
+          data.some((project) => !project || typeof project.id !== "string" || typeof project.name !== "string")
+        ) {
+          throw new Error("Projects returned an invalid response")
+        }
         if (cancelled) return
-        setProjects(
-          Array.isArray(data)
-            ? data.map((project: ProjectOption) => ({ id: project.id, name: project.name }))
-            : []
-        )
-      })
-      .catch(() => {})
+        setProjects(data.map((project: ProjectOption) => ({ id: project.id, name: project.name })))
+        setProjectsError(null)
+      } catch (error) {
+        if (!cancelled) setProjectsError(error instanceof Error ? error.message : "Projects could not load")
+      }
+    }
+
+    loadProjects()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [projectsRefreshKey])
 
   const isDuplicate = useMemo(() => {
     if (!target) return false
@@ -372,6 +402,23 @@ export function ScrapeForm() {
             onChange={(e) => setTarget(e.target.value)}
             disabled={!canWrite}
           />
+          {existingTargetsError && (
+            <Alert className="border-amber-500/40 bg-amber-500/10">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+              <AlertDescription className="flex items-center justify-between gap-3 text-xs text-amber-200">
+                <span>Duplicate detection is unavailable. {existingTargetsError}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 px-3 text-xs"
+                  onClick={() => setExistingTargetsRefreshKey((key) => key + 1)}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <div className="space-y-1">
@@ -427,6 +474,23 @@ export function ScrapeForm() {
           <p className="text-xs font-medium text-muted-foreground">
             Optional. Use projects to keep role-based searches organized.
           </p>
+          {projectsError && (
+            <Alert className="border-amber-500/40 bg-amber-500/10">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+              <AlertDescription className="flex items-center justify-between gap-3 text-xs text-amber-200">
+                <span>Existing Projects are unavailable. {projectsError}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 px-3 text-xs"
+                  onClick={() => setProjectsRefreshKey((key) => key + 1)}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           {creatingProject && (
             <div className="flex gap-2">
               <Input
