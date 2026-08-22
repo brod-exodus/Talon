@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ error: "Missing required query parameter: page" }, { status: 400 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
     logError("scrape.read_failed", error, { requestId })
     return internalErrorResponse("scrape_read_failed", requestId)
   }
@@ -91,8 +91,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     })
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
     logError("scrape.delete_failed", error, { requestId })
-    return NextResponse.json({ error: "Failed to delete scrape" }, { status: 500 })
+    return internalErrorResponse("scrape_delete_failed", requestId)
   }
 }

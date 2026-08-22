@@ -125,6 +125,10 @@ describe("active session routes", () => {
     const response = await GET(request("GET"))
 
     expect(response.status).toBe(503)
-    await expect(response.json()).resolves.toEqual({ error: "Could not load active sessions." })
+    await expect(response.json()).resolves.toEqual({
+      error: "Could not load active sessions.",
+      code: "auth_session_list_unavailable",
+      requestId: expect.any(String),
+    })
   })
 })

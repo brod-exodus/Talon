@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
@@ -45,11 +45,8 @@ async function getCurrentPhotoPath(teamId: string, email: string): Promise<strin
   return (data as ProfilePhotoRow | null)?.avatar_path ?? null
 }
 
-function photoStorageNotReady() {
-  return NextResponse.json(
-    { error: "Profile photo storage is not ready. Apply db/migrations/012_team_profile_photos.sql." },
-    { status: 500 }
-  )
+function photoStorageNotReady(requestId: string) {
+  return serviceErrorResponse("profile_photo_storage_not_ready", requestId)
 }
 
 export async function POST(request: NextRequest) {
@@ -86,7 +83,7 @@ export async function POST(request: NextRequest) {
     try {
       oldPath = await getCurrentPhotoPath(team.teamId, session.email)
     } catch (error) {
-      if (profilePhotoMigrationError(error)) return photoStorageNotReady()
+      if (profilePhotoMigrationError(error)) return photoStorageNotReady(requestId)
       throw error
     }
 
@@ -113,7 +110,7 @@ export async function POST(request: NextRequest) {
       .eq("email", session.email)
     if (updateError) {
       await supabaseAdmin.storage.from(AVATAR_BUCKET).remove([path])
-      if (profilePhotoMigrationError(updateError)) return photoStorageNotReady()
+      if (profilePhotoMigrationError(updateError)) return photoStorageNotReady(requestId)
       throw updateError
     }
 
@@ -156,7 +153,7 @@ export async function DELETE(request: NextRequest) {
     try {
       oldPath = await getCurrentPhotoPath(team.teamId, session.email)
     } catch (error) {
-      if (profilePhotoMigrationError(error)) return photoStorageNotReady()
+      if (profilePhotoMigrationError(error)) return photoStorageNotReady(requestId)
       throw error
     }
 
@@ -170,7 +167,7 @@ export async function DELETE(request: NextRequest) {
       .eq("team_id", team.teamId)
       .eq("email", session.email)
     if (error) {
-      if (profilePhotoMigrationError(error)) return photoStorageNotReady()
+      if (profilePhotoMigrationError(error)) return photoStorageNotReady(requestId)
       throw error
     }
 

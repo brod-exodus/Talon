@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { after, type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
@@ -140,10 +140,7 @@ export async function POST(request: NextRequest) {
 
     const token = process.env.GITHUB_TOKEN?.trim()
     if (!token) {
-      return NextResponse.json(
-        { error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment." },
-        { status: 503 }
-      )
+      return serviceErrorResponse("github_not_configured", requestId)
     }
 
     if (projectId) {

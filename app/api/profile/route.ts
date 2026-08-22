@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
@@ -30,11 +30,8 @@ function profileMigrationError(error: unknown): boolean {
   )
 }
 
-function profileStorageNotReady() {
-  return NextResponse.json(
-    { error: "Profile storage is not ready. Apply db/migrations/012_team_profile_photos.sql." },
-    { status: 500 }
-  )
+function profileStorageNotReady(requestId: string) {
+  return serviceErrorResponse("profile_storage_not_ready", requestId)
 }
 
 async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | null> {
@@ -75,7 +72,7 @@ export async function PATCH(request: NextRequest) {
       .eq("team_id", team.teamId)
       .eq("email", session.email)
     if (error) {
-      if (profileMigrationError(error)) return profileStorageNotReady()
+      if (profileMigrationError(error)) return profileStorageNotReady(requestId)
       throw error
     }
 

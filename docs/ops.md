@@ -934,6 +934,22 @@ deployment, verify Projects, Pipeline, Search, contributor profiles, and project
 lists load normally. Correlate any safe 500 response with Vercel logs using its
 `requestId`. Roll back by redeploying the prior application version.
 
+### Catalogued server-error responses
+
+All API 5xx responses now use one reviewed response contract. Unexpected
+failures and known service outages return a stable public message, machine code,
+request ID, and `private, no-store` cache policy. This includes GitHub and Slack
+provider rejection, keepalive maintenance failures, unavailable session
+operations, missing profile/tracking schema, and ordinary internal failures.
+Routes cannot choose an ad hoc 5xx body or accidentally expose implementation
+details; a repository-wide test enforces the boundary.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, confirm Settings reports healthy GitHub access and active sessions,
+then run the normal production smoke workflow. Use a returned `requestId` to
+correlate a service failure with structured Vercel logs. Roll back by redeploying
+the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

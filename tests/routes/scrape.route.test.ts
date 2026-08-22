@@ -134,6 +134,8 @@ describe("POST /api/scrape", () => {
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({
       error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment.",
+      code: "github_not_configured",
+      requestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     })
     expect(routeMocks.enqueueScrape).not.toHaveBeenCalled()
     expect(routeMocks.afterTasks).toHaveLength(0)

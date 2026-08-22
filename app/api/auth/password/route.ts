@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { clearAuthCookie, getAuthSession } from "@/lib/auth"
 import { revokeAllAuthSessions } from "@/lib/auth-sessions"
@@ -76,7 +76,8 @@ export async function POST(request: NextRequest) {
 
   try {
     await revokeAllAuthSessions(session, "password_change")
-  } catch {
+  } catch (error) {
+    logError("auth.password_session_revoke_failed", error, { requestId, teamId: session.teamId })
     await recordAuditEvent({
       request,
       action: "auth.password_change",
@@ -85,10 +86,7 @@ export async function POST(request: NextRequest) {
       teamId: session.teamId,
       metadata: { reason: "session_revocation_failed", emailHash: hashAuditValue(session.email) },
     })
-    const response = NextResponse.json(
-      { error: "Password changed, but existing sessions could not be revoked. Contact an administrator." },
-      { status: 503 }
-    )
+    const response = serviceErrorResponse("auth_password_session_revoke_unavailable", requestId)
     clearAuthCookie(response)
     return response
   }
