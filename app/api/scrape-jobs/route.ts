@@ -1,9 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getScrapeJobSummaries } from "@/lib/db"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -12,8 +16,8 @@ export async function GET(request: NextRequest) {
     const jobs = await getScrapeJobSummaries(50, teamId)
     return NextResponse.json({ jobs })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[scrape-jobs] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch scrape jobs" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("scrape_jobs.list_failed", error, { requestId })
+    return internalErrorResponse("scrape_job_list_failed", requestId)
   }
 }

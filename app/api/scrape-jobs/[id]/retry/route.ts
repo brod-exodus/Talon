@@ -1,4 +1,5 @@
 import { after, type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { retryScrapeJob } from "@/lib/db"
 import { logError, logInfo } from "@/lib/logger"
@@ -9,6 +10,8 @@ import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 
 export const maxDuration = 60
+
+const RETRY_STATE_CONFLICT = "Only failed, canceled, or queued retry scrape jobs can be retried"
 
 function scheduleRetryWorker(teamId: string, teamSlug: string, requestId: string, jobId: string, scrapeId: string) {
   // The one-minute cron remains the durable recovery path if this best-effort
@@ -47,11 +50,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     scheduleRetryWorker(teamId, teamSlug, requestId, job.id, job.scrapeId)
     return NextResponse.json({ job, status: "queued", dispatch: "immediate" }, { status: 202 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    logError("scrape.retry_failed", error, { requestId })
-    if (error instanceof Error && error.message.startsWith("Only failed, canceled, or queued retry")) {
-      return NextResponse.json({ error: error.message }, { status: 409 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message === RETRY_STATE_CONFLICT) {
+      return NextResponse.json({ error: RETRY_STATE_CONFLICT }, { status: 409 })
     }
-    return NextResponse.json({ error: "Failed to retry scrape job" }, { status: 500 })
+    logError("scrape.retry_failed", error, { requestId })
+    return internalErrorResponse("scrape_job_retry_failed", requestId)
   }
 }

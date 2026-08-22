@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getRecentScrapes } from "@/lib/db"
+import { logError, logInfo } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -9,21 +12,25 @@ function parsePositiveInteger(value: string | null, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function jsonWithDevMetrics(payload: unknown) {
+function jsonWithDevMetrics(payload: unknown, requestId: string) {
   if (process.env.NODE_ENV !== "production") {
     const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8")
     const data = payload as { completed?: unknown[]; failed?: unknown[]; hasMore?: boolean }
-    console.info("[dashboard-scrapes] recent", {
-      completed: data.completed?.length ?? 0,
-      failed: data.failed?.length ?? 0,
-      hasMore: Boolean(data.hasMore),
-      bytes,
+    logInfo("scrapes.recent_payload", {
+      requestId,
+      details: {
+        completed: data.completed?.length ?? 0,
+        failed: data.failed?.length ?? 0,
+        hasMore: Boolean(data.hasMore),
+        bytes,
+      },
     })
   }
   return NextResponse.json(payload)
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -34,13 +41,10 @@ export async function GET(request: NextRequest) {
     const offset = parsePositiveInteger(params.get("offset"), 0)
     const type = params.get("type")
     const payload = await getRecentScrapes({ teamId, limit, offset, type })
-    return jsonWithDevMetrics(payload)
+    return jsonWithDevMetrics(payload, requestId)
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[dashboard-scrapes] Failed to fetch recent scrapes:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch recent scrapes", completed: [], failed: [], hasMore: false, nextOffset: 0 },
-      { status: 500 },
-    )
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("scrapes.recent_list_failed", error, { requestId })
+    return internalErrorResponse("scrape_list_recent_failed", requestId)
   }
 }
