@@ -950,6 +950,21 @@ then run the normal production smoke workflow. Use a returned `requestId` to
 correlate a service failure with structured Vercel logs. Roll back by redeploying
 the prior application version.
 
+### Retryable Project failures
+
+The Project workspace no longer treats failed reads or mutations as successful
+empty results. Project-shell, available-scrape, add, remove, and delete requests
+validate the server response, preserve actionable error text, release their busy
+state, and provide an explicit retry path. Failed deletion keeps the operator on
+the Project instead of navigating away, and failed scrape changes do not refresh
+the UI into a misleading state. Contributor outreach failures remain visible
+without writing recruiter notes or contributor identifiers to the browser
+console.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open a Project, add and remove one scrape, and confirm its contributor
+list refreshes. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

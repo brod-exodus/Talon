@@ -198,6 +198,7 @@ export default function EcosystemDetailPage() {
 
   const [ecosystem, setEcosystem] = useState<EcosystemDetail | null>(null)
   const [ecosystemLoading, setEcosystemLoading] = useState(true)
+  const [ecosystemError, setEcosystemError] = useState<string | null>(null)
   const [contributors, setContributors] = useState<EcosystemContributor[]>([])
   const [contributorsLoading, setContributorsLoading] = useState(true)
   const [contributorsLoadingMore, setContributorsLoadingMore] = useState(false)
@@ -208,8 +209,12 @@ export default function EcosystemDetailPage() {
   const [contributorsHasMore, setContributorsHasMore] = useState(false)
   const [previewContributor, setPreviewContributor] = useState<ContributorPreviewSummary | null>(null)
   const [allScrapes, setAllScrapes] = useState<ScrapeSummary[]>([])
+  const [availableScrapesError, setAvailableScrapesError] = useState<string | null>(null)
   const [selectedScrape, setSelectedScrape] = useState("")
   const [adding, setAdding] = useState(false)
+  const [removingScrapeIds, setRemovingScrapeIds] = useState<Set<string>>(new Set())
+  const [deletingEcosystem, setDeletingEcosystem] = useState(false)
+  const [scrapeMutationError, setScrapeMutationError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [minRepos, setMinRepos] = useState(1)
   const [contactFilters, setContactFilters] = useState<Set<ContactFilter>>(new Set())
@@ -256,34 +261,48 @@ export default function EcosystemDetailPage() {
 
   const loadProjectShell = useCallback(async () => {
     setEcosystemLoading(true)
-    const [ecoRes, scrapesRes] = await Promise.all([
-      fetch(`/api/ecosystems/${id}`, { cache: "no-store" }),
-      fetch(`/api/ecosystems/${id}/scrapes`, { cache: "no-store" }),
-    ])
-    if (ecoRes.status === 404 || scrapesRes.status === 404) {
+    setEcosystemError(null)
+    try {
+      const [ecoRes, scrapesRes] = await Promise.all([
+        fetch(`/api/ecosystems/${id}`, { cache: "no-store" }),
+        fetch(`/api/ecosystems/${id}/scrapes`, { cache: "no-store" }),
+      ])
+      if (ecoRes.status === 404 || scrapesRes.status === 404) {
+        router.push("/ecosystems")
+        return
+      }
+      const [ecoBody, scrapesBody] = await Promise.all([
+        ecoRes.json().catch(() => null),
+        scrapesRes.json().catch(() => null),
+      ])
+      if (!ecoRes.ok) throw new Error(ecoBody?.error || "Project could not load")
+      if (!scrapesRes.ok) throw new Error(scrapesBody?.error || "Project scrapes could not load")
+      if (!ecoBody?.ecosystem) throw new Error("Project response was incomplete")
+      setEcosystem({
+        ...ecoBody.ecosystem,
+        scrapes: Array.isArray(scrapesBody?.scrapes)
+          ? scrapesBody.scrapes
+          : ecoBody.ecosystem.scrapes ?? [],
+      })
+    } catch (error) {
+      setEcosystem(null)
+      setEcosystemError(error instanceof Error ? error.message : "Project could not load")
+    } finally {
       setEcosystemLoading(false)
-      router.push("/ecosystems")
-      return
     }
-    const [{ ecosystem: eco }, scrapesBody] = await Promise.all([
-      ecoRes.json(),
-      scrapesRes.json().catch(() => null),
-    ])
-    setEcosystem({
-      ...eco,
-      scrapes: Array.isArray(scrapesBody?.scrapes) ? scrapesBody.scrapes : eco.scrapes ?? [],
-    })
-    setEcosystemLoading(false)
   }, [id, router])
 
   const loadAvailableScrapes = useCallback(async () => {
     if (!canWrite) return
+    setAvailableScrapesError(null)
     try {
       const response = await fetch("/api/scrapes/recent?limit=50", { cache: "no-store" })
       const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Available scrapes could not load")
       setAllScrapes(Array.isArray(data?.completed) ? data.completed : [])
-    } catch {
+    } catch (error) {
       setAllScrapes([])
+      setAvailableScrapesError(error instanceof Error ? error.message : "Available scrapes could not load")
     }
   }, [canWrite])
 
@@ -398,31 +417,63 @@ export default function EcosystemDetailPage() {
     if (!canWrite) return
     if (!selectedScrape) return
     setAdding(true)
-    await fetch(`/api/ecosystems/${id}/scrapes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scrapeId: selectedScrape }),
-    })
-    setSelectedScrape("")
-    setAdding(false)
-    await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
+    setScrapeMutationError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/scrapes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scrapeId: selectedScrape }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Scrape could not be added")
+      setSelectedScrape("")
+      await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
+    } catch (error) {
+      setScrapeMutationError(error instanceof Error ? error.message : "Scrape could not be added")
+    } finally {
+      setAdding(false)
+    }
   }
 
   async function handleRemoveScrape(scrapeId: string) {
     if (!canWrite) return
-    await fetch(`/api/ecosystems/${id}/scrapes`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scrapeId }),
-    })
-    await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
+    setRemovingScrapeIds((current) => new Set(current).add(scrapeId))
+    setScrapeMutationError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}/scrapes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scrapeId }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Scrape could not be removed")
+      await Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
+    } catch (error) {
+      setScrapeMutationError(error instanceof Error ? error.message : "Scrape could not be removed")
+    } finally {
+      setRemovingScrapeIds((current) => {
+        const next = new Set(current)
+        next.delete(scrapeId)
+        return next
+      })
+    }
   }
 
   async function handleDeleteEcosystem() {
     if (!canWrite) return
     if (!confirm(`Delete project "${ecosystem?.name}"? This cannot be undone.`)) return
-    await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
-    router.push("/ecosystems")
+    setDeletingEcosystem(true)
+    setEcosystemError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Project could not be deleted")
+      router.push("/ecosystems")
+    } catch (error) {
+      setEcosystemError(error instanceof Error ? error.message : "Project could not be deleted")
+    } finally {
+      setDeletingEcosystem(false)
+    }
   }
 
   async function createProjectList(name: string, contributorId?: string) {
@@ -551,25 +602,12 @@ export default function EcosystemDetailPage() {
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) {
-        console.error("[project-tracking] API response failed", {
-          endpoint: `/api/ecosystems/${id}/tracking`,
-          method: "PATCH",
-          status: response.status,
-          requestBody: { contributorId, ...updates },
-          responseBody: data,
-        })
         throw new Error(data?.error || "Failed to update outreach tracking")
       }
       const tracking = data.tracking as ProjectContributorTracking
       setTrackingByContributorId((prev) => ({ ...prev, [contributorId]: tracking }))
       return tracking
     } catch (error) {
-      console.error("[project-tracking] update failed", {
-        projectId: id,
-        contributorId,
-        updates,
-        error,
-      })
       setTrackingError(error instanceof Error ? error.message : "Failed to update outreach tracking")
       return null
     } finally {
@@ -639,7 +677,38 @@ export default function EcosystemDetailPage() {
     downloadCsv(`${name}-contributors.csv`, [headers, ...rows])
   }, [ecosystem?.name, filteredContributors])
 
-  if (!ecosystemLoading && !ecosystem) return null
+  if (!ecosystemLoading && !ecosystem) {
+    return (
+      <div className="prism-app bg-background">
+        <Header />
+        <main className="prism-main min-h-screen bg-background">
+          <Link
+            href="/ecosystems"
+            className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Projects
+          </Link>
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div>
+                  <h1 className="font-semibold text-foreground">Project could not load</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {ecosystemError || "Talon could not load this Project. Try again in a moment."}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" className="shrink-0 bg-transparent" onClick={() => void loadProjectShell()}>
+                Retry
+              </Button>
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="prism-app bg-background">
@@ -668,10 +737,10 @@ export default function EcosystemDetailPage() {
               size="sm"
               className="text-muted-foreground hover:text-destructive gap-1.5 shrink-0"
               onClick={handleDeleteEcosystem}
-              disabled={ecosystemLoading || !ecosystem}
+              disabled={ecosystemLoading || !ecosystem || deletingEcosystem}
             >
               <Trash2 className="w-4 h-4" />
-              Delete
+              {deletingEcosystem ? "Deleting…" : "Delete"}
             </Button>
           )}
         </div>
@@ -713,6 +782,27 @@ export default function EcosystemDetailPage() {
             Scrapes in this Project
           </h2>
 
+          {(scrapeMutationError || ecosystemError) && (
+            <div className="mb-3 flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2 text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{scrapeMutationError || ecosystemError}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 bg-transparent"
+                onClick={() => {
+                  setScrapeMutationError(null)
+                  setEcosystemError(null)
+                  void Promise.all([loadProjectShell(), loadAvailableScrapes(), loadContributorPage(false)])
+                }}
+              >
+                Retry loading
+              </Button>
+            </div>
+          )}
+
           {/* Scrape chips */}
           <div className="flex flex-wrap gap-2 mb-3">
             {ecosystemLoading && (
@@ -736,8 +826,9 @@ export default function EcosystemDetailPage() {
                 {canWrite && (
                   <button
                     onClick={() => handleRemoveScrape(s.id)}
+                    disabled={removingScrapeIds.has(s.id)}
                     className="ml-1 cursor-pointer rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                    title="Remove from project"
+                    title={removingScrapeIds.has(s.id) ? "Removing from project" : "Remove from project"}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -769,6 +860,22 @@ export default function EcosystemDetailPage() {
               >
                 <Plus className="w-3.5 h-3.5" />
                 {adding ? "Adding…" : "Add"}
+              </Button>
+            </div>
+          )}
+          {canWrite && !ecosystemLoading && availableScrapesError && (
+            <div className="mt-3 flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2 text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{availableScrapesError}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 bg-transparent"
+                onClick={() => void loadAvailableScrapes()}
+              >
+                Retry
               </Button>
             </div>
           )}
