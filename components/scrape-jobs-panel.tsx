@@ -63,6 +63,8 @@ export function ScrapeJobsPanel() {
   const { canAdmin } = useAuthPermissions()
   const [jobs, setJobs] = useState<ScrapeJobSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
   const { toast } = useToast()
@@ -80,12 +82,23 @@ export function ScrapeJobsPanel() {
     }
 
     try {
-      const res = await fetch("/api/scrape-jobs")
-      if (!res.ok) throw new Error("Failed to fetch jobs")
-      const data = await res.json()
-      setJobs(data.jobs ?? [])
+      const res = await fetch("/api/scrape-jobs", { cache: "no-store" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(
+          data && typeof data.error === "string"
+            ? data.error
+            : "Scrape operations could not load"
+        )
+      }
+      if (!data || !Array.isArray(data.jobs)) {
+        throw new Error("Scrape operations returned an invalid response")
+      }
+      setJobs(data.jobs)
+      setLoadError(null)
+      setLastLoadedAt(new Date())
     } catch (error) {
-      console.error("[scrape-jobs] fetch error:", error)
+      setLoadError(error instanceof Error ? error.message : "Scrape operations could not load")
     } finally {
       setLoading(false)
     }
@@ -108,7 +121,10 @@ export function ScrapeJobsPanel() {
     setRetrying((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed to retry job")
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Failed to retry job")
+      }
       toast({ title: "Retry queued", description: "The scrape will run again shortly." })
       await loadJobs()
     } catch (error) {
@@ -131,7 +147,10 @@ export function ScrapeJobsPanel() {
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
       const res = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
-      if (!res.ok) throw new Error("Failed to cancel job")
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Failed to cancel job")
+      }
       toast({ title: "Processing canceled", description: "The scrape will stop safely shortly." })
       await loadJobs()
     } catch (error) {
@@ -150,7 +169,7 @@ export function ScrapeJobsPanel() {
   }, [canAdmin, loadJobs, toast])
 
   if (!canAdmin) return null
-  if (!loading && visibleJobs.length === 0) return null
+  if (!loading && !loadError && visibleJobs.length === 0) return null
 
   return (
     <div className="space-y-4">
@@ -163,6 +182,26 @@ export function ScrapeJobsPanel() {
           <CardTitle className="text-sm font-medium">Recent Processing Activity</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {loadError && (
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+              <div className="flex min-w-0 items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Scrape operations could not refresh</p>
+                  <p className="break-words text-xs text-muted-foreground">{loadError}</p>
+                  {lastLoadedAt && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Showing the last update from {lastLoadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={loadJobs}>
+                <RotateCw className="mr-1 h-3 w-3" />
+                Retry
+              </Button>
+            </div>
+          )}
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading jobs...</p>
           ) : visibleJobs.map((job) => (
