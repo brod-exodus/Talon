@@ -138,6 +138,9 @@ The portfolio deployment favors free infrastructure:
 - Request IDs connect sanitized JSON logs to audit events, queue jobs, job
   events, and scheduled system runs without recording repository or contributor
   data in logs.
+- Internal API failures return a stable public message and correlation request
+  ID; database, provider, stack, and credential details remain only in sanitized
+  server logs.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
   scrape and notification-delivery failures, database connectivity, GitHub rate
   limits, and seven-day repository scrape reliability/latency SLOs.

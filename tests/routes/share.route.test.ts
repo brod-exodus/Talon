@@ -88,6 +88,43 @@ describe("share lifecycle routes", () => {
     expect(shareMocks.createSharedScrape).not.toHaveBeenCalled()
   })
 
+  test("preserves a safe not-found response when the requested scrape is unavailable", async () => {
+    shareMocks.createSharedScrape.mockRejectedValue(new Error("Scrape not found"))
+
+    const response = await POST(request("/api/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scrapeId: "scrape-123456" }),
+    }))
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ error: "Scrape not found" })
+  })
+
+  test("does not expose database errors while creating a share", async () => {
+    shareMocks.createSharedScrape.mockRejectedValue(
+      new Error("password=database-secret relation public.shared_scrapes is unavailable")
+    )
+
+    const response = await POST(request("/api/share", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+      body: JSON.stringify({ scrapeId: "scrape-123456" }),
+    }))
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body).toEqual({
+      error: "Failed to create share",
+      requestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    })
+    expect(JSON.stringify(body)).not.toContain("database-secret")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+  })
+
   test("lists lifecycle metadata for one team-owned scrape", async () => {
     const response = await GET(request("/api/share?scrapeId=scrape-123456"))
 
@@ -157,5 +194,26 @@ describe("share lifecycle routes", () => {
     })
 
     expect(response.status).toBe(410)
+  })
+
+  test("does not expose database errors from the public share route", async () => {
+    shareMocks.getSharedScrape.mockRejectedValue(
+      new Error("token public-token-value-123456 failed in public.shared_scrapes")
+    )
+
+    const response = await GET_PUBLIC_SHARE(request("/api/share/public-token-value-123456", {
+      headers: { "X-Request-ID": "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
+    }), {
+      params: Promise.resolve({ token: "public-token-value-123456" }),
+    })
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body).toEqual({
+      error: "Failed to fetch share",
+      requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    })
+    expect(JSON.stringify(body)).not.toContain("public-token-value")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
   })
 })

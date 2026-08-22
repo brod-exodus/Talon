@@ -1,12 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { getSharedScrape } from "@/lib/db"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { toPublicSharedScrape } from "@/lib/share-links"
 import { normalizeShareToken } from "@/lib/validation"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const requestId = getRequestId(request)
   try {
     const { token } = await params
     const shareToken = normalizeShareToken(token)
@@ -31,10 +35,7 @@ export async function GET(
       { headers: { "Cache-Control": "private, no-store" } }
     )
   } catch (error) {
-    console.error("[share] Failed to fetch shared scrape:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch share" },
-      { status: 500 }
-    )
+    logError("share.public_read_failed", error, { requestId })
+    return internalErrorResponse("share_public_read_failed", requestId)
   }
 }

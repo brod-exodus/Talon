@@ -1,7 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { updateContributorOutreach } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import {
   normalizeGithubUsername,
@@ -12,6 +15,7 @@ import {
 } from "@/lib/validation"
 
 export async function PATCH(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -64,10 +68,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[v0] Update contributor outreach error:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update contributor" },
-      { status: 500 }
-    )
+    logError("outreach.update_failed", error, { requestId })
+    return internalErrorResponse("outreach_update_failed", requestId)
   }
 }

@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { createSharedScrape, listSharedScrapeLinks, revokeSharedScrapeLink } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import {
   DEFAULT_SHARE_EXPIRY_DAYS,
   normalizeShareExpiryDays,
@@ -16,6 +19,7 @@ function randomToken(): string {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -47,15 +51,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ token, share })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[share] Failed to create share:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create share" },
-      { status: 500 }
-    )
+    if (error instanceof Error && error.message === "Scrape not found") {
+      return NextResponse.json({ error: "Scrape not found" }, { status: 404 })
+    }
+    logError("share.create_failed", error, { requestId })
+    return internalErrorResponse("share_create_failed", requestId)
   }
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -66,12 +71,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ shares: await listSharedScrapeLinks(scrapeId, teamId) })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[share] Failed to list shares:", error)
-    return NextResponse.json({ error: "Failed to list share links" }, { status: 500 })
+    logError("share.list_failed", error, { requestId })
+    return internalErrorResponse("share_list_failed", requestId)
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -95,7 +101,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ share })
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[share] Failed to revoke share:", error)
-    return NextResponse.json({ error: "Failed to revoke share link" }, { status: 500 })
+    logError("share.revoke_failed", error, { requestId })
+    return internalErrorResponse("share_revoke_failed", requestId)
   }
 }

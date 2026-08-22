@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { after, type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { createGitHubClient } from "@/lib/github"
@@ -252,15 +253,6 @@ export async function POST(request: NextRequest) {
     }
     logError("scrape.enqueue_failed", error, { requestId })
 
-    const extractedError =
-      error instanceof Error
-        ? error.message
-        : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-          ? error.message
-          : "Failed to start scrape"
-    return NextResponse.json(
-      { error: extractedError },
-      { status: 500 },
-    )
+    return internalErrorResponse("scrape_enqueue_failed", requestId)
   }
 }
