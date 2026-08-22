@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from "node:crypto"
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getAuthSession } from "@/lib/auth"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 const AVATAR_BUCKET = "team-avatars"
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
@@ -50,6 +53,7 @@ function photoStorageNotReady() {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -128,15 +132,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ avatarUrl })
   } catch (error) {
-    console.error("[profile-photo] POST error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
-    return NextResponse.json({ error: "Failed to upload profile photo" }, { status: 500 })
+    logError("profile.photo_upload_failed", error, { requestId })
+    return internalErrorResponse("profile_photo_upload_failed", requestId)
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -184,10 +189,10 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ avatarUrl: null })
   } catch (error) {
-    console.error("[profile-photo] DELETE error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
-    return NextResponse.json({ error: "Failed to remove profile photo" }, { status: 500 })
+    logError("profile.photo_remove_failed", error, { requestId })
+    return internalErrorResponse("profile_photo_remove_failed", requestId)
   }
 }

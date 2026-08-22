@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { logWarn } from "@/lib/logger"
 import { requirePermission, roleHasPermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -8,7 +10,11 @@ type UserProfileFields = {
   avatar_url: string | null
 }
 
-async function getUserProfileFields(teamId: string, email: string): Promise<UserProfileFields | null> {
+async function getUserProfileFields(
+  teamId: string,
+  email: string,
+  requestId: string
+): Promise<UserProfileFields | null> {
   const { data, error } = await supabaseAdmin
     .from("team_memberships")
     .select("display_name, avatar_url")
@@ -18,7 +24,7 @@ async function getUserProfileFields(teamId: string, email: string): Promise<User
 
   if (error) {
     if (error.code === "42703") {
-      console.warn("[auth/me] Profile columns are missing. Apply db/migrations/012_team_profile_photos.sql.")
+      logWarn("auth.profile_columns_missing", { requestId, teamId })
       return null
     }
     throw error
@@ -28,6 +34,7 @@ async function getUserProfileFields(teamId: string, email: string): Promise<User
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -47,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     if (team.actor === "user") {
       if (!team.email) throw new Error("Authenticated user is missing an email.")
-      const profile = await getUserProfileFields(team.teamId, team.email)
+      const profile = await getUserProfileFields(team.teamId, team.email, requestId)
       return NextResponse.json({
         authenticated: true,
         actor: "user",
@@ -66,6 +73,6 @@ export async function GET(request: NextRequest) {
       permissions,
     })
   } catch (error) {
-    return teamContextError(error)
+    return teamContextError(error, requestId)
   }
 }

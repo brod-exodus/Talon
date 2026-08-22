@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAuthSession } from "@/lib/auth"
 import { roleHasPermission, type Permission } from "@/lib/permission-rules"
 import { getCurrentRequestMembership } from "@/lib/request-membership"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { requireSameOrigin } from "@/lib/request-origin"
 import { requireActiveSession } from "@/lib/session-authorization"
 
@@ -30,9 +32,7 @@ export async function requirePermission(
     }
     return null
   } catch (error) {
-    console.error("[permissions] Failed to verify current team membership", {
-      message: error instanceof Error ? error.message : "Unknown authorization error",
-    })
+    logError("authorization.membership_check_failed", error, { requestId: getRequestId(request) })
     return NextResponse.json({ error: "Authorization could not be verified" }, { status: 503 })
   }
 }

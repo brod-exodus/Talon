@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAuthSession, type AuthRole } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 import { getCurrentRequestMembership } from "@/lib/request-membership"
+import { logError } from "@/lib/logger"
 
 const DEFAULT_TEAM_SLUG = "default"
 
@@ -51,8 +52,8 @@ export async function resolveTeamContext(request: NextRequest): Promise<TeamCont
   }
 }
 
-export function teamContextError(error: unknown): NextResponse {
-  console.error("[team-context] Failed to resolve team:", error)
+export function teamContextError(error: unknown, requestId?: string): NextResponse {
+  logError("team_context.resolve_failed", error, { requestId })
   if (error instanceof Error && error.message.includes("not a member")) {
     return NextResponse.json({ error: "User is not a member of this team" }, { status: 403 })
   }

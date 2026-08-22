@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { logError, logInfo, sanitizeOperationalError } from "../lib/logger.ts"
+import { logError, logInfo, logWarnError, sanitizeOperationalError } from "../lib/logger.ts"
 
 test("structured operational logs retain correlation fields and redact sensitive details", (t) => {
   let output = ""
@@ -48,4 +48,21 @@ test("structured error logs sanitize credentials without exposing arbitrary erro
     sanitizeOperationalError(new Error("Failed at https://api.github.com/users/private-user for person@example.com")).message,
     "Failed at [redacted-url] for [redacted-email]"
   )
+})
+
+test("structured warning logs sanitize fallback errors without losing correlation", (t) => {
+  let output = ""
+  t.mock.method(console, "warn", (value: string) => { output = value })
+
+  logWarnError(
+    "auth.rate_limit_check_fallback",
+    new Error("password=database-secret for person@example.com"),
+    { requestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }
+  )
+
+  const parsed = JSON.parse(output)
+  assert.equal(parsed.level, "warn")
+  assert.equal(parsed.requestId, "cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+  assert.equal(parsed.error.message, "password [redacted] for [redacted-email]")
+  assert.doesNotMatch(output, /database-secret|person@example\.com/)
 })

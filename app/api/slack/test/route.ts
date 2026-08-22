@@ -1,8 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
+import { logError, logWarn } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { normalizeSlackWebhookUrl, readJsonObject } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "admin")
   if (authError) return authError
 
@@ -22,8 +26,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!res.ok) {
-      const body = await res.text()
-      console.error("[slack/test] Slack returned non-OK:", res.status, body)
+      logWarn("slack.test_rejected", { requestId, details: { status: res.status } })
       return NextResponse.json(
         { error: "Slack rejected the webhook request. Please check the URL." },
         { status: 502 }
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[slack/test] Error:", error)
-    return NextResponse.json({ error: "Failed to send test message" }, { status: 500 })
+    logError("slack.test_failed", error, { requestId })
+    return internalErrorResponse("slack_test_failed", requestId)
   }
 }

@@ -69,6 +69,10 @@ export function logWarn(event: string, context: LogContext = {}) {
   writeLog("warn", event, context)
 }
 
+export function logWarnError(event: string, error: unknown, context: LogContext = {}) {
+  writeLog("warn", event, context, error)
+}
+
 export function logError(event: string, error: unknown, context: LogContext = {}) {
   writeLog("error", event, context, error)
 }
