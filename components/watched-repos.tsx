@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Eye, Trash2, Plus, Clock, RefreshCw } from "lucide-react"
+import { Eye, Trash2, Plus, Clock, RefreshCw, AlertCircle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -80,6 +80,8 @@ export function WatchedRepos() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const [repo, setRepo] = useState("")
   const [intervalHours, setIntervalHours] = useState("24")
   const repoInputRef = useRef<HTMLInputElement>(null)
@@ -87,12 +89,14 @@ export function WatchedRepos() {
 
   const fetchRepos = useCallback(async () => {
     try {
-      const res = await fetch("/api/watched-repos")
-      if (!res.ok) throw new Error("Failed to fetch")
-      const data = await res.json()
-      setRepos(Array.isArray(data) ? data : [])
+      const res = await fetch("/api/watched-repos", { cache: "no-store" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Watched repositories could not load")
+      if (!Array.isArray(data)) throw new Error("Watched repository response was incomplete")
+      setRepos(data)
+      setLoadError(null)
     } catch (err) {
-      console.error("[watched-repos] fetch error:", err)
+      setLoadError(err instanceof Error ? err.message : "Watched repositories could not load")
     } finally {
       setIsLoading(false)
     }
@@ -130,12 +134,11 @@ export function WatchedRepos() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repo: repo.trim(), interval_hours: Number(intervalHours) }),
         })
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || "Failed to add")
-        }
-        const added: WatchedRepo = await res.json()
+        const added = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(added?.error || "Failed to add repository")
+        if (!added?.id || !added?.repo) throw new Error("Watched repository response was incomplete")
         setRepos((prev) => [added, ...prev])
+        setLoadError(null)
         setRepo("")
         toast({
           title: "Watching repo",
@@ -160,9 +163,11 @@ export function WatchedRepos() {
       if (!canWrite) return
       if (!confirmed) return
 
+      setDeletingIds((current) => new Set(current).add(id))
       try {
         const res = await fetch(`/api/watched-repos/${id}`, { method: "DELETE" })
-        if (!res.ok) throw new Error("Failed to delete")
+        const data = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(data?.error || "Failed to remove repository")
         setRepos((prev) => prev.filter((r) => r.id !== id))
         toast({ title: "Removed", description: `No longer watching ${repoName}` })
       } catch (err) {
@@ -170,6 +175,12 @@ export function WatchedRepos() {
           title: "Error",
           description: err instanceof Error ? err.message : "Failed to remove repo",
           variant: "destructive",
+        })
+      } finally {
+        setDeletingIds((current) => {
+          const next = new Set(current)
+          next.delete(id)
+          return next
         })
       }
     },
@@ -181,8 +192,8 @@ export function WatchedRepos() {
     setIsChecking(true)
     try {
       const res = await fetch("/api/watched-repos/check", { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Check failed")
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Check failed")
       toast({
         title: "Checks queued",
         description: `${data.queued} new check(s) queued${data.alreadyActive ? `; ${data.alreadyActive} already running` : ""}.`,
@@ -230,6 +241,26 @@ export function WatchedRepos() {
           {isChecking || hasActiveCheck ? "Checking..." : "Check Now"}
         </Button>
       </div>
+
+      {loadError && (
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2 text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Watched repositories could not refresh</p>
+              <p className="mt-1 text-muted-foreground">{loadError}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 bg-transparent"
+            onClick={() => void fetchRepos()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Add form */}
       {canWrite && (
@@ -311,7 +342,7 @@ export function WatchedRepos() {
             </Card>
           ))}
         </div>
-      ) : repos.length === 0 ? (
+      ) : !loadError && repos.length === 0 ? (
         <Card className="border-border bg-card">
           <CardContent className="pt-6 pb-6">
             <div className="text-center py-6">
@@ -393,13 +424,14 @@ export function WatchedRepos() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            disabled={deletingIds.has(r.id)}
                             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
                             onClick={(event) => {
                               event.stopPropagation()
                               handleDelete(r.id, r.repo)
                             }}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className={`w-4 h-4 ${deletingIds.has(r.id) ? "animate-pulse" : ""}`} />
                           </Button>
                         )}
                       </div>
