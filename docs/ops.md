@@ -1072,6 +1072,19 @@ deployment, open both Completed Scrapes tabs, load another page when available,
 and confirm the list remains stable across its automatic refresh. Roll back by
 redeploying the prior application version.
 
+### Resumable contributor pagination
+
+Expanded completed scrapes validate every contributor page before adding it to
+the bounded client cache. If a later page fails, contributors from earlier pages
+remain visible and the error records the failed page and sanitized API message.
+Retry resumes at that page instead of discarding useful data and downloading the
+list again from the beginning.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, expand a completed scrape with contactable contributors, confirm
+progressive loading settles, and verify search and CSV export still use the full
+loaded list. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

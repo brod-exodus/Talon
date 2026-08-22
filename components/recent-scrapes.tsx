@@ -343,7 +343,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [expandedScrapes, setExpandedScrapes] = useState<Set<string>>(new Set())
   const [contributorCache, setContributorCache] = useState<Map<string, Contributor[]>>(new Map())
   const [loadingExpansions, setLoadingExpansions] = useState<Set<string>>(new Set())
-  const [contributorErrors, setContributorErrors] = useState<Set<string>>(new Set())
+  const [contributorErrors, setContributorErrors] = useState<Map<string, { message: string; nextPage: number }>>(new Map())
   const [retryingJobs, setRetryingJobs] = useState<Set<string>>(new Set())
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
@@ -468,20 +468,20 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   }, [fetchProjects, fetchScrapes])
 
   // ── Lazy-load contributors for a single scrape (shown on explicit expand) ─
-  const fetchContributors = useCallback((scrapeId: string) => {
-    if (cacheRef.current.has(scrapeId)) return
+  const fetchContributors = useCallback((scrapeId: string, startPage = 1) => {
+    if (startPage === 1 && cacheRef.current.has(scrapeId)) return
     if (contributorFetchesRef.current.has(scrapeId)) return contributorFetchesRef.current.get(scrapeId)
 
     setLoadingExpansions((prev) => new Set(prev).add(scrapeId))
     setContributorErrors((prev) => {
-      const next = new Set(prev)
+      const next = new Map(prev)
       next.delete(scrapeId)
       return next
     })
     const request = (async () => {
+      let page = startPage
       try {
-        const all: Contributor[] = []
-        let page = 1
+        const all: Contributor[] = startPage > 1 ? [...(cacheRef.current.get(scrapeId) ?? [])] : []
         while (true) {
           const params = new URLSearchParams({
             page: String(page),
@@ -489,17 +489,20 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             contactableOnly: "true",
           })
           const res = await fetch(`/api/scrape/${scrapeId}?${params.toString()}`)
-          if (!res.ok) throw new Error("Failed to load contributors")
-          const data = await res.json()
-          all.push(...(data.contributors ?? []))
+          const data = await res.json().catch(() => null)
+          if (!res.ok) throw new Error(getPublicApiError(data, "Failed to load contributors"))
+          if (!data || !Array.isArray(data.contributors) || typeof data.hasMore !== "boolean") {
+            throw new Error("Contributor page returned an invalid response")
+          }
+          all.push(...data.contributors)
           writeContributorCache(scrapeId, [...all])
           if (!data.hasMore) break
           page++
         }
       } catch (err) {
-        console.error("[v0] Failed to fetch contributors:", err)
-        setContributorErrors((prev) => new Set(prev).add(scrapeId))
-        toast({ title: "Error", description: "Failed to load contributors", variant: "destructive" })
+        const message = err instanceof Error ? err.message : "Failed to load contributors"
+        setContributorErrors((prev) => new Map(prev).set(scrapeId, { message, nextPage: page }))
+        toast({ title: "Contributor loading paused", description: message, variant: "destructive" })
       } finally {
         contributorFetchesRef.current.delete(scrapeId)
         setLoadingExpansions((prev) => {
@@ -532,12 +535,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   }, [])
 
   const retryContributors = useCallback((scrapeId: string) => {
-    const next = new Map(cacheRef.current)
-    next.delete(scrapeId)
-    cacheRef.current = next
-    setContributorCache(next)
-    void fetchContributors(scrapeId)
-  }, [fetchContributors])
+    const failure = contributorErrors.get(scrapeId)
+    void fetchContributors(scrapeId, failure?.nextPage ?? 1)
+  }, [contributorErrors, fetchContributors])
 
   // ── Toggle expand, triggering fetch on first open ─────────────────────────
   const toggleExpanded = useCallback(
@@ -872,7 +872,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     (scrape: CompletedScrapeSummary) => {
       const isExpanded = expandedScrapes.has(scrape.id)
       const isLoadingContributors = loadingExpansions.has(scrape.id)
-      const hasContributorError = contributorErrors.has(scrape.id)
+      const contributorError = contributorErrors.get(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
       const withContacts = contributors ? contributors.filter(hasContactInfo) : null
       const contactInfoCount = withContacts !== null ? withContacts.length : scrape.contactInfoCount
@@ -1325,9 +1325,15 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       {isLoadingContributors && contributors !== null && (
                         <p className="py-2 text-center text-xs text-muted-foreground">Loading more contributors…</p>
                       )}
-                      {hasContributorError && (
+                      {contributorError && (
                         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
                           <p className="font-medium text-destructive">Contributor loading stopped before completion.</p>
+                          <p className="mt-1 break-words text-xs text-muted-foreground">{contributorError.message}</p>
+                          {contributors !== null && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {contributors.length} contributors remain available. Retry resumes from page {contributorError.nextPage}.
+                            </p>
+                          )}
                           <Button
                             type="button"
                             size="sm"
