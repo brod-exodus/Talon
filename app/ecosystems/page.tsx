@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Layers, ChevronRight, Trash2, Users, Clock } from "lucide-react"
+import { Plus, Layers, ChevronRight, Trash2, Users, Clock, AlertCircle } from "lucide-react"
 import { useAuthPermissions } from "@/lib/client-permissions"
 
 type EcosystemSummary = {
@@ -66,15 +66,21 @@ export default function EcosystemsPage() {
   const [creating, setCreating]     = useState(false)
   const [newName, setNewName]       = useState("")
   const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const newNameInputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
+    setLoading(true)
+    setError(null)
     try {
-      const res = await fetch("/api/ecosystems")
-      const data = await res.json()
+      const res = await fetch("/api/ecosystems", { cache: "no-store" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Projects could not load")
+      if (!Array.isArray(data)) throw new Error("Projects response was incomplete")
       setEcosystems(Array.isArray(data) ? data : [])
     } catch (err) {
-      console.error(err)
+      setError(err instanceof Error ? err.message : "Projects could not load")
     } finally {
       setLoading(false)
     }
@@ -93,18 +99,21 @@ export default function EcosystemsPage() {
     if (!canWrite) return
     if (!newName.trim()) return
     setSaving(true)
+    setError(null)
     try {
       const res = await fetch("/api/ecosystems", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       })
-      const eco = await res.json()
+      const eco = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(eco?.error || "Project could not be created")
+      if (!eco?.id || !eco?.name) throw new Error("Project response was incomplete")
       setEcosystems((prev) => [eco, ...prev])
       setNewName("")
       setCreating(false)
     } catch (err) {
-      console.error(err)
+      setError(err instanceof Error ? err.message : "Project could not be created")
     } finally {
       setSaving(false)
     }
@@ -113,8 +122,22 @@ export default function EcosystemsPage() {
   async function handleDelete(id: string, name: string) {
     if (!canWrite) return
     if (!confirm(`Delete project "${name}"? This cannot be undone.`)) return
-    await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
-    setEcosystems((prev) => prev.filter((e) => e.id !== id))
+    setDeletingIds((current) => new Set(current).add(id))
+    setError(null)
+    try {
+      const response = await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Project could not be deleted")
+      setEcosystems((prev) => prev.filter((ecosystem) => ecosystem.id !== id))
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Project could not be deleted")
+    } finally {
+      setDeletingIds((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
+    }
   }
 
   return (
@@ -138,6 +161,18 @@ export default function EcosystemsPage() {
             </Button>
           )}
         </div>
+
+        {error && (
+          <div className="mb-6 flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2 text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <Button variant="outline" size="sm" className="shrink-0 bg-transparent" onClick={() => void load()}>
+              Retry loading
+            </Button>
+          </div>
+        )}
 
         {/* ── Create form ───────────────────────────────────────────────── */}
         {creating && canWrite && (
@@ -181,7 +216,7 @@ export default function EcosystemsPage() {
         )}
 
         {/* ── Empty state ───────────────────────────────────────────────── */}
-        {!loading && ecosystems.length === 0 && (
+        {!loading && !error && ecosystems.length === 0 && (
           <div className="text-center py-24">
             <Layers className="w-14 h-14 text-muted-foreground/40 mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
@@ -211,7 +246,9 @@ export default function EcosystemsPage() {
                     {canWrite && (
                       <button
                         onClick={(e) => { e.preventDefault(); handleDelete(eco.id, eco.name) }}
+                        disabled={deletingIds.has(eco.id)}
                         className="cursor-pointer opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100"
+                        title={deletingIds.has(eco.id) ? "Deleting Project" : "Delete Project"}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

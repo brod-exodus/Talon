@@ -965,6 +965,19 @@ This release has no migration, environment-variable, or scheduler change. After
 deployment, open a Project, add and remove one scrape, and confirm its contributor
 list refreshes. Roll back by redeploying the prior application version.
 
+### Reliable Projects library
+
+The Projects library now distinguishes an unavailable server from a genuinely
+empty workspace. List, create, and delete requests validate both HTTP status and
+required response shape before changing local state. Failures remain visible
+with a reload action, creation keeps the entered name for correction or retry,
+and failed deletion leaves the Project card intact while releasing its busy
+control.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open Projects, create a temporary Project, open it, return to the
+library, and delete it. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
