@@ -8,6 +8,7 @@ import {
   type SessionInput,
 } from "@/lib/auth-token"
 import { supabaseAdmin } from "@/lib/supabase"
+import { MAX_ACTIVE_AUTH_SESSIONS } from "@/lib/session-limits"
 
 export type SessionRevokeReason = "logout" | "password_change" | "operator"
 
@@ -105,7 +106,7 @@ export async function listActiveAuthSessions(session: AuthSession): Promise<Acti
     .is("revoked_at", null)
     .gt("expires_at", new Date().toISOString())
     .order("issued_at", { ascending: false })
-    .limit(25)
+    .limit(MAX_ACTIVE_AUTH_SESSIONS)
   if (error) throw new Error("Could not list active sessions.")
 
   return (data ?? []).map((row) => ({

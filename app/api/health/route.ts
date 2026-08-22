@@ -120,10 +120,22 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
       }
     }
 
+    const { data: sessionLimitData, error: sessionLimitError } = await supabaseAdmin.rpc(
+      "get_talon_session_limit_contract_issues"
+    )
+    if (sessionLimitError || !Array.isArray(sessionLimitData)) {
+      return {
+        status: "error",
+        message: "Database schema contract could not be verified",
+        detail: `Current v${currentVersion}; session-limit attestation is unavailable. Apply migration ${EXPECTED_SCHEMA_VERSION}.`,
+      }
+    }
+
     const contractIssues = [
       ...parseContractIssues(contractData),
       ...parseContractIssues(appendOnlyData),
       ...parseContractIssues(sessionContractData),
+      ...parseContractIssues(sessionLimitData),
     ]
     if (contractIssues.length > 0) {
       const visibleIssues = contractIssues.slice(0, 5).join(", ")

@@ -324,6 +324,8 @@ registry makes logout immediately revoke the current session and password change
 revoke every session for that user; only keyed identity hashes are persisted.
 Settings lets each account review its active session start and expiry times,
 revoke an individual older session, or sign out every other browser at once.
+The database atomically caps each account at ten active sessions and retires the
+oldest session when concurrent logins would exceed that bound.
 
 ## Deliberately deferred
 

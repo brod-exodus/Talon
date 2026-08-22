@@ -1,0 +1,1 @@
+export const MAX_ACTIVE_AUTH_SESSIONS = 10
