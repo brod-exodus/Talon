@@ -1031,6 +1031,20 @@ deployment, start a public-repository scrape, watch its progress update, and
 exercise an eligible Cancel or Retry action. Roll back by redeploying the prior
 application version.
 
+### Verified scrape acceptance
+
+The scrape form treats a request as accepted only after the API returns HTTP
+202 with a non-empty scrape ID, job ID, explicit queued status, and replay flag.
+Malformed success responses fail closed: the entered target and idempotency key
+remain available for a safe retry, and the UI does not announce a scrape that it
+cannot prove was queued. Project creation follows the same response-validation
+rule, and sanitized API messages remain visible to the user.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, start a public-repository scrape and confirm the success message is
+followed by an Active Scrape entry. Roll back by redeploying the prior
+application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

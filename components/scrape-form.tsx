@@ -36,6 +36,40 @@ type InvalidTargetError = {
 
 type ScrapeSourceType = "organization" | "repository"
 
+type QueuedScrapeResponse = {
+  scrapeId: string
+  jobId: string
+  status: "queued"
+  replayed: boolean
+  rateLimit?: {
+    limit: number
+    remaining: number
+  }
+}
+
+function isQueuedScrapeResponse(value: unknown): value is QueuedScrapeResponse {
+  if (!value || typeof value !== "object") return false
+  const response = value as Partial<QueuedScrapeResponse>
+  return (
+    typeof response.scrapeId === "string" && response.scrapeId.length > 0 &&
+    typeof response.jobId === "string" && response.jobId.length > 0 &&
+    response.status === "queued" &&
+    typeof response.replayed === "boolean" &&
+    (response.rateLimit === undefined || (
+      typeof response.rateLimit.limit === "number" &&
+      typeof response.rateLimit.remaining === "number"
+    ))
+  )
+}
+
+function getPublicApiError(value: unknown, fallback: string): string {
+  if (!value || typeof value !== "object") return fallback
+  const response = value as { error?: unknown; message?: unknown }
+  if (typeof response.error === "string") return response.error
+  if (typeof response.message === "string") return response.message
+  return fallback
+}
+
 export function ScrapeForm() {
   const searchParams = useSearchParams()
   const { canWrite } = useAuthPermissions()
@@ -121,9 +155,12 @@ export function ScrapeForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmedName }),
       })
-      const project = await response.json()
+      const project = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(project?.error || "Failed to create project")
+        throw new Error(getPublicApiError(project, "Failed to create project"))
+      }
+      if (!project || typeof project.id !== "string" || typeof project.name !== "string") {
+        throw new Error("Project creation returned an invalid response")
       }
       const nextProject = { id: project.id, name: project.name }
       setProjects((prev) => [nextProject, ...prev])
@@ -201,8 +238,12 @@ export function ScrapeForm() {
           body: JSON.stringify(requestBody),
         })
 
+        const data = await response.json().catch(() => null)
+
         if (!response.ok) {
-          const error = await response.json().catch(() => null)
+          const error = data && typeof data === "object"
+            ? data as { code?: unknown; message?: unknown }
+            : null
           if (error?.code === "github_target_not_found") {
             setInvalidTargetError({
               type,
@@ -213,10 +254,12 @@ export function ScrapeForm() {
             })
             return
           }
-          throw new Error(error?.error || "Failed to start scrape")
+          throw new Error(getPublicApiError(data, "Failed to start scrape"))
         }
 
-        const data = await response.json()
+        if (response.status !== 202 || !isQueuedScrapeResponse(data)) {
+          throw new Error("Talon could not confirm that the scrape was queued")
+        }
         pendingRequestRef.current = null
 
         const rateLimitMsg = data.rateLimit ? ` Rate limit: ${data.rateLimit.remaining}/${data.rateLimit.limit}` : ""
@@ -230,7 +273,6 @@ export function ScrapeForm() {
 
         setTarget("")
       } catch (error) {
-        console.error("[v0] Scrape error:", error)
         toast({
           title: "Error",
           description: error instanceof Error ? error.message : "Failed to start scrape",
