@@ -875,6 +875,21 @@ No environment variable or scheduler change is required. The trigger is
 compatible with the previous application, so migration 046 may remain installed
 during rollback.
 
+### Safe API error boundary
+
+High-risk scrape, contributor-outreach, and share routes never return caught
+exception text to the browser. Unexpected failures use a stable public message,
+include the request ID already attached to the operation, disable caching, and
+write the underlying failure through Talon's sanitized structured logger. Known
+and intentionally public outcomes, such as invalid input, a missing scrape, or
+an idempotency conflict, retain their explicit 4xx responses.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, exercise one validation failure and confirm its useful 4xx message
+is unchanged. When diagnosing an unexpected 500, copy the response `requestId`
+and search Vercel logs for that value; do not add raw exception messages back to
+API responses. Roll back by redeploying the previous application build.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

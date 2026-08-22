@@ -290,4 +290,18 @@ describe("POST /api/scrape", () => {
     expect(routeMocks.recordAuditEvent).not.toHaveBeenCalled()
     expect(routeMocks.afterTasks).toHaveLength(0)
   })
+
+  test("returns a correlated safe error without exposing enqueue internals", async () => {
+    routeMocks.enqueueScrape.mockRejectedValue(
+      new Error("password=database-secret relation public.scrape_jobs is unavailable")
+    )
+
+    const response = await POST(scrapeRequest({ type: "repository", target: "octocat/Hello-World" }))
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body).toEqual({ error: "Failed to start scrape", requestId: REQUEST_ID })
+    expect(JSON.stringify(body)).not.toContain("database-secret")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+  })
 })

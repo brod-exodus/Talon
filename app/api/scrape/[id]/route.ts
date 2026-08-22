@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import {
   getContactableScrapeContributorsPage,
@@ -64,10 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
     logError("scrape.read_failed", error, { requestId })
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to get scrape status" },
-      { status: 500 }
-    )
+    return internalErrorResponse("scrape_read_failed", requestId)
   }
 }
 
