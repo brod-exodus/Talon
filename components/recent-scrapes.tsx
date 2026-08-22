@@ -160,6 +160,14 @@ function triggerDownload(content: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
+function getPublicApiError(value: unknown, fallback: string): string {
+  if (!value || typeof value !== "object") return fallback
+  const response = value as { error?: unknown; message?: unknown }
+  if (typeof response.error === "string") return response.error
+  if (typeof response.message === "string") return response.message
+  return fallback
+}
+
 // ─── OutreachFields ───────────────────────────────────────────────────────────
 // Owns local state for notes + date so typing is instant.
 // Flushes to the parent (and API) only on blur, not on every keystroke.
@@ -347,6 +355,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [deleteDialogScrape, setDeleteDialogScrape] = useState<CompletedScrapeSummary | null>(null)
   const [deletingScrapeId, setDeletingScrapeId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
+  const [lastListLoadedAt, setLastListLoadedAt] = useState<Date | null>(null)
   const { toast } = useToast()
 
   // Stable ref so fetchContributors doesn't need contributorCache as a dep
@@ -402,13 +412,24 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         type: tabToScrapeType(activeTab),
       })
       const res = await fetch(`/api/scrapes/recent?${params.toString()}`, { cache: "no-store" })
-      const data = await res.json()
-      const completed = Array.isArray(data.completed) ? data.completed : []
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(getPublicApiError(data, "Completed scrapes could not load"))
+      if (
+        !data ||
+        !Array.isArray(data.completed) ||
+        !Array.isArray(data.failed) ||
+        typeof data.hasMore !== "boolean"
+      ) {
+        throw new Error("Completed scrapes returned an invalid response")
+      }
+      const completed = data.completed
       setScrapes((prev) => (append ? [...prev, ...completed] : completed))
-      if (!append) setFailedScrapes(Array.isArray(data.failed) ? data.failed : [])
-      setHasMoreScrapes(Boolean(data.hasMore))
+      if (!append) setFailedScrapes(data.failed)
+      setHasMoreScrapes(data.hasMore)
+      setListError(null)
+      setLastListLoadedAt(new Date())
     } catch (err) {
-      console.error("[v0] Failed to fetch scrapes:", err)
+      setListError(err instanceof Error ? err.message : "Completed scrapes could not load")
     } finally {
       setIsLoading(false)
       setIsLoadingMore(false)
@@ -1500,6 +1521,26 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     <TooltipProvider>
       <div className="space-y-4">
         <FailedScrapes />
+        {listError && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Completed scrapes could not refresh</p>
+                <p className="break-words text-xs text-muted-foreground">{listError}</p>
+                {lastListLoadedAt && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Showing the last update from {lastListLoadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={fetchScrapes}>
+              <RotateCw className="mr-1 h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
           <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -1529,14 +1570,14 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
 
           <TabsContent value="repositories" className="space-y-4 mt-6">
             {repoScrapes.length === 0
-              ? <EmptyState type="repository" />
+              ? (listError ? null : <EmptyState type="repository" />)
               : <div className="grid grid-cols-1 gap-3">{repoScrapes.map(renderScrapeCard)}</div>
             }
           </TabsContent>
 
           <TabsContent value="organizations" className="space-y-4 mt-6">
             {orgScrapes.length === 0
-              ? <EmptyState type="organization" />
+              ? (listError ? null : <EmptyState type="organization" />)
               : <div className="grid grid-cols-1 gap-3">{orgScrapes.map(renderScrapeCard)}</div>
             }
           </TabsContent>
