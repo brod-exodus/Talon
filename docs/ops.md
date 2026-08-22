@@ -1006,6 +1006,18 @@ deployment, start a scrape, confirm its operation updates, and exercise Cancel
 or Retry on an eligible job. Roll back by redeploying the prior application
 version.
 
+### Reliable production diagnostics
+
+Production Readiness preserves the last successful health snapshot when its
+automatic refresh fails. The panel marks the snapshot as stale, keeps the
+original check time visible, and lets the operator retry immediately. Initial
+load failures are shown as unavailable diagnostics rather than an empty or
+healthy state, and malformed responses fail closed.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open Settings as an admin, refresh Production Readiness, and confirm
+the check time advances. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
