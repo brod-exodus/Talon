@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { setAuthCookie } from "@/lib/auth"
 import { issueSessionToken } from "@/lib/auth-sessions"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
@@ -8,6 +9,8 @@ import { ensurePrivateWorkspaceForUser } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
 import { requireSameOrigin } from "@/lib/request-origin"
 import { isSelfServiceSignupEnabled } from "@/lib/registration-policy"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 const PASSWORD_MIN_LENGTH = 8
 
@@ -30,6 +33,7 @@ function normalizeDisplayName(value: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const originError = requireSameOrigin(request)
   if (originError) return originError
 
@@ -108,7 +112,7 @@ export async function POST(request: NextRequest) {
     setAuthCookie(response, token)
     return response
   } catch (error) {
-    console.error("[auth/signup] POST error:", error)
-    return NextResponse.json({ error: "Could not create account." }, { status: 500 })
+    logError("auth.signup_failed", error, { requestId })
+    return internalErrorResponse("auth_signup_failed", requestId)
   }
 }

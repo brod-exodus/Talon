@@ -1,10 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent, hashAuditValue } from "@/lib/audit"
 import { requirePermission } from "@/lib/permissions"
 import { type AuthRole } from "@/lib/permission-rules"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid, readJsonObject } from "@/lib/validation"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 const ROLES: AuthRole[] = ["owner", "admin", "recruiter", "viewer"]
 
@@ -67,6 +70,7 @@ function isLastOwnerError(error: { code?: string; message?: string }): boolean {
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
@@ -108,15 +112,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const authUser = await findAuthUserByEmail(target.email)
     return NextResponse.json({ member: mapTeamMember(target, authUser) })
   } catch (error) {
-    console.error("[team-members] PATCH error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
-    return NextResponse.json({ error: "Failed to update team member" }, { status: 500 })
+    logError("team_member.update_failed", error, { requestId })
+    return internalErrorResponse("team_member_update_failed", requestId)
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
@@ -152,10 +157,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("[team-members] DELETE error:", error)
     if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
-    return NextResponse.json({ error: "Failed to remove team member" }, { status: 500 })
+    logError("team_member.remove_failed", error, { requestId })
+    return internalErrorResponse("team_member_remove_failed", requestId)
   }
 }

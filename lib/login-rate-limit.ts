@@ -1,5 +1,7 @@
 import { type NextRequest } from "next/server"
 import { getClientIp, hashAuditValue } from "@/lib/audit"
+import { logWarnError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { supabaseAdmin } from "@/lib/supabase"
 
 const MAX_ATTEMPTS = 5
@@ -65,7 +67,7 @@ export async function checkLoginRateLimit(request: NextRequest): Promise<RateLim
     }
     return { allowed: true }
   } catch (error) {
-    console.warn("[auth] Persistent login rate limit unavailable; using fallback:", error)
+    logWarnError("auth.rate_limit_check_fallback", error, { requestId: getRequestId(request) })
     return fallbackDecision(key)
   }
 }
@@ -97,7 +99,7 @@ export async function recordLoginFailure(request: NextRequest): Promise<void> {
     })
     if (upsertError) throw upsertError
   } catch (error) {
-    console.warn("[auth] Failed to persist login failure; using fallback:", error)
+    logWarnError("auth.rate_limit_write_fallback", error, { requestId: getRequestId(request) })
     fallbackFailure(key)
   }
 }
@@ -108,7 +110,7 @@ export async function resetLoginRateLimit(request: NextRequest): Promise<void> {
     const { error } = await supabaseAdmin.from("auth_rate_limits").delete().eq("key", key)
     if (error) throw error
   } catch (error) {
-    console.warn("[auth] Failed to reset persistent login rate limit:", error)
+    logWarnError("auth.rate_limit_reset_failed", error, { requestId: getRequestId(request) })
   } finally {
     fallbackReset(key)
   }

@@ -890,6 +890,21 @@ is unchanged. When diagnosing an unexpected 500, copy the response `requestId`
 and search Vercel logs for that value; do not add raw exception messages back to
 API responses. Roll back by redeploying the previous application build.
 
+### Sanitized identity and administrator logs
+
+Authentication, login throttling, authorization, profile, teammate-management,
+and Slack-test failures are emitted as structured JSON events. The logger
+redacts credentials, bearer values, email addresses, URLs, and sensitive context
+keys before serialization. Request IDs are retained so an operator can connect a
+safe browser response to its server-side event without logging the user's email,
+password, webhook URL, profile photo path, or raw provider response.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, perform one failed login and one successful administrator action,
+then confirm Vercel logs contain structured event names and request IDs without
+the submitted credentials or email address. Roll back by redeploying the prior
+application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

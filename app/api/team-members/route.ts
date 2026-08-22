@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { getAuthSession } from "@/lib/auth"
 import { recordAuditEvent, hashAuditValue } from "@/lib/audit"
 import { requirePermission } from "@/lib/permissions"
@@ -7,6 +8,8 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { ensurePrivateWorkspaceForUser } from "@/lib/team-membership"
 import { readJsonObject } from "@/lib/validation"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 const ROLES: AuthRole[] = ["owner", "admin", "recruiter", "viewer"]
 const PASSWORD_MIN_LENGTH = 8
@@ -92,6 +95,7 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserSummary | nul
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
@@ -112,11 +116,12 @@ export async function GET(request: NextRequest) {
       }),
     })
   } catch (error) {
-    return teamContextError(error)
+    return teamContextError(error, requestId)
   }
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "manage_members")
   if (authError) return authError
 
@@ -198,7 +203,10 @@ export async function POST(request: NextRequest) {
       privateWorkspaceProvisioned: true,
     })
   } catch (error) {
-    console.error("[team-members] POST error:", error)
-    return NextResponse.json({ error: "Failed to save team member" }, { status: 500 })
+    if (error instanceof Error && (error.message.includes("Default team is missing") || error.message.includes("not a member"))) {
+      return teamContextError(error, requestId)
+    }
+    logError("team_member.save_failed", error, { requestId })
+    return internalErrorResponse("team_member_save_failed", requestId)
   }
 }

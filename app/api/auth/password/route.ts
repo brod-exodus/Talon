@@ -1,10 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { clearAuthCookie, getAuthSession } from "@/lib/auth"
 import { revokeAllAuthSessions } from "@/lib/auth-sessions"
 import { hashAuditValue, recordAuditEvent } from "@/lib/audit"
 import { supabaseAdmin, supabaseAuth } from "@/lib/supabase"
 import { readJsonObject } from "@/lib/validation"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_MAX_LENGTH = 128
@@ -16,6 +19,7 @@ function normalizePassword(value: unknown): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -58,7 +62,7 @@ export async function POST(request: NextRequest) {
   })
 
   if (updateError) {
-    console.error("[auth/password] update error:", updateError)
+    logError("auth.password_update_failed", updateError, { requestId, teamId: session.teamId })
     await recordAuditEvent({
       request,
       action: "auth.password_change",
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
       teamId: session.teamId,
       metadata: { reason: "update_failed", emailHash: hashAuditValue(session.email) },
     })
-    return NextResponse.json({ error: "Failed to update password." }, { status: 500 })
+    return internalErrorResponse("auth_password_update_failed", requestId)
   }
 
   try {
