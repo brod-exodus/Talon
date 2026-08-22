@@ -919,6 +919,21 @@ deployment, confirm normal dashboard, retry, cancellation, rate-limit, and
 watched-repository behavior. Use a returned `requestId` to correlate any 500 with
 Vercel logs. Roll back by redeploying the prior application version.
 
+### Complete API logging boundary
+
+Every API route now sends operational diagnostics through Talon's structured,
+sanitizing logger. Project, contributor, pipeline, follow-up, audit, activity,
+and search failures return stable catalogued messages with request IDs instead
+of exposing provider or database details. Development metrics retain aggregate
+counts, payload size, and duration without recording search terms or filters.
+A repository-wide test prevents any API route from reintroducing direct console
+logging.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, verify Projects, Pipeline, Search, contributor profiles, and project
+lists load normally. Correlate any safe 500 response with Vercel logs using its
+`requestId`. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

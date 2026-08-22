@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
+import { logError, logInfo } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
@@ -57,7 +60,7 @@ function formatScrapeStatus(status: string): string {
   return "Scrape"
 }
 
-function jsonWithDevMetrics(startedAt: number, query: string, payload: unknown) {
+function jsonWithDevMetrics(requestId: string, startedAt: number, query: string, payload: unknown) {
   if (process.env.NODE_ENV !== "production") {
     const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8")
     const data = payload as {
@@ -68,7 +71,9 @@ function jsonWithDevMetrics(startedAt: number, query: string, payload: unknown) 
         watchedRepos?: unknown[]
       }
     }
-    console.info("[search] GET", {
+    logInfo("search.read", {
+      requestId,
+      details: {
       queryLength: query.length,
       counts: {
         contributors: data.groups?.contributors?.length ?? 0,
@@ -78,12 +83,14 @@ function jsonWithDevMetrics(startedAt: number, query: string, payload: unknown) 
       },
       bytes,
       durationMs: Math.round(performance.now() - startedAt),
+      },
     })
   }
   return NextResponse.json(payload)
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -91,7 +98,7 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? ""
   const normalizedQuery = normalizeSearchQuery(query)
   if (normalizedQuery.length < 2) {
-    return jsonWithDevMetrics(startedAt, normalizedQuery, {
+    return jsonWithDevMetrics(requestId, startedAt, normalizedQuery, {
       query,
       groups: { contributors: [], scrapes: [], projects: [], watchedRepos: [] },
     })
@@ -174,11 +181,11 @@ export async function GET(request: NextRequest) {
       })),
     }
 
-    return jsonWithDevMetrics(startedAt, normalizedQuery, { query, groups })
+    return jsonWithDevMetrics(requestId, startedAt, normalizedQuery, { query, groups })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[search] GET error:", error)
-    return NextResponse.json({ error: "Failed to search Talon" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("search.read_failed", error, { requestId })
+    return internalErrorResponse("search_failed", requestId)
   }
 }

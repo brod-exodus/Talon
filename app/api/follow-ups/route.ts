@@ -1,9 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { requirePermission } from "@/lib/permissions"
 import { getDueProjectFollowUps } from "@/lib/db"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -12,15 +16,9 @@ export async function GET(request: NextRequest) {
     const followUps = await getDueProjectFollowUps(teamId)
     return NextResponse.json({ followUps })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
-    console.error("[follow-ups] GET error:", {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-      details: error && typeof error === "object" && "details" in error ? error.details : undefined,
-      hint: error && typeof error === "object" && "hint" in error ? error.hint : undefined,
-    })
-    return NextResponse.json({ error: "Failed to fetch follow-ups" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
+    logError("follow_ups.list_failed", error, { requestId })
+    return internalErrorResponse("follow_up_list_failed", requestId)
   }
 }

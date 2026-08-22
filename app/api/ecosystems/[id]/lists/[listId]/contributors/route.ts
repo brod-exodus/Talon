@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { addContributorToProjectList } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid, readJsonObject } from "@/lib/validation"
 
@@ -8,6 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> }
 ) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -25,8 +29,8 @@ export async function POST(
     await addContributorToProjectList(ecosystemId, projectListId, contributorId, teamId)
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message.includes("not a member")) return teamContextError(error, requestId)
     if (error instanceof Error && error.message.includes("Project list not found")) {
       return NextResponse.json({ error: "Project list not found" }, { status: 404 })
     }
@@ -36,7 +40,7 @@ export async function POST(
     if (error && typeof error === "object" && "code" in error && error.code === "23505") {
       return NextResponse.json({ error: "Contributor is already in this list" }, { status: 409 })
     }
-    console.error("[ecosystems/[id]/lists/[listId]/contributors] POST error:", error)
-    return NextResponse.json({ error: "Failed to save contributor to list" }, { status: 500 })
+    logError("ecosystem_list_members.add_failed", error, { requestId })
+    return internalErrorResponse("ecosystem_list_member_add_failed", requestId)
   }
 }

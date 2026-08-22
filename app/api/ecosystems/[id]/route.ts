@@ -1,18 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { getEcosystem, deleteEcosystem } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requirePermission(_request, "read")
+  const requestId = getRequestId(request)
+  const authError = await requirePermission(request, "read")
   if (authError) return authError
 
   try {
-    const { teamId } = await resolveTeamContext(_request)
+    const { teamId } = await resolveTeamContext(request)
     const { id } = await params
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) {
@@ -24,21 +28,22 @@ export async function GET(
     }
     return NextResponse.json({ ecosystem })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[ecosystems/[id]] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch project" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("ecosystem.read_failed", error, { requestId })
+    return internalErrorResponse("ecosystem_read_failed", requestId)
   }
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requirePermission(_request, "write")
+  const requestId = getRequestId(request)
+  const authError = await requirePermission(request, "write")
   if (authError) return authError
 
   try {
-    const { teamId } = await resolveTeamContext(_request)
+    const { teamId } = await resolveTeamContext(request)
     const { id } = await params
     const ecosystemId = normalizeUuid(id)
     if (!ecosystemId) {
@@ -47,8 +52,8 @@ export async function DELETE(
     await deleteEcosystem(ecosystemId, teamId)
     return NextResponse.json({ success: true })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[ecosystems/[id]] DELETE error:", error)
-    return NextResponse.json({ error: "Failed to delete project" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("ecosystem.delete_failed", error, { requestId })
+    return internalErrorResponse("ecosystem_delete_failed", requestId)
   }
 }
