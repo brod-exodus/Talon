@@ -27,6 +27,7 @@ const INTERNAL_ERROR_MESSAGES = {
   profile_photo_upload_failed: "Failed to upload profile photo",
   profile_update_failed: "Failed to update profile",
   scrape_enqueue_failed: "Failed to start scrape",
+  scrape_delete_failed: "Failed to delete scrape",
   scrape_job_cancel_failed: "Failed to cancel scrape job",
   scrape_job_list_failed: "Failed to fetch scrape jobs",
   scrape_job_retry_failed: "Failed to retry scrape job",
@@ -46,16 +47,52 @@ const INTERNAL_ERROR_MESSAGES = {
   watched_repo_create_failed: "Failed to add watched repo",
   watched_repo_delete_failed: "Failed to delete watched repo",
   watched_repo_list_failed: "Failed to fetch watched repos",
+  watched_repo_check_failed: "Failed to queue watched repository checks",
   github_rate_limit_check_failed: "Failed to check rate limit",
 } as const
 
+const SERVICE_ERROR_MESSAGES = {
+  auth_logout_revoke_unavailable: { message: "Signed out locally, but the server session could not be revoked.", status: 503 },
+  auth_password_session_revoke_unavailable: { message: "Password changed, but existing sessions could not be revoked. Contact an administrator.", status: 503 },
+  auth_session_list_unavailable: { message: "Could not load active sessions.", status: 503 },
+  auth_session_revoke_unavailable: { message: "Could not revoke active sessions.", status: 503 },
+  github_credentials_invalid: { message: "The configured GitHub token is invalid.", status: 502 },
+  github_not_configured: { message: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment.", status: 503 },
+  keepalive_auth_session_retention_failed: { message: "Auth session retention cleanup failed", status: 500 },
+  keepalive_database_check_failed: { message: "Supabase keepalive query failed", status: 500 },
+  keepalive_failed: { message: "Supabase keepalive failed", status: 500 },
+  keepalive_notification_retention_failed: { message: "Notification retention cleanup failed", status: 500 },
+  keepalive_retention_failed: { message: "Supabase retention cleanup failed", status: 500 },
+  keepalive_run_persist_failed: { message: "Supabase keepalive status recording failed", status: 500 },
+  profile_photo_storage_not_ready: { message: "Profile photo storage is not ready. Apply db/migrations/012_team_profile_photos.sql.", status: 500 },
+  profile_storage_not_ready: { message: "Profile storage is not ready. Apply db/migrations/012_team_profile_photos.sql.", status: 500 },
+  project_tracking_migration_missing: { message: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.", status: 503 },
+  project_tracking_fetch_failed: { message: "Project tracking could not load. Check server logs for Supabase error details.", status: 500 },
+  project_tracking_update_failed: { message: "Failed to update project tracking", status: 500 },
+  project_tracking_schema_outdated: { message: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.", status: 503 },
+  project_tracking_unique_constraint_missing: { message: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.", status: 503 },
+  slack_webhook_rejected: { message: "Slack rejected the webhook request. Please check the URL.", status: 502 },
+} as const
+
 export type InternalErrorCode = keyof typeof INTERNAL_ERROR_MESSAGES
+export type ServiceErrorCode = keyof typeof SERVICE_ERROR_MESSAGES
 
 export function internalErrorResponse(code: InternalErrorCode, requestId: string): NextResponse {
   return NextResponse.json(
     { error: INTERNAL_ERROR_MESSAGES[code], requestId },
     {
       status: 500,
+      headers: { "Cache-Control": "private, no-store" },
+    }
+  )
+}
+
+export function serviceErrorResponse(code: ServiceErrorCode, requestId: string): NextResponse {
+  const error = SERVICE_ERROR_MESSAGES[code]
+  return NextResponse.json(
+    { error: error.message, code, requestId },
+    {
+      status: error.status,
       headers: { "Cache-Control": "private, no-store" },
     }
   )

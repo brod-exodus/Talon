@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { logError, logWarn } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
@@ -27,10 +27,7 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       logWarn("slack.test_rejected", { requestId, details: { status: res.status } })
-      return NextResponse.json(
-        { error: "Slack rejected the webhook request. Please check the URL." },
-        { status: 502 }
-      )
+      return serviceErrorResponse("slack_webhook_rejected", requestId)
     }
 
     return NextResponse.json({ success: true })

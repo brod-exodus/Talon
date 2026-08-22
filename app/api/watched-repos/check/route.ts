@@ -1,4 +1,5 @@
 import { after, type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { hasCronSecret } from "@/lib/auth"
 import { recordAuditEvent } from "@/lib/audit"
 import { enqueueDueWatchedRepoScrapes } from "@/lib/db"
@@ -97,6 +98,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.message.includes("Default team is missing")) {
       return teamContextError(error, requestId)
     }
-    return NextResponse.json({ error: "Failed to queue watched repository checks" }, { status: 500 })
+    return internalErrorResponse("watched_repo_check_failed", requestId)
   }
 }

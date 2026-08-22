@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { serviceErrorResponse } from "@/lib/api-error-response"
 import {
   buildSloMonitorState,
   formatSloSlackMessage,
@@ -80,27 +81,27 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       logError("keepalive.database_check_failed", error, { requestId })
-      return NextResponse.json({ error: "Supabase keepalive query failed" }, { status: 500 })
+      return serviceErrorResponse("keepalive_database_check_failed", requestId)
     }
 
     const { data: retention, error: retentionError } = await supabase.rpc("cleanup_talon_retention")
     if (retentionError) {
       logError("keepalive.retention_failed", retentionError, { requestId })
-      return NextResponse.json({ error: "Supabase retention cleanup failed" }, { status: 500 })
+      return serviceErrorResponse("keepalive_retention_failed", requestId)
     }
     const { data: notificationRetention, error: notificationRetentionError } = await supabase.rpc(
       "cleanup_notification_delivery_retention"
     )
     if (notificationRetentionError) {
       logError("keepalive.notification_retention_failed", notificationRetentionError, { requestId })
-      return NextResponse.json({ error: "Notification retention cleanup failed" }, { status: 500 })
+      return serviceErrorResponse("keepalive_notification_retention_failed", requestId)
     }
     const { data: authSessionRetention, error: authSessionRetentionError } = await supabase.rpc(
       "cleanup_talon_auth_sessions"
     )
     if (authSessionRetentionError) {
       logError("keepalive.auth_session_retention_failed", authSessionRetentionError, { requestId })
-      return NextResponse.json({ error: "Auth session retention cleanup failed" }, { status: 500 })
+      return serviceErrorResponse("keepalive_auth_session_retention_failed", requestId)
     }
     const retentionDetails = {
       ...(retention && typeof retention === "object" && !Array.isArray(retention) ? retention : {}),
@@ -176,12 +177,12 @@ export async function GET(request: NextRequest) {
     })
     if (runError) {
       logError("keepalive.run_persist_failed", runError, { requestId })
-      return NextResponse.json({ error: "Supabase keepalive status recording failed" }, { status: 500 })
+      return serviceErrorResponse("keepalive_run_persist_failed", requestId)
     }
 
     return NextResponse.json({ success: true, timestamp, retention: retentionDetails, sloMonitor })
   } catch (error) {
     logError("keepalive.failed", error, { requestId })
-    return NextResponse.json({ error: "Supabase keepalive failed" }, { status: 500 })
+    return serviceErrorResponse("keepalive_failed", requestId)
   }
 }

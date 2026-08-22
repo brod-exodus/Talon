@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { serviceErrorResponse, type ServiceErrorCode } from "@/lib/api-error-response"
 import { getProjectContributorTracking, upsertProjectContributorTracking } from "@/lib/db"
 import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
@@ -18,8 +19,10 @@ type RouteContext = {
 
 type ProjectTrackingDbIssue = {
   error: string
-  code: string
-  status: number
+  code: Extract<ServiceErrorCode,
+    | "project_tracking_schema_outdated"
+    | "project_tracking_unique_constraint_missing"
+    | "project_tracking_migration_missing">
   allowFetchFallback?: boolean
 }
 
@@ -34,7 +37,6 @@ function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
     return {
       error: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
       code: "project_tracking_schema_outdated",
-      status: 503,
       allowFetchFallback: true,
     }
   }
@@ -43,7 +45,6 @@ function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
     return {
       error: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.",
       code: "project_tracking_unique_constraint_missing",
-      status: 503,
     }
   }
 
@@ -55,7 +56,6 @@ function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
     return {
       error: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.",
       code: "project_tracking_migration_missing",
-      status: 503,
       allowFetchFallback: true,
     }
   }
@@ -66,25 +66,12 @@ function projectTrackingDbIssue(error: unknown): ProjectTrackingDbIssue | null {
 function projectTrackingDbError(error: unknown, action: "fetch" | "update", requestId: string) {
   const issue = projectTrackingDbIssue(error)
   if (issue) {
-    return NextResponse.json(
-      {
-        error: issue.error,
-        code: issue.code,
-      },
-      { status: issue.status }
-    )
+    return serviceErrorResponse(issue.code, requestId)
   }
 
-  return NextResponse.json(
-    {
-      error:
-        action === "fetch"
-          ? "Project tracking could not load. Check server logs for Supabase error details."
-          : "Failed to update project tracking",
-      code: "project_tracking_request_failed",
-      requestId,
-    },
-    { status: 500 }
+  return serviceErrorResponse(
+    action === "fetch" ? "project_tracking_fetch_failed" : "project_tracking_update_failed",
+    requestId
   )
 }
 

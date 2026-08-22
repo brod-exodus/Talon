@@ -135,7 +135,11 @@ describe("GET /api/keepalive", () => {
     const response = await GET(request())
 
     expect(response.status).toBe(500)
-    await expect(response.json()).resolves.toEqual({ error: "Supabase retention cleanup failed" })
+    await expect(response.json()).resolves.toEqual({
+      error: "Supabase retention cleanup failed",
+      code: "keepalive_retention_failed",
+      requestId: expect.any(String),
+    })
     expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
   })
 
@@ -147,7 +151,11 @@ describe("GET /api/keepalive", () => {
     const response = await GET(request())
 
     expect(response.status).toBe(500)
-    await expect(response.json()).resolves.toEqual({ error: "Notification retention cleanup failed" })
+    await expect(response.json()).resolves.toEqual({
+      error: "Notification retention cleanup failed",
+      code: "keepalive_notification_retention_failed",
+      requestId: expect.any(String),
+    })
     expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
   })
 
@@ -163,7 +171,11 @@ describe("GET /api/keepalive", () => {
     const response = await GET(request())
 
     expect(response.status).toBe(500)
-    await expect(response.json()).resolves.toEqual({ error: "Auth session retention cleanup failed" })
+    await expect(response.json()).resolves.toEqual({
+      error: "Auth session retention cleanup failed",
+      code: "keepalive_auth_session_retention_failed",
+      requestId: expect.any(String),
+    })
     expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
   })
 

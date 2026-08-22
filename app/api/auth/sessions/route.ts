@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { serviceErrorResponse } from "@/lib/api-error-response"
 import { getAuthSession } from "@/lib/auth"
 import {
   listActiveAuthSessions,
@@ -6,12 +7,15 @@ import {
   revokeOtherAuthSessions,
 } from "@/lib/auth-sessions"
 import { recordAuditEvent } from "@/lib/audit"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 import { readJsonObject } from "@/lib/validation"
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -33,12 +37,14 @@ export async function GET(request: NextRequest) {
         current: item.sessionId === session.sessionId,
       })),
     })
-  } catch {
-    return NextResponse.json({ error: "Could not load active sessions." }, { status: 503 })
+  } catch (error) {
+    logError("auth.sessions_list_failed", error, { requestId })
+    return serviceErrorResponse("auth_session_list_unavailable", requestId)
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -76,7 +82,8 @@ export async function DELETE(request: NextRequest) {
       metadata: { scope: "selected", revoked },
     })
     return NextResponse.json({ success: true, revoked })
-  } catch {
+  } catch (error) {
+    logError("auth.sessions_revoke_failed", error, { requestId })
     await recordAuditEvent({
       request,
       action: "auth.session_revoke",
@@ -84,6 +91,6 @@ export async function DELETE(request: NextRequest) {
       teamId: session.actor === "user" ? session.teamId : null,
       metadata: { reason: "session_revocation_failed" },
     })
-    return NextResponse.json({ error: "Could not revoke active sessions." }, { status: 503 })
+    return serviceErrorResponse("auth_session_revoke_unavailable", requestId)
   }
 }

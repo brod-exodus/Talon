@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { internalErrorResponse } from "@/lib/api-error-response"
+import { internalErrorResponse, serviceErrorResponse } from "@/lib/api-error-response"
 import { getActiveGitHubCooldown } from "@/lib/db"
-import { logError } from "@/lib/logger"
+import { logError, logWarn } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
 
@@ -13,10 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const token = process.env.GITHUB_TOKEN?.trim()
     if (!token) {
-      return NextResponse.json(
-        { error: "GitHub access is not configured. Set GITHUB_TOKEN in the deployment environment." },
-        { status: 503 }
-      )
+      return serviceErrorResponse("github_not_configured", requestId)
     }
 
     const cooldown = await getActiveGitHubCooldown()
@@ -39,7 +36,8 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "The configured GitHub token is invalid." }, { status: 502 })
+      logWarn("github.credentials_invalid", { requestId, details: { status: response.status } })
+      return serviceErrorResponse("github_credentials_invalid", requestId)
     }
 
     const data = await response.json()
