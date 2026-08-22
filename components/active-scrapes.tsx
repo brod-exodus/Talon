@@ -41,6 +41,9 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
   const { canWrite } = useAuthPermissions()
   const [scrapes, setScrapes] = useState<ActiveScrape[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [pollError, setPollError] = useState<string | null>(null)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
   const { toast } = useToast()
@@ -57,8 +60,22 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     const fetchScrapes = async () => {
       try {
         const response = await fetch("/api/scrapes/active", { cache: "no-store" })
-        if (!response.ok) throw new Error(`Failed to fetch active scrapes (${response.status})`)
-        const data = await response.json()
+        const data = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(
+            data && typeof data.error === "string"
+              ? data.error
+              : `Active scrape progress could not load (${response.status})`
+          )
+        }
+        if (
+          !data ||
+          !Array.isArray(data.active) ||
+          !Array.isArray(data.completed) ||
+          !Array.isArray(data.failed)
+        ) {
+          throw new Error("Active scrape progress returned an invalid response")
+        }
         const result = reconcileActiveScrapePoll(scrapesRef.current, {
           active: data.active,
           completed: data.completed,
@@ -67,9 +84,13 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
         if (cancelled) return
         scrapesRef.current = result.active
         setScrapes(result.active)
+        setPollError(null)
+        setLastUpdatedAt(new Date())
         if (result.didComplete) onScrapeCompletedRef.current?.()
       } catch (error) {
-        console.error("[v0] Failed to fetch scrapes:", error)
+        if (!cancelled) {
+          setPollError(error instanceof Error ? error.message : "Active scrape progress could not load")
+        }
       } finally {
         if (!cancelled) setIsLoading(false)
       }
@@ -81,7 +102,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
       cancelled = true
       clearInterval(interval)
     }
-  }, [])
+  }, [refreshKey])
 
   const formatTimeAgo = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000)
@@ -113,7 +134,10 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     setCanceling((prev) => new Set(prev).add(jobId))
     try {
       const response = await fetch(`/api/scrape-jobs/${jobId}/cancel`, { method: "POST" })
-      if (!response.ok) throw new Error("Failed to cancel scrape")
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Failed to cancel scrape")
+      }
       toast({ title: "Scrape canceled", description: "Processing will stop safely shortly." })
     } catch (error) {
       toast({
@@ -135,9 +159,9 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     setRetrying((prev) => new Set(prev).add(jobId))
     try {
       const response = await fetch(`/api/scrape-jobs/${jobId}/retry`, { method: "POST" })
+      const data = await response.json().catch(() => null)
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to retry scrape")
+        throw new Error(data && typeof data.error === "string" ? data.error : "Failed to retry scrape")
       }
       toast({ title: "Retry queued", description: "The scrape will run again shortly." })
     } catch (error) {
@@ -178,7 +202,7 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
     )
   }
 
-  if (scrapes.length === 0) {
+  if (scrapes.length === 0 && !pollError) {
     return null
   }
 
@@ -188,6 +212,27 @@ export const ActiveScrapes = memo(function ActiveScrapes({ onScrapeCompleted }: 
         <Activity className="w-5 h-5 text-primary" />
         <h2 className="text-2xl font-semibold tracking-tight">Active Scrapes</h2>
       </div>
+
+      {pollError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Active scrape progress could not refresh</p>
+              <p className="break-words text-xs text-muted-foreground">{pollError}</p>
+              {lastUpdatedAt && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Showing progress from {lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+                </p>
+              )}
+            </div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setRefreshKey((key) => key + 1)}>
+            <RotateCw className="mr-1 h-3 w-3" />
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-4">
         {scrapes.map((scrape, index) => (

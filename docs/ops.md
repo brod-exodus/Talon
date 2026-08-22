@@ -1018,6 +1018,19 @@ This release has no migration, environment-variable, or scheduler change. After
 deployment, open Settings as an admin, refresh Production Readiness, and confirm
 the check time advances. Roll back by redeploying the prior application version.
 
+### Reliable active-scrape progress
+
+Active Scrapes preserves the last successful progress snapshot when polling
+fails, marks the retained data with its update time, and provides an immediate
+retry action. An initial polling failure remains visible instead of making the
+section disappear. Poll responses are validated before progress changes, and
+Cancel and Retry failures retain sanitized API messages.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, start a public-repository scrape, watch its progress update, and
+exercise an eligible Cancel or Retry action. Roll back by redeploying the prior
+application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
