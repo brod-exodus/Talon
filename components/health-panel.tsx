@@ -22,6 +22,16 @@ type HealthResponse = {
   error?: string
 }
 
+function isHealthResponse(value: unknown): value is HealthResponse {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<HealthResponse>
+  return (
+    (candidate.status === "ok" || candidate.status === "warn" || candidate.status === "error") &&
+    typeof candidate.checkedAt === "string" &&
+    (candidate.checks === undefined || (typeof candidate.checks === "object" && candidate.checks !== null))
+  )
+}
+
 function statusBadge(status: CheckStatus) {
   if (status === "ok") {
     return <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-500">Healthy</Badge>
@@ -51,6 +61,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const visibleChecks = useMemo(() => {
     if (!health?.checks) return []
@@ -63,35 +74,19 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
     setRefreshing(true)
     try {
       const res = await fetch("/api/health", { cache: "no-store" })
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setHealth({
-          status: "warn",
-          checkedAt: new Date().toISOString(),
-          checks: {
-            healthEndpoint: {
-              status: "warn",
-              message: "Operational diagnostics are restricted to admins.",
-              detail: typeof data?.error === "string" ? data.error : "Forbidden",
-            },
-          },
-        })
-        return
+        throw new Error(
+          data && typeof data.error === "string"
+            ? data.error
+            : "Production diagnostics could not load"
+        )
       }
+      if (!isHealthResponse(data)) throw new Error("Production diagnostics returned an invalid response")
       setHealth(data)
+      setLoadError(null)
     } catch (error) {
-      console.error("[health] fetch error:", error)
-      setHealth({
-        status: "error",
-        checkedAt: new Date().toISOString(),
-        checks: {
-          healthEndpoint: {
-            status: "error",
-            message: "Unable to fetch health diagnostics",
-            detail: error instanceof Error ? error.message : "Unknown health error",
-          },
-        },
-      })
+      setLoadError(error instanceof Error ? error.message : "Production diagnostics could not load")
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -110,7 +105,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
 
   if (!canAdmin) return null
   if (loading) return null
-  if (!showHealthy && health?.status === "ok") return null
+  if (!showHealthy && !loadError && health?.status === "ok") return null
 
   return (
     <Card>
@@ -128,7 +123,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {statusBadge(health?.status ?? "error")}
+            {statusBadge(loadError ? "error" : (health?.status ?? "error"))}
             <Button
               size="icon"
               variant="ghost"
@@ -143,7 +138,21 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {visibleChecks.length === 0 && (
+        {loadError && (
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium text-foreground">Production diagnostics could not refresh</p>
+              <p className="break-words text-xs text-muted-foreground">{loadError}</p>
+              {health?.checkedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Showing the last successful check from {new Date(health.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        {!loadError && visibleChecks.length === 0 && (
           <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50/70 p-3">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
             <div className="min-w-0 space-y-1">
@@ -162,7 +171,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
             </div>
           </div>
         ))}
-        {health?.checkedAt && (
+        {health?.checkedAt && !loadError && (
           <p className="text-xs text-muted-foreground">
             Last checked {new Date(health.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </p>
