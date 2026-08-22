@@ -1,8 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { getActiveGitHubCooldown } from "@/lib/db"
+import { logError } from "@/lib/logger"
 import { requirePermission } from "@/lib/permissions"
+import { getRequestId } from "@/lib/request-id"
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -46,7 +50,8 @@ export async function GET(request: NextRequest) {
       remaining,
       reset,
     })
-  } catch {
-    return NextResponse.json({ error: "Failed to check rate limit" }, { status: 500 })
+  } catch (error) {
+    logError("github.rate_limit_check_failed", error, { requestId })
+    return internalErrorResponse("github_rate_limit_check_failed", requestId)
   }
 }

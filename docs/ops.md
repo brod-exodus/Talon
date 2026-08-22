@@ -905,6 +905,20 @@ then confirm Vercel logs contain structured event names and request IDs without
 the submitted credentials or email address. Roll back by redeploying the prior
 application version.
 
+### Sanitized scrape operations
+
+Scrape-list, queue-control, GitHub-capacity, and watched-repository routes emit
+structured, request-correlated events instead of raw database or provider error
+objects. Unexpected 500 responses use the typed public error catalog and disable
+caching. Explicit state conflicts—such as retrying an ineligible job or adding a
+duplicate watched repository—remain stable 409 responses rather than reflecting
+arbitrary exception text.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, confirm normal dashboard, retry, cancellation, rate-limit, and
+watched-repository behavior. Use a returned `requestId` to correlate any 500 with
+Vercel logs. Roll back by redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

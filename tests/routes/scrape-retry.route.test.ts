@@ -125,4 +125,19 @@ describe("POST /api/scrape-jobs/[id]/retry", () => {
     expect(response.status).toBe(409)
     expect(routeMocks.afterTasks).toHaveLength(0)
   })
+
+  test("returns a correlated safe error without exposing queue internals", async () => {
+    routeMocks.retryScrapeJob.mockRejectedValue(
+      new Error("password=database-secret relation public.scrape_jobs is unavailable")
+    )
+
+    const response = await POST(retryRequest(), { params: Promise.resolve({ id: JOB_ID }) })
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body).toEqual({ error: "Failed to retry scrape job", requestId: REQUEST_ID })
+    expect(JSON.stringify(body)).not.toContain("database-secret")
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(routeMocks.afterTasks).toHaveLength(0)
+  })
 })

@@ -1,12 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { recordActivityEvent } from "@/lib/activity"
 import { requirePermission } from "@/lib/permissions"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeRepo, parseIntervalHours, readJsonObject } from "@/lib/validation"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
 
 export async function GET(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "read")
   if (authError) return authError
 
@@ -20,13 +24,14 @@ export async function GET(request: NextRequest) {
     if (error) throw error
     return NextResponse.json(data ?? [])
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[watched-repos] GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch watched repos" }, { status: 500 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    logError("watched_repos.list_failed", error, { requestId })
+    return internalErrorResponse("watched_repo_list_failed", requestId)
   }
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -76,11 +81,11 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[watched-repos] POST error:", error)
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
     if (error && typeof error === "object" && "code" in error && error.code === "23505") {
       return NextResponse.json({ error: "Repo is already being watched" }, { status: 409 })
     }
-    return NextResponse.json({ error: "Failed to add watched repo" }, { status: 500 })
+    logError("watched_repos.create_failed", error, { requestId })
+    return internalErrorResponse("watched_repo_create_failed", requestId)
   }
 }

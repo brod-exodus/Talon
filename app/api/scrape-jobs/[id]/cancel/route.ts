@@ -1,11 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { internalErrorResponse } from "@/lib/api-error-response"
 import { recordAuditEvent } from "@/lib/audit"
 import { cancelScrapeJob } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
 import { normalizeUuid } from "@/lib/validation"
+import { logError } from "@/lib/logger"
+import { getRequestId } from "@/lib/request-id"
+
+const SUCCEEDED_JOB_CONFLICT = "Succeeded scrape jobs cannot be canceled"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(request)
   const authError = await requirePermission(request, "write")
   if (authError) return authError
 
@@ -27,11 +33,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     })
     return NextResponse.json({ job })
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error)
-    console.error("[scrape-jobs] cancel error:", error)
-    if (error instanceof Error && error.message.startsWith("Succeeded scrape jobs")) {
-      return NextResponse.json({ error: error.message }, { status: 409 })
+    if (error instanceof Error && error.message.includes("Default team is missing")) return teamContextError(error, requestId)
+    if (error instanceof Error && error.message === SUCCEEDED_JOB_CONFLICT) {
+      return NextResponse.json({ error: SUCCEEDED_JOB_CONFLICT }, { status: 409 })
     }
-    return NextResponse.json({ error: "Failed to cancel scrape job" }, { status: 500 })
+    logError("scrape.cancel_failed", error, { requestId })
+    return internalErrorResponse("scrape_job_cancel_failed", requestId)
   }
 }

@@ -144,6 +144,8 @@ The portfolio deployment favors free infrastructure:
 - Authentication, profile, teammate-management, authorization, and Slack test
   failures use the same structured redaction boundary; raw provider error
   objects are never written directly to production logs.
+- Scrape queues, dashboard lists, GitHub-capacity checks, and watched-repository
+  operations follow that boundary too, including development payload metrics.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
   scrape and notification-delivery failures, database connectivity, GitHub rate
   limits, and seven-day repository scrape reliability/latency SLOs.

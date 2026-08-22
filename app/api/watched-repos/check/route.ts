@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       teamId = team.teamId
       teamSlug = team.teamSlug
     } catch (error) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
   }
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     await finishSystemRun(systemRunId, "failure", { trigger }, error)
     logError("watched_repos.enqueue_failed", error, { requestId, systemRunId, teamId })
     if (error instanceof Error && error.message.includes("Default team is missing")) {
-      return teamContextError(error)
+      return teamContextError(error, requestId)
     }
     return NextResponse.json({ error: "Failed to queue watched repository checks" }, { status: 500 })
   }
