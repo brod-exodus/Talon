@@ -643,18 +643,28 @@ will pause until the compatible worker is deployed again.
 
 ### Repository scrape SLOs
 
-Settings → Production Readiness calculates two rolling seven-day indicators
+Settings → Production Readiness calculates three rolling seven-day indicators
 from terminal repository scrapes:
 
 - **Reliability:** at least 95% of completed-or-failed repository scrapes should
   complete successfully.
 - **Latency:** the 95th-percentile end-to-end completion time should be no more
   than three minutes.
+- **Start latency:** the 95th-percentile wait from accepting a scrape to its
+  first worker claim should be no more than 90 seconds. This allows one normal
+  one-minute scheduler interval plus operational jitter.
+
+The latency detail separates total completion time from processing time after
+the first claim. Start latency also reports p50 and p95 worker invocation counts.
+Together these distinguish scheduler delay, slow GitHub/profile processing, and
+jobs that require unusually many resumptions. Claim metrics come from the
+append-only `scrape_job_events` ledger; secrets, targets, and contributor data
+are not included.
 
 Canceled scrapes are excluded because they reflect an operator decision rather
 than service reliability. Organization scrapes are excluded because repository
 count makes their runtime fundamentally different. Talon waits for at least five
-observations before evaluating either target; smaller samples remain visible as
+observations before evaluating each target; smaller samples remain visible as
 limited evidence. A missed historical SLO produces **Attention**, not HTTP `503`,
 because it should prompt investigation without claiming the live service is
 unavailable.

@@ -5,10 +5,12 @@ import { EXPECTED_SCHEMA_VERSION } from "@/lib/schema-version"
 import {
   buildScrapeSloSnapshot,
   SCRAPE_P95_TARGET_MINUTES,
+  SCRAPE_START_P95_TARGET_SECONDS,
   SCRAPE_SLO_MIN_SAMPLE,
   SCRAPE_SLO_WINDOW_DAYS,
   SCRAPE_SUCCESS_TARGET_PERCENT,
   type ScrapeSloRow,
+  type ScrapeClaimRow,
 } from "@/lib/scrape-slo"
 import { supabaseAdmin } from "@/lib/supabase"
 
@@ -424,18 +426,39 @@ function scrapeLatencyCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>)
     message: p95 <= SCRAPE_P95_TARGET_MINUTES
       ? "Repository scrape latency meets target"
       : "Repository scrape latency is above target",
-    detail: `p50 ${snapshot.p50Minutes} minutes; p95 ${p95} minutes; ${target}`,
+    detail: `Total p50 ${snapshot.p50Minutes} minutes; p95 ${p95} minutes; processing p50 ${snapshot.p50ProcessingMinutes ?? "n/a"} minutes; p95 ${snapshot.p95ProcessingMinutes ?? "n/a"} minutes; ${target}`,
+  }
+}
+
+function scrapeStartLatencyCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>): HealthCheck {
+  const target = `Target p95 ≤${SCRAPE_START_P95_TARGET_SECONDS} seconds over ${SCRAPE_SLO_WINDOW_DAYS} days`
+  if (snapshot.startSampleSize < SCRAPE_SLO_MIN_SAMPLE) {
+    return {
+      status: "ok",
+      message: "Limited scrape start latency sample",
+      detail: `${snapshot.startSampleSize} claimed scrape${snapshot.startSampleSize === 1 ? "" : "s"}; ${target}`,
+    }
+  }
+
+  const p95 = snapshot.p95StartSeconds ?? 0
+  return {
+    status: p95 <= SCRAPE_START_P95_TARGET_SECONDS ? "ok" : "warn",
+    message: p95 <= SCRAPE_START_P95_TARGET_SECONDS
+      ? "Repository scrape start latency meets target"
+      : "Repository scrape start latency is above target",
+    detail: `p50 ${snapshot.p50StartSeconds} seconds; p95 ${p95} seconds; worker invocations p50 ${snapshot.p50WorkerInvocations}, p95 ${snapshot.p95WorkerInvocations}; ${target}`,
   }
 }
 
 async function scrapeSloChecks(): Promise<{
   scrapeReliability: HealthCheck
   scrapeLatency: HealthCheck
+  scrapeStartLatency: HealthCheck
 }> {
   const since = new Date(Date.now() - SCRAPE_SLO_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabaseAdmin
     .from("scrapes")
-    .select("status, started_at, completed_at")
+    .select("id, status, started_at, completed_at")
     .eq("type", "repository")
     .in("status", ["completed", "failed"])
     .is("watched_repo_id", null)
@@ -445,13 +468,37 @@ async function scrapeSloChecks(): Promise<{
 
   if (error) {
     const check = { status: "warn" as const, message: "Could not calculate repository scrape SLOs" }
-    return { scrapeReliability: check, scrapeLatency: check }
+    return { scrapeReliability: check, scrapeLatency: check, scrapeStartLatency: check }
   }
 
-  const snapshot = buildScrapeSloSnapshot((data ?? []) as ScrapeSloRow[])
+  const scrapeRows = (data ?? []) as ScrapeSloRow[]
+  const scrapeIds = scrapeRows.flatMap((row) => row.id ? [row.id] : [])
+  let claimRows: ScrapeClaimRow[] = []
+  if (scrapeIds.length > 0) {
+    const { data: claimData, error: claimError } = await supabaseAdmin
+      .from("scrape_job_events")
+      .select("scrape_id, created_at")
+      .eq("event_type", "claimed")
+      .in("scrape_id", scrapeIds)
+      .order("created_at", { ascending: true })
+      .limit(5000)
+    if (claimError) {
+      const check = { status: "warn" as const, message: "Could not calculate scrape start latency" }
+      const snapshot = buildScrapeSloSnapshot(scrapeRows)
+      return {
+        scrapeReliability: scrapeReliabilityCheck(snapshot),
+        scrapeLatency: scrapeLatencyCheck(snapshot),
+        scrapeStartLatency: check,
+      }
+    }
+    claimRows = (claimData ?? []) as ScrapeClaimRow[]
+  }
+
+  const snapshot = buildScrapeSloSnapshot(scrapeRows, claimRows)
   return {
     scrapeReliability: scrapeReliabilityCheck(snapshot),
     scrapeLatency: scrapeLatencyCheck(snapshot),
+    scrapeStartLatency: scrapeStartLatencyCheck(snapshot),
   }
 }
 

@@ -12,6 +12,14 @@ function snapshot(overrides: Partial<ScrapeSloSnapshot> = {}): ScrapeSloSnapshot
     durationSampleSize: 10,
     p50Minutes: 1.5,
     p95Minutes: 2.5,
+    startSampleSize: 10,
+    p50StartSeconds: 20,
+    p95StartSeconds: 60,
+    processingSampleSize: 10,
+    p50ProcessingMinutes: 1.2,
+    p95ProcessingMinutes: 2,
+    p50WorkerInvocations: 1,
+    p95WorkerInvocations: 2,
     ...overrides,
   }
 }

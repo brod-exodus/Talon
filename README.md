@@ -148,7 +148,8 @@ The portfolio deployment favors free infrastructure:
   operations follow that boundary too, including development payload metrics.
 - The admin Health panel reports scheduler freshness, queue age, stale locks,
   scrape and notification-delivery failures, database connectivity, GitHub rate
-  limits, and seven-day repository scrape reliability/latency SLOs.
+  limits, and seven-day repository scrape reliability plus separate queue-start,
+  processing, and end-to-end latency evidence.
 
 The tradeoff is throughput: workers drain only a small bounded batch and stop
 after the first yielded or failed job. This is appropriate for a portfolio
