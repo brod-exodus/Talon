@@ -133,11 +133,23 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
       }
     }
 
+    const { data: schedulingData, error: schedulingError } = await supabaseAdmin.rpc(
+      "get_talon_scheduling_contract_issues"
+    )
+    if (schedulingError || !Array.isArray(schedulingData)) {
+      return {
+        status: "error",
+        message: "Database schema contract could not be verified",
+        detail: `Current v${currentVersion}; scheduling attestation is unavailable. Apply migration ${EXPECTED_SCHEMA_VERSION}.`,
+      }
+    }
+
     const contractIssues = [
       ...parseContractIssues(contractData),
       ...parseContractIssues(appendOnlyData),
       ...parseContractIssues(sessionContractData),
       ...parseContractIssues(sessionLimitData),
+      ...parseContractIssues(schedulingData),
     ]
     if (contractIssues.length > 0) {
       const visibleIssues = contractIssues.slice(0, 5).join(", ")

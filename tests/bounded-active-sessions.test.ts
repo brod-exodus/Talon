@@ -33,8 +33,8 @@ test("the trigger and live data invariant are continuously attestable", () => {
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.get_talon_session_limit_contract_issues\(\) TO service_role/i)
 })
 
-test("application and database agree on the ten-session cap at schema v46", () => {
+test("application retains the schema v46 active-session contract", () => {
   assert.equal(MAX_ACTIVE_AUTH_SESSIONS, 10)
   assert.match(migration, /\(46,\s*'bounded_active_sessions'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 46)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 46)
 })
