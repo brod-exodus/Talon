@@ -3,6 +3,8 @@ import assert from "node:assert/strict"
 import {
   CONTRIBUTOR_PROFILE_CACHE_TTL_MS,
   contributorProfileFreshAfter,
+  estimateScrapeStepGitHubRequests,
+  MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP,
   planHydrationStep,
   planOrganizationDiscoveryStep,
   planOrganizationRepositoryPage,
@@ -41,6 +43,13 @@ test("the default hydration batch keeps GitHub concurrency bounded at twenty pro
   assert.equal(SCRAPE_HYDRATION_BATCH_SIZE, 20)
   assert.equal(step.batch.length, 20)
   assert.equal(step.completesHydration, false)
+})
+
+test("worker request estimates distinguish discovery from worst-case cold hydration", () => {
+  assert.equal(estimateScrapeStepGitHubRequests({ state: { phase: "discover" } }), 1)
+  assert.equal(estimateScrapeStepGitHubRequests({ state: { phase: "hydrate" } }), 40)
+  assert.equal(estimateScrapeStepGitHubRequests({ state: null }), 1)
+  assert.equal(MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP, 40)
 })
 
 test("hydration resumes idempotently across multiple worker invocations", () => {

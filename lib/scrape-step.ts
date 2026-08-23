@@ -1,9 +1,23 @@
 export const SCRAPE_HYDRATION_BATCH_SIZE = 20
 export const CONTRIBUTOR_PROFILE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+export const GITHUB_REQUESTS_PER_COLD_PROFILE = 2
+export const MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP =
+  SCRAPE_HYDRATION_BATCH_SIZE * GITHUB_REQUESTS_PER_COLD_PROFILE
 
 export type ScrapeCandidate = {
   login: string
   contributions: number
+}
+
+export function estimateScrapeStepGitHubRequests(job: {
+  state?: unknown
+}): number {
+  const state = job.state && typeof job.state === "object" && !Array.isArray(job.state)
+    ? job.state as { phase?: unknown }
+    : {}
+  return state.phase === "hydrate"
+    ? MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP
+    : 1
 }
 
 export function contributorProfileFreshAfter(now = Date.now()): string {

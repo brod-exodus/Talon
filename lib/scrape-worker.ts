@@ -12,6 +12,11 @@ import {
 import { getGitHubCooldownReason, GitHubApiError } from "@/lib/github"
 import { runScrapeJob, ScrapeJobCanceledError, ScrapeJobLeaseLostError } from "@/lib/scrape-runner"
 import {
+  estimateScrapeStepGitHubRequests,
+  MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP,
+} from "@/lib/scrape-step"
+import {
+  MAX_GITHUB_REQUESTS_PER_WORKER_INVOCATION,
   MAX_JOBS_PER_WORKER_INVOCATION,
   MAX_JOB_STEPS_PER_INVOCATION,
   MIN_JOB_START_BUDGET_MS,
@@ -27,6 +32,7 @@ export type ScrapeWorkerResult = {
   status: "succeeded" | "queued" | "failed" | "canceled" | "skipped"
   steps?: number
   elapsedMs?: number
+  estimatedGitHubRequests?: number
   error?: string
   originRequestId?: string | null
 }
@@ -39,6 +45,7 @@ export type ScrapeWorkerStopReason =
   | "job_yielded"
   | "job_error"
   | "github_cooldown"
+  | "request_budget"
 
 type RunScrapeWorkerOptions = {
   maxJobs?: number
@@ -47,6 +54,7 @@ type RunScrapeWorkerOptions = {
   budgetMs?: number
   minJobStartBudgetMs?: number
   maxSteps?: number
+  maxGitHubRequests?: number
   now?: () => number
 }
 
@@ -57,6 +65,7 @@ export async function runScrapeWorker({
   budgetMs = WORKER_EXECUTION_BUDGET_MS,
   minJobStartBudgetMs = MIN_JOB_START_BUDGET_MS,
   maxSteps = MAX_JOB_STEPS_PER_INVOCATION,
+  maxGitHubRequests = MAX_GITHUB_REQUESTS_PER_WORKER_INVOCATION,
   now = Date.now,
 }: RunScrapeWorkerOptions = {}): Promise<{
   workerId: string
@@ -73,6 +82,7 @@ export async function runScrapeWorker({
     Math.max(1, Math.floor(minJobStartBudgetMs))
   )
   let remainingSteps = Math.max(1, Math.floor(maxSteps))
+  let remainingGitHubRequests = Math.max(1, Math.floor(maxGitHubRequests))
   const workerId = `worker-${randomUUID()}`
   const recoveredStaleJobs = await recoverStaleScrapeJobs(undefined, teamId)
   await recordScrapeJobEvent(
@@ -95,6 +105,10 @@ export async function runScrapeWorker({
     }
     if (remainingSteps < 1) {
       stopReason = "step_budget"
+      break
+    }
+    if (remainingGitHubRequests < MAX_GITHUB_REQUESTS_PER_SCRAPE_STEP) {
+      stopReason = "request_budget"
       break
     }
 
@@ -120,8 +134,12 @@ export async function runScrapeWorker({
         budgetMs: jobTimeBudgetMs,
         maxSteps: jobStepBudget,
         now,
+        getStepCost: estimateScrapeStepGitHubRequests,
+        costBudget: remainingGitHubRequests,
       })
       remainingSteps = Math.max(0, remainingSteps - execution.steps)
+      const executionCost = execution.cost ?? 0
+      remainingGitHubRequests = Math.max(0, remainingGitHubRequests - executionCost)
       let status: ScrapeWorkerResult["status"] = "succeeded"
       if (!execution.completed) {
         await recordScrapeJobEvent(
@@ -129,7 +147,7 @@ export async function runScrapeWorker({
           job.scrape_id,
           "invocation_yielded",
           "Worker invocation yielded before the job completed",
-          { workerId, steps: execution.steps, elapsedMs: execution.elapsedMs }
+          { workerId, steps: execution.steps, elapsedMs: execution.elapsedMs, estimatedGitHubRequests: executionCost }
         )
         const transition = await requeueScrapeJob(job)
         status = transition.applied
@@ -138,7 +156,9 @@ export async function runScrapeWorker({
             ? "canceled"
             : "skipped"
         stopReason =
-          execution.steps >= jobStepBudget
+          execution.limit === "cost"
+            ? "request_budget"
+            : execution.steps >= jobStepBudget
             ? "step_budget"
             : execution.elapsedMs >= jobTimeBudgetMs
               ? "time_budget"
@@ -151,6 +171,7 @@ export async function runScrapeWorker({
         status,
         steps: execution.steps,
         elapsedMs: execution.elapsedMs,
+        estimatedGitHubRequests: executionCost,
         originRequestId: job.request_id,
       })
       if (!execution.completed) break
