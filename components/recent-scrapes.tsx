@@ -168,6 +168,21 @@ function getPublicApiError(value: unknown, fallback: string): string {
   return fallback
 }
 
+function isShareLinkSummary(value: unknown): value is ShareLinkSummary {
+  if (!value || typeof value !== "object") return false
+  const share = value as Partial<ShareLinkSummary>
+  return (
+    typeof share.id === "string" && share.id.length > 0 &&
+    typeof share.scrapeId === "string" && share.scrapeId.length > 0 &&
+    typeof share.createdAt === "string" &&
+    typeof share.expiresAt === "string" &&
+    (share.revokedAt === null || typeof share.revokedAt === "string") &&
+    typeof share.allowDownload === "boolean" &&
+    (share.lastAccessedAt === null || typeof share.lastAccessedAt === "string") &&
+    typeof share.accessCount === "number"
+  )
+}
+
 // ─── OutreachFields ───────────────────────────────────────────────────────────
 // Owns local state for notes + date so typing is instant.
 // Flushes to the parent (and API) only on blur, not on every keystroke.
@@ -815,6 +830,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   })
   const [shareLinks, setShareLinks] = useState<ShareLinkSummary[]>([])
   const [shareLinksLoading, setShareLinksLoading] = useState(false)
+  const [shareLinksError, setShareLinksError] = useState<string | null>(null)
+  const [revokingShareIds, setRevokingShareIds] = useState<Set<string>>(new Set())
   const [shareExpiresInDays, setShareExpiresInDays] = useState("7")
   const [shareAllowDownload, setShareAllowDownload] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -824,16 +841,22 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     setShareModal({ open: true, scrapeId, url: "", loading: false })
     setShareLinks([])
     setShareLinksLoading(true)
+    setShareLinksError(null)
     setShareExpiresInDays("7")
     setShareAllowDownload(false)
     try {
       const res = await fetch(`/api/share?scrapeId=${encodeURIComponent(scrapeId)}`)
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || "Failed to load share links")
-      setShareLinks(Array.isArray(data?.shares) ? data.shares : [])
+      if (!res.ok) throw new Error(getPublicApiError(data, "Failed to load share links"))
+      if (!data || !Array.isArray(data.shares) || !data.shares.every(isShareLinkSummary)) {
+        throw new Error("Share history returned an invalid response")
+      }
+      setShareLinks(data.shares)
+      setShareLinksError(null)
     } catch (err) {
-      console.error("[share]", err)
-      toast({ title: "Error", description: "Failed to load share history", variant: "destructive" })
+      const message = err instanceof Error ? err.message : "Failed to load share history"
+      setShareLinksError(message)
+      toast({ title: "Share history unavailable", description: message, variant: "destructive" })
     } finally {
       setShareLinksLoading(false)
     }
@@ -853,19 +876,26 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         }),
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || "Failed to create share link")
+      if (!res.ok) throw new Error(getPublicApiError(data, "Failed to create share link"))
+      if (!data || typeof data.token !== "string" || data.token.length === 0 || !isShareLinkSummary(data.share)) {
+        throw new Error("Talon could not confirm the new share link")
+      }
       const { token, share } = data
       const url = `${window.location.origin}/share/${token}`
       setShareModal((current) => ({ ...current, url, loading: false }))
-      if (share) setShareLinks((current) => [share, ...current])
+      setShareLinks((current) => [share, ...current])
     } catch (err) {
-      console.error("[share]", err)
       setShareModal((current) => ({ ...current, url: "", loading: false }))
-      toast({ title: "Error", description: "Failed to create share link", variant: "destructive" })
+      toast({
+        title: "Share link creation failed",
+        description: err instanceof Error ? err.message : "Failed to create share link",
+        variant: "destructive",
+      })
     }
   }, [shareAllowDownload, shareExpiresInDays, shareModal.loading, shareModal.scrapeId, toast])
 
   const revokeShareLink = useCallback(async (shareId: string) => {
+    setRevokingShareIds((current) => new Set(current).add(shareId))
     try {
       const res = await fetch("/api/share", {
         method: "DELETE",
@@ -873,13 +903,25 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         body: JSON.stringify({ shareId }),
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || "Failed to revoke share link")
+      if (!res.ok) throw new Error(getPublicApiError(data, "Failed to revoke share link"))
+      if (!data || !isShareLinkSummary(data.share) || data.share.id !== shareId || !data.share.revokedAt) {
+        throw new Error("Talon could not confirm that the share link was revoked")
+      }
       setShareLinks((current) => current.map((share) => (share.id === shareId ? data.share : share)))
       setShareModal((current) => ({ ...current, url: "" }))
       toast({ title: "Share revoked", description: "The public link can no longer be opened." })
     } catch (err) {
-      console.error("[share]", err)
-      toast({ title: "Error", description: "Failed to revoke share link", variant: "destructive" })
+      toast({
+        title: "Share revocation failed",
+        description: err instanceof Error ? err.message : "Failed to revoke share link",
+        variant: "destructive",
+      })
+    } finally {
+      setRevokingShareIds((current) => {
+        const next = new Set(current)
+        next.delete(shareId)
+        return next
+      })
     }
   }, [toast])
 
@@ -1783,6 +1825,20 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Share history</p>
                 {shareLinksLoading ? (
                   <p className="text-sm text-muted-foreground">Loading share history…</p>
+                ) : shareLinksError ? (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+                    <p className="break-words text-sm text-destructive">{shareLinksError}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => handleShare(shareModal.scrapeId)}
+                    >
+                      <RotateCw className="mr-1 h-3 w-3" />
+                      Retry history
+                    </Button>
+                  </div>
                 ) : shareLinks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No share links have been created for this scrape.</p>
                 ) : (
@@ -1797,8 +1853,14 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           <p>{share.allowDownload ? "CSV download allowed" : "View only"}</p>
                         </div>
                         {active && (
-                          <Button type="button" size="sm" variant="destructive" onClick={() => revokeShareLink(share.id)}>
-                            Revoke
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            disabled={revokingShareIds.has(share.id)}
+                            onClick={() => revokeShareLink(share.id)}
+                          >
+                            {revokingShareIds.has(share.id) ? "Revoking…" : "Revoke"}
                           </Button>
                         )}
                       </div>
