@@ -125,8 +125,8 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
   SELECT
-    'index'::TEXT,
-    'public.idx_scrape_job_events_claimed_team_job_created_at'::TEXT
+    'index'::TEXT AS requirement_type,
+    'public.idx_scrape_job_events_claimed_team_job_created_at'::TEXT AS requirement_name
   WHERE NOT EXISTS (
     SELECT 1
     FROM pg_catalog.pg_class AS index_relation
