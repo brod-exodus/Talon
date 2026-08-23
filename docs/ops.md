@@ -978,6 +978,20 @@ This release has no migration, environment-variable, or scheduler change. After
 deployment, open Projects, create a temporary Project, open it, return to the
 library, and delete it. Roll back by redeploying the prior application version.
 
+### Preserved Projects library snapshots
+
+The Projects library preserves its last fully validated project cards when a
+later refresh fails. Retained cards remain usable, the warning shows when the
+snapshot was last updated, and Retry fetches a replacement without first hiding
+known data. Every project summary is validated before the snapshot changes, and
+create or delete failures remain scoped to those actions instead of making the
+library appear unavailable.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open Projects, create a temporary Project, refresh the library, and
+delete the temporary Project. Roll back by redeploying the prior application
+version.
+
 ### Retryable watched-repository refreshes
 
 Watched Repositories now reports initial-load and background-poll failures in

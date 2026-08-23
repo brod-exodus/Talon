@@ -58,6 +58,18 @@ function formatTimeAgo(date: string | null) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(date))
 }
 
+function isEcosystemSummary(value: unknown): value is EcosystemSummary {
+  if (!value || typeof value !== "object") return false
+  const ecosystem = value as Record<string, unknown>
+  return typeof ecosystem.id === "string" && ecosystem.id.length > 0
+    && typeof ecosystem.name === "string" && ecosystem.name.length > 0
+    && typeof ecosystem.createdAt === "string" && Number.isFinite(Date.parse(ecosystem.createdAt))
+    && typeof ecosystem.scrapeCount === "number" && Number.isInteger(ecosystem.scrapeCount) && ecosystem.scrapeCount >= 0
+    && typeof ecosystem.contributorCount === "number" && Number.isInteger(ecosystem.contributorCount) && ecosystem.contributorCount >= 0
+    && (ecosystem.lastActivityAt === null
+      || (typeof ecosystem.lastActivityAt === "string" && Number.isFinite(Date.parse(ecosystem.lastActivityAt))))
+}
+
 export default function EcosystemsPage() {
   const searchParams = useSearchParams()
   const { canWrite } = useAuthPermissions()
@@ -66,21 +78,25 @@ export default function EcosystemsPage() {
   const [creating, setCreating]     = useState(false)
   const [newName, setNewName]       = useState("")
   const [saving, setSaving]         = useState(false)
-  const [error, setError]           = useState<string | null>(null)
+  const [loadError, setLoadError]   = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const newNameInputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     setLoading(true)
-    setError(null)
     try {
       const res = await fetch("/api/ecosystems", { cache: "no-store" })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || "Projects could not load")
       if (!Array.isArray(data)) throw new Error("Projects response was incomplete")
-      setEcosystems(Array.isArray(data) ? data : [])
+      if (!data.every(isEcosystemSummary)) throw new Error("Projects response was incomplete")
+      setEcosystems(data)
+      setLastLoadedAt(new Date())
+      setLoadError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Projects could not load")
+      setLoadError(err instanceof Error ? err.message : "Projects could not load")
     } finally {
       setLoading(false)
     }
@@ -99,7 +115,7 @@ export default function EcosystemsPage() {
     if (!canWrite) return
     if (!newName.trim()) return
     setSaving(true)
-    setError(null)
+    setMutationError(null)
     try {
       const res = await fetch("/api/ecosystems", {
         method: "POST",
@@ -108,12 +124,12 @@ export default function EcosystemsPage() {
       })
       const eco = await res.json().catch(() => null)
       if (!res.ok) throw new Error(eco?.error || "Project could not be created")
-      if (!eco?.id || !eco?.name) throw new Error("Project response was incomplete")
+      if (!isEcosystemSummary(eco)) throw new Error("Project response was incomplete")
       setEcosystems((prev) => [eco, ...prev])
       setNewName("")
       setCreating(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Project could not be created")
+      setMutationError(err instanceof Error ? err.message : "Project could not be created")
     } finally {
       setSaving(false)
     }
@@ -123,14 +139,14 @@ export default function EcosystemsPage() {
     if (!canWrite) return
     if (!confirm(`Delete project "${name}"? This cannot be undone.`)) return
     setDeletingIds((current) => new Set(current).add(id))
-    setError(null)
+    setMutationError(null)
     try {
       const response = await fetch(`/api/ecosystems/${id}`, { method: "DELETE" })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Project could not be deleted")
       setEcosystems((prev) => prev.filter((ecosystem) => ecosystem.id !== id))
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Project could not be deleted")
+      setMutationError(deleteError instanceof Error ? deleteError.message : "Project could not be deleted")
     } finally {
       setDeletingIds((current) => {
         const next = new Set(current)
@@ -162,15 +178,29 @@ export default function EcosystemsPage() {
           )}
         </div>
 
-        {error && (
+        {loadError && (
           <div className="mb-6 flex flex-col gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
+              <span>
+                {loadError}
+                {lastLoadedAt && (
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Showing projects last updated {lastLoadedAt.toLocaleTimeString()}.
+                  </span>
+                )}
+              </span>
             </div>
             <Button variant="outline" size="sm" className="shrink-0 bg-transparent" onClick={() => void load()}>
               Retry loading
             </Button>
+          </div>
+        )}
+
+        {mutationError && (
+          <div className="mb-6 flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{mutationError}</span>
           </div>
         )}
 
@@ -203,7 +233,7 @@ export default function EcosystemsPage() {
         )}
 
         {/* ── Loading skeletons (same grid + card shell as loaded state) ─ */}
-        {loading && (
+        {loading && ecosystems.length === 0 && (
           <div
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
             aria-busy="true"
@@ -216,7 +246,7 @@ export default function EcosystemsPage() {
         )}
 
         {/* ── Empty state ───────────────────────────────────────────────── */}
-        {!loading && !error && ecosystems.length === 0 && (
+        {!loading && !loadError && ecosystems.length === 0 && (
           <div className="text-center py-24">
             <Layers className="w-14 h-14 text-muted-foreground/40 mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
@@ -233,7 +263,7 @@ export default function EcosystemsPage() {
         )}
 
         {/* ── Project cards ─────────────────────────────────────────────── */}
-        {!loading && ecosystems.length > 0 && (
+        {ecosystems.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {ecosystems.map((eco) => (
               <Card
