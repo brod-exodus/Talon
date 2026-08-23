@@ -1152,6 +1152,19 @@ deployment, open Pipeline, exercise Project, status, due-date, and search
 filters, load another page if available, and update one follow-up. Roll back by
 redeploying the prior application version.
 
+### Reliable follow-up queue snapshots
+
+The dashboard Follow-Ups Due queue preserves its last fully validated snapshot
+when a refresh fails. Retained follow-ups remain actionable and show their last
+successful update time. Malformed items, mismatched Project or contributor
+identities, and failed requests cannot replace the queue or produce the
+reassuring "You're clear" state; the existing Refresh control retries safely.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open the dashboard, refresh Follow-Ups Due, open one contributor
+preview if present, and confirm View Pipeline still works. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
