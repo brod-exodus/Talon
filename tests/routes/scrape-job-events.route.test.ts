@@ -47,6 +47,8 @@ describe("GET /api/scrape-jobs/[id]/events", () => {
       category: "queue",
       occurredAt: "2026-08-22T12:00:00Z",
       detail: null,
+      failureCode: null,
+      guidance: null,
     }])
     const response = await GET(request(), { params: Promise.resolve({ id: JOB_ID }) })
     expect(response.status).toBe(200)

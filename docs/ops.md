@@ -1090,6 +1090,22 @@ deployment, complete a public repository scrape, open Scrape Operations as an
 admin, expand Timeline, and confirm the sequence begins with queue activity and
 ends with completion. Roll back by redeploying the prior application version.
 
+### Safe scrape failure diagnostics
+
+Scrape failures shown in Active Scrapes, Recent Scrapes, and Scrape Operations
+are classified at the server boundary. Operators receive a stable explanation
+and next action for GitHub rate limiting, invalid credentials, unavailable
+targets, denied access, provider outages, network failures, and internal
+processing failures. Timeline retry and failure events include the same guidance
+plus allowlisted attempt context. Raw GitHub response bodies, API URLs, targets,
+tokens, database errors, and worker identifiers remain restricted to sanitized,
+request-correlated server logs.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, inspect a failed or retrying scrape and confirm its public error and
+Timeline guidance are actionable but contain no raw provider response. Roll back
+by redeploying the prior application version.
+
 ### Reliable production diagnostics
 
 Production Readiness preserves the last successful health snapshot when its
