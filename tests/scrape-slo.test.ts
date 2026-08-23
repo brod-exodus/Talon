@@ -10,6 +10,17 @@ function completed(minutes: number): ScrapeSloRow {
   }
 }
 
+const emptyPerformance = {
+  startSampleSize: 0,
+  p50StartSeconds: null,
+  p95StartSeconds: null,
+  processingSampleSize: 0,
+  p50ProcessingMinutes: null,
+  p95ProcessingMinutes: null,
+  p50WorkerInvocations: null,
+  p95WorkerInvocations: null,
+}
+
 test("scrape SLO snapshot calculates success rate and nearest-rank percentiles", () => {
   const snapshot = buildScrapeSloSnapshot([
     completed(1),
@@ -27,6 +38,7 @@ test("scrape SLO snapshot calculates success rate and nearest-rank percentiles",
     durationSampleSize: 4,
     p50Minutes: 2,
     p95Minutes: 4,
+    ...emptyPerformance,
   })
 })
 
@@ -53,5 +65,28 @@ test("scrape SLO snapshot represents an empty observation window explicitly", ()
     durationSampleSize: 0,
     p50Minutes: null,
     p95Minutes: null,
+    ...emptyPerformance,
   })
+})
+
+test("scrape SLO snapshot separates queue wait from processing and counts worker claims", () => {
+  const rows: ScrapeSloRow[] = [
+    { ...completed(2), id: "scrape-1" },
+    { ...completed(4), id: "scrape-2" },
+  ]
+  const snapshot = buildScrapeSloSnapshot(rows, [
+    { scrape_id: "scrape-1", created_at: "2026-08-13T12:00:10.000Z" },
+    { scrape_id: "scrape-1", created_at: "2026-08-13T12:01:00.000Z" },
+    { scrape_id: "scrape-2", created_at: "2026-08-13T12:01:30.000Z" },
+    { scrape_id: null, created_at: "2026-08-13T12:00:00.000Z" },
+  ])
+
+  assert.equal(snapshot.startSampleSize, 2)
+  assert.equal(snapshot.p50StartSeconds, 10)
+  assert.equal(snapshot.p95StartSeconds, 90)
+  assert.equal(snapshot.processingSampleSize, 2)
+  assert.equal(snapshot.p50ProcessingMinutes, 1.8)
+  assert.equal(snapshot.p95ProcessingMinutes, 2.5)
+  assert.equal(snapshot.p50WorkerInvocations, 1)
+  assert.equal(snapshot.p95WorkerInvocations, 2)
 })

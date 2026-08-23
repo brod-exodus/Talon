@@ -8,10 +8,13 @@ type QueueRow = {
 }
 
 type SloRow = {
+  id?: string
   status: "completed" | "failed"
   started_at: string
   completed_at: string | null
 }
+
+type ClaimRow = { scrape_id: string; created_at: string }
 
 const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
@@ -29,6 +32,8 @@ const healthMocks = vi.hoisted(() => ({
     sessionLimitContractError: null as Error | null,
     sloRows: [] as SloRow[],
     sloError: null as Error | null,
+    claimRows: [] as ClaimRow[],
+    claimError: null as Error | null,
     systemRuns: {} as Record<string, string | null>,
     keepaliveDetails: null as Record<string, unknown> | null,
     queueRows: [] as QueueRow[],
@@ -117,6 +122,9 @@ vi.mock("@/lib/supabase", () => ({
         if (table === "scrape_jobs") {
           return { data: healthMocks.state.queueRows, error: healthMocks.state.queueError }
         }
+        if (table === "scrape_job_events") {
+          return { data: healthMocks.state.claimRows, error: healthMocks.state.claimError }
+        }
         if (table === "service_cooldowns") {
           return { data: healthMocks.state.githubCooldown, error: null }
         }
@@ -204,12 +212,18 @@ describe("GET /api/health", () => {
     healthMocks.state.sessionContractError = null
     healthMocks.state.sessionLimitContractIssues = []
     healthMocks.state.sessionLimitContractError = null
-    healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes) => ({
+    healthMocks.state.sloRows = [1, 1.5, 2, 2.5, 3].map((minutes, index) => ({
+      id: `scrape-${index + 1}`,
       status: "completed",
       started_at: "2026-08-13T17:00:00.000Z",
       completed_at: new Date(Date.parse("2026-08-13T17:00:00.000Z") + minutes * 60000).toISOString(),
     }))
     healthMocks.state.sloError = null
+    healthMocks.state.claimRows = [10, 20, 30, 45, 60].map((seconds, index) => ({
+      scrape_id: `scrape-${index + 1}`,
+      created_at: new Date(Date.parse("2026-08-13T17:00:00.000Z") + seconds * 1000).toISOString(),
+    }))
+    healthMocks.state.claimError = null
     healthMocks.state.queueError = null
     healthMocks.state.queueRows = []
     healthMocks.state.notificationRows = []
@@ -274,6 +288,11 @@ describe("GET /api/health", () => {
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
+    expect(body.checks.scrapeStartLatency).toEqual({
+      status: "ok",
+      message: "Repository scrape start latency meets target",
+      detail: "p50 30 seconds; p95 60 seconds; worker invocations p50 1, p95 1; Target p95 ≤90 seconds over 7 days",
+    })
     expect(body.checks.sloAlerting).toEqual({
       status: "ok",
       message: "SLO alert monitor evaluated successfully",
@@ -484,7 +503,7 @@ describe("GET /api/health", () => {
   test("reports an SLO warning when repository scrape reliability falls below 95%", async () => {
     healthMocks.state.sloRows = [
       ...healthMocks.state.sloRows.slice(0, 4),
-      { status: "failed", started_at: "2026-08-13T17:00:00.000Z", completed_at: null },
+      { id: "scrape-failed", status: "failed", started_at: "2026-08-13T17:00:00.000Z", completed_at: null },
     ]
 
     const response = await GET(healthRequest())
@@ -513,8 +532,43 @@ describe("GET /api/health", () => {
     expect(body.checks.scrapeLatency).toEqual({
       status: "warn",
       message: "Repository scrape latency is above target",
-      detail: "p50 6 minutes; p95 8 minutes; Target p95 ≤3 minutes over 7 days",
+      detail: "Total p50 6 minutes; p95 8 minutes; processing p50 5.5 minutes; p95 7 minutes; Target p95 ≤3 minutes over 7 days",
     })
+  })
+
+  test("warns when repository scrapes wait too long for their first worker claim", async () => {
+    healthMocks.state.claimRows = [30, 60, 90, 120, 150].map((seconds, index) => ({
+      scrape_id: `scrape-${index + 1}`,
+      created_at: new Date(Date.parse("2026-08-13T17:00:00.000Z") + seconds * 1000).toISOString(),
+    }))
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.scrapeStartLatency).toEqual({
+      status: "warn",
+      message: "Repository scrape start latency is above target",
+      detail: "p50 90 seconds; p95 150 seconds; worker invocations p50 1, p95 1; Target p95 ≤90 seconds over 7 days",
+    })
+  })
+
+  test("reports scrape claim telemetry failures without hiding completion SLOs", async () => {
+    healthMocks.state.claimError = new Error("private event query detail")
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe("warn")
+    expect(body.checks.scrapeReliability.status).toBe("ok")
+    expect(body.checks.scrapeLatency.status).toBe("ok")
+    expect(body.checks.scrapeStartLatency).toEqual({
+      status: "warn",
+      message: "Could not calculate scrape start latency",
+    })
+    expect(JSON.stringify(body)).not.toContain("private event query detail")
   })
 
   test("warns when the most recent keepalive could not deliver an SLO alert", async () => {
