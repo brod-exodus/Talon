@@ -1111,6 +1111,19 @@ deployment, save one outreach field, refresh to confirm persistence, then delete
 a disposable completed scrape and confirm it disappears. Roll back by
 redeploying the prior application version.
 
+### Verified scrape sharing
+
+Share history, creation, and revocation now validate their complete response
+contracts before changing modal state. Invalid success responses cannot create
+an unusable public URL or mark a link revoked locally. History failures remain
+visible with a retry action, revocation controls recover after failure, and all
+paths preserve sanitized API messages without raw browser-console logging.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open a completed scrape's Share dialog, generate a temporary link,
+open it, revoke it, and confirm the history shows Revoked. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
