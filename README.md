@@ -265,7 +265,9 @@ CI runs whitespace checks, lint, TypeScript, tests, the production build, and a
 fresh Supabase database migration on every pull request. A separate Chromium
 job exercises the critical browser workflow from login through scrape queueing,
 background completion, contributor inspection, and CSV export using a
-deterministic API fixture; it never reads or mutates production. The database job
+deterministic API fixture. Controlled failure scenarios also verify that active
+scrape progress and Pipeline views preserve their last valid snapshot and recover
+through the visible Retry action. Browser tests never read or mutate production. The database job
 converts the canonical `db/migrations` files into Supabase CLI filenames in a
 temporary directory, then executes the complete sequence against Supabase's
 local database image. Production changes use `.github/pull_request_template.md`
