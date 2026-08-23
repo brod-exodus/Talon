@@ -1171,7 +1171,10 @@ redeploying the prior application version.
 login, scrape acceptance, active progress, completion, contributor expansion,
 and CSV export. Network responses are deterministic browser fixtures, so the
 test proves UI integration without GitHub, Supabase data, production secrets,
-or production mutations. CI installs only Chromium, retains traces, screenshots,
+or production mutations. Controlled 503 responses prove that active progress
+polling and Pipeline filter failures retain their last valid snapshot, never
+substitute a false empty state, and recover through the visible Retry action.
+CI installs only Chromium, retains traces, screenshots,
 and video on failure, and uploads the HTML report for seven days.
 
 Install the local browser once with `pnpm exec playwright install chromium`.
