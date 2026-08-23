@@ -121,6 +121,16 @@ function sortByFollowUp(a: PipelineItem, b: PipelineItem) {
   return a.contributor.username.localeCompare(b.contributor.username)
 }
 
+function isPipelineItem(value: unknown): value is PipelineItem {
+  if (!value || typeof value !== "object") return false
+  const item = value as Partial<PipelineItem>
+  return Boolean(
+    item.tracking && typeof item.tracking.id === "string" &&
+    item.contributor && typeof item.contributor.id === "string" && typeof item.contributor.username === "string" &&
+    item.project && typeof item.project.id === "string" && typeof item.project.name === "string"
+  )
+}
+
 export function PipelineWorkspace() {
   const { canWrite } = useAuthPermissions()
   const { toast } = useToast()
@@ -130,7 +140,9 @@ export function PipelineWorkspace() {
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
+  const [staleFilters, setStaleFilters] = useState(false)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [previewItem, setPreviewItem] = useState<PipelineItem | null>(null)
   const [projectFilter, setProjectFilter] = useState("all")
@@ -138,6 +150,7 @@ export function PipelineWorkspace() {
   const [dueFilter, setDueFilter] = useState<DueFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const lastSuccessfulViewRef = useRef<string | null>(null)
 
   const cancelPreviewPrefetch = useCallback((contributorId: string) => {
     const timeout = previewPrefetchTimers.current.get(contributorId)
@@ -166,7 +179,8 @@ export function PipelineWorkspace() {
   const loadPipeline = useCallback(async (append = false, offsetOverride = 0) => {
     if (append) setLoadingMore(true)
     else setLoading(true)
-    setError(null)
+    const query = searchQuery.trim()
+    const viewKey = [projectFilter, statusFilter, dueFilter, query].join("|")
     try {
       const params = new URLSearchParams({
         limit: String(PIPELINE_PAGE_SIZE),
@@ -175,23 +189,39 @@ export function PipelineWorkspace() {
         status: statusFilter,
         due: dueFilter,
       })
-      const query = searchQuery.trim()
       if (query) params.set("search", query)
       const response = await fetch(`/api/pipeline?${params.toString()}`, { cache: "no-store" })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.error || "Pipeline could not load")
-      const nextItems = Array.isArray(data?.items) ? data.items : []
-      setItems((prev) => (append ? [...prev, ...nextItems] : nextItems))
-      setProjectOptions(Array.isArray(data?.projects) ? data.projects : [])
-      setTotalItems(Number.isFinite(data?.total) ? data.total : nextItems.length)
-      setHasMore(Boolean(data?.hasMore))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Pipeline could not load")
-      if (!append) {
-        setItems([])
-        setTotalItems(0)
-        setHasMore(false)
+      if (!response.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Pipeline could not load")
       }
+      if (
+        !data ||
+        !Array.isArray(data.items) ||
+        !data.items.every(isPipelineItem) ||
+        !Array.isArray(data.projects) ||
+        data.projects.some((project: unknown) => {
+          if (!project || typeof project !== "object") return true
+          const option = project as { id?: unknown; name?: unknown }
+          return typeof option.id !== "string" || typeof option.name !== "string"
+        }) ||
+        typeof data.total !== "number" ||
+        typeof data.hasMore !== "boolean"
+      ) {
+        throw new Error("Pipeline returned an invalid response")
+      }
+      const nextItems = data.items
+      setItems((prev) => (append ? [...prev, ...nextItems] : nextItems))
+      setProjectOptions(data.projects)
+      setTotalItems(data.total)
+      setHasMore(data.hasMore)
+      setLoadError(null)
+      setLastLoadedAt(new Date())
+      setStaleFilters(false)
+      lastSuccessfulViewRef.current = viewKey
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Pipeline could not load")
+      setStaleFilters(lastSuccessfulViewRef.current !== viewKey)
     } finally {
       setLoading(false)
       setLoadingMore(false)
@@ -243,7 +273,6 @@ export function PipelineWorkspace() {
   async function updateTracking(item: PipelineItem, updates: ProjectTrackingUpdate) {
     if (!canWrite) return null
     setSavingIds((prev) => new Set(prev).add(item.tracking.id))
-    setError(null)
     try {
       const response = await fetch(`/api/ecosystems/${item.project.id}/tracking`, {
         method: "PATCH",
@@ -265,7 +294,6 @@ export function PipelineWorkspace() {
       return tracking
     } catch (err) {
       const message = err instanceof Error ? err.message : "Pipeline item could not be updated"
-      setError(message)
       toast({ title: "Could not update pipeline", description: message, variant: "destructive" })
       return null
     } finally {
@@ -400,9 +428,22 @@ export function PipelineWorkspace() {
           </CardContent>
         </Card>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-            {error}
+        {loadError && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-destructive">Pipeline could not refresh</p>
+              <p className="break-words text-xs text-muted-foreground">{loadError}</p>
+              {lastLoadedAt && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {staleFilters
+                    ? "Showing the last successful view; the current filters were not applied."
+                    : `Showing the last update from ${lastLoadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`}
+                </p>
+              )}
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => loadPipeline(false)}>
+              Retry
+            </Button>
           </div>
         )}
 
@@ -411,7 +452,7 @@ export function PipelineWorkspace() {
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading pipeline...
           </div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !loadError ? (
           <div className="rounded-lg border border-border bg-card px-5 py-10 text-center shadow-none">
             <CalendarClock className="mx-auto h-10 w-10 text-primary" />
             <h2 className="mt-4 text-xl font-semibold text-foreground">No active pipeline items yet.</h2>

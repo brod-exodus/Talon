@@ -1124,6 +1124,20 @@ deployment, open a completed scrape's Share dialog, generate a temporary link,
 open it, revoke it, and confirm the history shows Revoked. Roll back by
 redeploying the prior application version.
 
+### Reliable Pipeline snapshots
+
+The Pipeline preserves its last validated items, Project options, totals, and
+pagination state when initial loading, filtering, searching, or pagination
+fails. The warning distinguishes a stale refresh from filters that were never
+successfully applied and provides a direct retry. Malformed payloads fail closed
+instead of clearing the Pipeline, and mutation errors remain scoped to their
+action rather than marking the entire Pipeline unavailable.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, open Pipeline, exercise Project, status, due-date, and search
+filters, load another page if available, and update one follow-up. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
