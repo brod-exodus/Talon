@@ -1098,6 +1098,19 @@ deployment, confirm the Completed Scrapes Project filter lists existing Projects
 and that a completed scrape can still be assigned to one. Roll back by
 redeploying the prior application version.
 
+### Verified completed-list mutations
+
+Completed Scrapes changes local state only after outreach updates and scrape
+deletions return their explicit success contract. Failed or malformed responses
+retain the contributor cache, scrape row, and delete confirmation so the
+operator can retry safely. Sanitized API messages remain visible, while raw
+errors are no longer written to the browser console.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, save one outreach field, refresh to confirm persistence, then delete
+a disposable completed scrape and confirm it disappears. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

@@ -593,10 +593,17 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             status: updates.status,
           }),
         })
-        if (!res.ok) throw new Error("Failed to update")
+        const data = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(getPublicApiError(data, "Failed to save outreach update"))
+        if (!data || data.success !== true) {
+          throw new Error("Talon could not confirm the outreach update")
+        }
       } catch (err) {
-        console.error("[v0] Update outreach error:", err)
-        toast({ title: "Error", description: "Failed to save outreach update", variant: "destructive" })
+        toast({
+          title: "Outreach update failed",
+          description: err instanceof Error ? err.message : "Failed to save outreach update",
+          variant: "destructive",
+        })
         return
       }
       // Update every cache entry where this username appears
@@ -624,16 +631,23 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
     setDeletingScrapeId(scrapeId)
     try {
       const response = await fetch(`/api/scrape/${scrapeId}`, { method: "DELETE" })
+      const data = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error("Failed to delete scrape")
+        throw new Error(getPublicApiError(data, "Failed to delete scrape"))
+      }
+      if (!data || data.success !== true) {
+        throw new Error("Talon could not confirm that the scrape was deleted")
       }
       setScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
       setFailedScrapes((prev) => prev.filter((s) => s.id !== scrapeId))
       setContributorCache((prev) => { const next = new Map(prev); next.delete(scrapeId); return next })
       setDeleteDialogScrape(null)
     } catch (err) {
-      console.error("[v0] Failed to delete scrape:", err)
-      toast({ title: "Delete failed", description: "Talon could not delete this scrape. Try again.", variant: "destructive" })
+      toast({
+        title: "Delete failed",
+        description: err instanceof Error ? err.message : "Talon could not delete this scrape. Try again.",
+        variant: "destructive",
+      })
     } finally {
       setDeletingScrapeId(null)
     }
