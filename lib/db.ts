@@ -5,6 +5,7 @@ import { planGitHubCooldownUntil, planScrapeJobFailure, planStaleScrapeJobRecove
 import { logError } from "@/lib/logger"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 import { requireWorkspaceId } from "@/lib/workspace-scope"
+import { toScrapeJobTimelineEvent, type ScrapeJobTimelineEvent } from "@/lib/scrape-job-timeline"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
@@ -79,17 +80,6 @@ export type ScrapeJobEventRow = {
   created_at: string
 }
 
-export type ScrapeJobEventSummary = {
-  id: string
-  jobId: string | null
-  scrapeId: string | null
-  eventType: string
-  message: string
-  metadata: Record<string, unknown>
-  requestId: string | null
-  createdAt: string
-}
-
 type ScrapeContributorPageRow = {
   contributor_id: string
   github_username: string
@@ -147,7 +137,7 @@ export type ScrapeJobSummary = {
   lastError: string | null
   cancelRequested: boolean
   requestId: string | null
-  recentEvents?: ScrapeJobEventSummary[]
+  recentEvents?: ScrapeJobTimelineEvent[]
   createdAt: string
   updatedAt: string
 }
@@ -251,19 +241,6 @@ function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
     requestId: row.request_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  }
-}
-
-function toScrapeJobEventSummary(row: ScrapeJobEventRow): ScrapeJobEventSummary {
-  return {
-    id: row.id,
-    jobId: row.job_id,
-    scrapeId: row.scrape_id,
-    eventType: row.event_type,
-    message: row.message,
-    metadata: row.metadata ?? {},
-    requestId: row.request_id,
-    createdAt: row.created_at,
   }
 }
 
@@ -917,15 +894,43 @@ export async function getScrapeJobSummaries(limit = 50, teamId?: string): Promis
     : { data: [], error: null }
   if (eventsError) throw eventsError
 
-  const eventsByJob = new Map<string, ScrapeJobEventSummary[]>()
-  for (const event of ((events ?? []) as ScrapeJobEventRow[]).map(toScrapeJobEventSummary)) {
-    if (!event.jobId) continue
-    const list = eventsByJob.get(event.jobId) ?? []
-    if (list.length < 5) list.push(event)
-    eventsByJob.set(event.jobId, list)
+  const eventsByJob = new Map<string, ScrapeJobTimelineEvent[]>()
+  for (const row of (events ?? []) as ScrapeJobEventRow[]) {
+    if (!row.job_id) continue
+    const list = eventsByJob.get(row.job_id) ?? []
+    if (list.length < 5) list.push(toScrapeJobTimelineEvent(row))
+    eventsByJob.set(row.job_id, list)
   }
 
   return jobs.map((job) => ({ ...job, recentEvents: eventsByJob.get(job.id) ?? [] }))
+}
+
+export async function getScrapeJobTimeline(
+  jobId: string,
+  limit = 100,
+  teamId?: string
+): Promise<ScrapeJobTimelineEvent[] | null> {
+  const resolvedTeamId = await resolveTeamId(teamId)
+  const { data: job, error: jobError } = await supabaseAdmin
+    .from("scrape_jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("team_id", resolvedTeamId)
+    .maybeSingle()
+  if (jobError) throw jobError
+  if (!job) return null
+
+  const boundedLimit = Math.max(1, Math.min(200, Math.floor(limit)))
+  const { data, error } = await supabaseAdmin
+    .from("scrape_job_events")
+    .select("id, team_id, job_id, scrape_id, event_type, metadata, created_at")
+    .eq("team_id", resolvedTeamId)
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false })
+    .limit(boundedLimit)
+  if (error) throw error
+
+  return ((data ?? []) as ScrapeJobEventRow[]).reverse().map(toScrapeJobTimelineEvent)
 }
 
 export async function retryScrapeJob(id: string, teamId?: string): Promise<ScrapeJobSummary> {

@@ -31,6 +31,7 @@ const INTERNAL_ERROR_MESSAGES = {
   scrape_job_cancel_failed: "Failed to cancel scrape job",
   scrape_job_list_failed: "Failed to fetch scrape jobs",
   scrape_job_retry_failed: "Failed to retry scrape job",
+  scrape_job_timeline_failed: "Failed to fetch scrape job timeline",
   scrape_list_active_failed: "Failed to fetch active scrapes",
   scrape_list_failed: "Failed to fetch scrapes",
   scrape_list_recent_failed: "Failed to fetch recent scrapes",
