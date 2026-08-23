@@ -1165,6 +1165,21 @@ deployment, open the dashboard, refresh Follow-Ups Due, open one contributor
 preview if present, and confirm View Pipeline still works. Roll back by
 redeploying the prior application version.
 
+### Critical-path browser testing
+
+`pnpm test:e2e` starts an isolated local Talon server and runs Chromium through
+login, scrape acceptance, active progress, completion, contributor expansion,
+and CSV export. Network responses are deterministic browser fixtures, so the
+test proves UI integration without GitHub, Supabase data, production secrets,
+or production mutations. CI installs only Chromium, retains traces, screenshots,
+and video on failure, and uploads the HTML report for seven days.
+
+Install the local browser once with `pnpm exec playwright install chromium`.
+Use `pnpm test:e2e:ui` for interactive debugging. This release has no migration,
+environment-variable, or scheduler change. Roll back by reverting the browser
+test, configuration, dependency, and CI job; the production application is
+otherwise unchanged.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:

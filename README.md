@@ -258,10 +258,14 @@ exports.
 ```bash
 pnpm verify
 pnpm build
+pnpm test:e2e
 ```
 
 CI runs whitespace checks, lint, TypeScript, tests, the production build, and a
-fresh Supabase database migration on every pull request. The database job
+fresh Supabase database migration on every pull request. A separate Chromium
+job exercises the critical browser workflow from login through scrape queueing,
+background completion, contributor inspection, and CSV export using a
+deterministic API fixture; it never reads or mutates production. The database job
 converts the canonical `db/migrations` files into Supabase CLI filenames in a
 temporary directory, then executes the complete sequence against Supabase's
 local database image. Production changes use `.github/pull_request_template.md`
