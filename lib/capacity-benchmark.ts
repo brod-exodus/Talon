@@ -1,5 +1,6 @@
 import {
   MAX_JOB_STEPS_PER_INVOCATION,
+  MAX_GITHUB_REQUESTS_PER_WORKER_INVOCATION,
   WORKER_EXECUTION_BUDGET_MS,
 } from "./worker-budget.ts"
 import { SCRAPE_HYDRATION_BATCH_SIZE } from "./scrape-step.ts"
@@ -16,6 +17,7 @@ export type CapacityScenario = {
   firstClaimMs?: number
   executionBudgetMs?: number
   maxStepsPerInvocation?: number
+  githubRequestBudget?: number
   completionBudgetMs?: number
 }
 
@@ -68,6 +70,10 @@ export function runCapacityScenario(scenario: CapacityScenario): CapacityBenchma
   const completionBudgetMs = scenario.completionBudgetMs === undefined
     ? null
     : positiveInteger(scenario.completionBudgetMs, "completionBudgetMs")
+  const githubRequestBudget = positiveInteger(
+    scenario.githubRequestBudget ?? MAX_GITHUB_REQUESTS_PER_WORKER_INVOCATION,
+    "githubRequestBudget"
+  )
 
   const cachedProfiles = Math.floor(contributors * cachedPercent / 100)
   const githubProfileRefreshes = contributors - cachedProfiles
@@ -77,17 +83,30 @@ export function runCapacityScenario(scenario: CapacityScenario): CapacityBenchma
     ...Array.from({ length: discoveryPages }, () => discoveryStepMs),
     ...Array.from({ length: hydrationBatches }, () => hydrationStepMs),
   ]
+  const stepCosts = [
+    ...Array.from({ length: discoveryPages }, () => 1),
+    ...Array.from({ length: hydrationBatches }, () => SCRAPE_HYDRATION_BATCH_SIZE * 2),
+  ]
 
   let workerInvocations = 0
   let invocationMs = 0
   let invocationSteps = 0
-  for (const stepMs of stepDurations) {
+  let invocationCost = 0
+  for (const [index, stepMs] of stepDurations.entries()) {
+    const stepCost = stepCosts[index] ?? 0
+    if (invocationSteps > 0 && invocationCost + stepCost > githubRequestBudget) {
+      invocationMs = 0
+      invocationSteps = 0
+      invocationCost = 0
+    }
     if (invocationSteps === 0) workerInvocations += 1
     invocationMs += stepMs
     invocationSteps += 1
+    invocationCost += stepCost
     if (invocationSteps >= maxSteps || invocationMs >= executionBudgetMs) {
       invocationMs = 0
       invocationSteps = 0
+      invocationCost = 0
     }
   }
 

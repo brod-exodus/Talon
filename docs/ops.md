@@ -721,6 +721,26 @@ Rollback by redeploying the previous application and restoring the prior
 contract function may remain. Do not mark jobs complete or delete claim events
 during rollback.
 
+### Request-weighted worker budget
+
+The worker estimates provider demand before each durable step. Repository and
+organization discovery cost one GitHub request; a cold hydration batch reserves
+40 requests for 20 profiles and their social-account lookups. One worker
+invocation stops before exceeding 850 estimated GitHub requests, 40 seconds, or
+the defensive 100-step ceiling.
+
+This replaces the former fixed 20-step limit. A cold 400-contributor repository
+requires about four discovery requests and 800 profile requests, so it can now
+finish in one invocation when network and database work stay inside 40 seconds.
+Larger jobs still checkpoint and resume. The 50-request margin protects the
+900-point-per-minute GitHub secondary limit, while zero worker retries prevent a
+single request from silently multiplying inside the estimate.
+
+Rollback by redeploying the previous application; no migration or environment
+change is involved. After deployment, compare worker invocations and total
+latency in Settings rather than assuming the synthetic capacity model represents
+live provider timing.
+
 If a scrape is stuck:
 
 1. Open Settings Health and inspect queue depth, oldest queued age, stale locks, and the last successful worker run.

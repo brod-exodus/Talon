@@ -23,10 +23,16 @@ The defaults mirror production constants:
 
 - GitHub contributor discovery: 100 contributors per page.
 - Contributor hydration: 20 profiles per durable batch.
-- Worker limit: 20 steps or 40 seconds per invocation.
+- Worker limit: 40 seconds, 850 estimated GitHub requests, or a defensive 100
+  steps per invocation—whichever is reached first.
 - Scheduler interval: one minute.
 - Cold profile: two GitHub requests, one for profile details and one for social
   accounts.
+
+Request weighting assigns one request to a contributor-discovery page and 40
+requests to a worst-case cold 20-profile hydration batch. This allows cheap
+discovery and expensive hydration to share one invocation without crossing
+GitHub's documented 900-point-per-minute secondary limit.
 
 Controlled durations are 300 ms per discovery step and 1.2 seconds per
 hydration step. These values keep the calculation deterministic; they do not

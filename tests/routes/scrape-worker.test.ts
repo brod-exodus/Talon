@@ -38,7 +38,8 @@ vi.mock("@/lib/worker-budget", () => ({
   runBoundedJobSteps: workerMocks.runBoundedJobSteps,
   WORKER_EXECUTION_BUDGET_MS: 40_000,
   MIN_JOB_START_BUDGET_MS: 10_000,
-  MAX_JOB_STEPS_PER_INVOCATION: 20,
+  MAX_JOB_STEPS_PER_INVOCATION: 100,
+  MAX_GITHUB_REQUESTS_PER_WORKER_INVOCATION: 850,
   MAX_JOBS_PER_WORKER_INVOCATION: 5,
 }))
 
@@ -141,8 +142,8 @@ describe("lease-safe scrape worker outcomes", () => {
     expect(result.stopReason).toBe("queue_empty")
     expect(result.elapsedMs).toBe(4_000)
     expect(budgets).toEqual([
-      { budgetMs: 40_000, maxSteps: 20 },
-      { budgetMs: 38_000, maxSteps: 18 },
+      { budgetMs: 40_000, maxSteps: 100 },
+      { budgetMs: 38_000, maxSteps: 98 },
     ])
   })
 
