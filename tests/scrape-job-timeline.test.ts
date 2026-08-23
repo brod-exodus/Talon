@@ -16,6 +16,7 @@ test("scrape timeline exposes useful allowlisted context without operational sec
       retryDelayMs: 12_500,
       workerId: "worker-secret",
       githubCooldownUntil: "2030-01-01T00:00:00Z",
+      githubCooldownReason: "primary-rate-limit",
       target: "private/repo",
       error: "database password",
     },
@@ -29,7 +30,9 @@ test("scrape timeline exposes useful allowlisted context without operational sec
     label: "Retry scheduled",
     category: "retry",
     occurredAt: "2026-08-22T12:00:00.000Z",
-    detail: "attempt 2 of 3 · retry in 13 seconds",
+    detail: "GitHub rate limiting paused this scrape. · attempt 2 of 3 · retry in 13 seconds",
+    failureCode: "github_rate_limited",
+    guidance: "Talon will resume automatically after GitHub's cooldown.",
   })
   assert.doesNotMatch(JSON.stringify(event), /secret|private\/repo|password|worker/i)
 })
@@ -49,4 +52,6 @@ test("unknown events receive a neutral label and no raw message or metadata", ()
 
   assert.equal(event.label, "Processing activity recorded")
   assert.equal(event.detail, null)
+  assert.equal(event.failureCode, null)
+  assert.equal(event.guidance, null)
 })

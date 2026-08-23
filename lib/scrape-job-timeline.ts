@@ -1,4 +1,5 @@
 import type { ScrapeJobEventRow } from "@/lib/db"
+import { classifyScrapeFailure, type ScrapeFailureCode } from "./scrape-failure-diagnostic.ts"
 
 export type ScrapeJobTimelineEvent = {
   id: string
@@ -7,6 +8,8 @@ export type ScrapeJobTimelineEvent = {
   category: "queue" | "worker" | "progress" | "retry" | "terminal"
   occurredAt: string
   detail: string | null
+  failureCode: ScrapeFailureCode | null
+  guidance: string | null
 }
 
 const EVENT_PRESENTATION: Record<string, Pick<ScrapeJobTimelineEvent, "label" | "category">> = {
@@ -59,12 +62,18 @@ export function toScrapeJobTimelineEvent(row: ScrapeJobEventRow): ScrapeJobTimel
     label: "Processing activity recorded",
     category: "progress" as const,
   }
+  const failure = row.event_type === "failed" || row.event_type === "retry_scheduled"
+    ? classifyScrapeFailure({ message: row.message, metadata: row.metadata })
+    : null
+  const context = safeDetail(row.event_type, row.metadata ?? {})
   return {
     id: row.id,
     eventType: row.event_type,
     label: presentation.label,
     category: presentation.category,
     occurredAt: row.created_at,
-    detail: safeDetail(row.event_type, row.metadata ?? {}),
+    detail: failure ? [failure.summary, context].filter(Boolean).join(" · ") : context,
+    failureCode: failure?.code ?? null,
+    guidance: failure?.guidance ?? null,
   }
 }

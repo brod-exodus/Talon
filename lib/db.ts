@@ -6,6 +6,7 @@ import { logError } from "@/lib/logger"
 import type { ProjectOutreachStatus } from "@/lib/validation"
 import { requireWorkspaceId } from "@/lib/workspace-scope"
 import { toScrapeJobTimelineEvent, type ScrapeJobTimelineEvent } from "@/lib/scrape-job-timeline"
+import { classifyScrapeFailure } from "@/lib/scrape-failure-diagnostic"
 
 // Expected Supabase tables: scrapes (id, type, target, status, progress, current, total, current_user_login, started_at, completed_at, error, contact_info_count, total_contributors),
 // contributors (id, github_username, name, avatar_url, bio, location, company, email, twitter, linkedin, website, contacted, contacted_date, outreach_notes, status),
@@ -236,7 +237,7 @@ function toScrapeJobSummary(row: ScrapeJobRow): ScrapeJobSummary {
     runAfter: row.run_after,
     lockedAt: row.locked_at,
     lockedBy: row.locked_by,
-    lastError: row.last_error,
+    lastError: row.last_error ? classifyScrapeFailure({ message: row.last_error }).summary : null,
     cancelRequested: row.cancel_requested,
     requestId: row.request_id,
     createdAt: row.created_at,

@@ -28,6 +28,8 @@ type ScrapeJobSummary = {
     category: "queue" | "worker" | "progress" | "retry" | "terminal"
     occurredAt: string
     detail: string | null
+    failureCode: string | null
+    guidance: string | null
   }>
   updatedAt: string
 }
@@ -70,6 +72,8 @@ function isTimelineEvent(value: unknown): value is NonNullable<ScrapeJobSummary[
     && ["queue", "worker", "progress", "retry", "terminal"].includes(String(event.category))
     && typeof event.occurredAt === "string"
     && (event.detail === null || typeof event.detail === "string")
+    && (event.failureCode === null || typeof event.failureCode === "string")
+    && (event.guidance === null || typeof event.guidance === "string")
 }
 
 export function ScrapeJobsPanel() {
@@ -319,6 +323,7 @@ export function ScrapeJobsPanel() {
                             <time className="shrink-0 text-muted-foreground">{formatTime(event.occurredAt)}</time>
                           </div>
                           {event.detail && <p className="text-muted-foreground">{event.detail}</p>}
+                          {event.guidance && <p className="text-amber-500/90">{event.guidance}</p>}
                         </li>
                       ))}
                     </ol>
