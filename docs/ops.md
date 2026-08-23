@@ -1085,6 +1085,19 @@ deployment, expand a completed scrape with contactable contributors, confirm
 progressive loading settles, and verify search and CSV export still use the full
 loaded list. Roll back by redeploying the prior application version.
 
+### Retryable completed-list Project context
+
+Completed Scrapes preserves its last successfully loaded Project options when
+the Project service fails. The Project filter and assignment menus remain
+usable with the retained data, while a visible warning and busy-safe retry make
+the stale state explicit. Malformed Project responses are rejected rather than
+being interpreted as an empty Project library.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, confirm the Completed Scrapes Project filter lists existing Projects
+and that a completed scrape can still be assigned to one. Roll back by
+redeploying the prior application version.
+
 ## Watched Repo Recovery
 
 If `Check Now` appears stale:
