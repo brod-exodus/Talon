@@ -346,6 +346,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   const [contributorErrors, setContributorErrors] = useState<Map<string, { message: string; nextPage: number }>>(new Map())
   const [retryingJobs, setRetryingJobs] = useState<Set<string>>(new Set())
   const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const [projectsLoading, setProjectsLoading] = useState(false)
   const [assigningScrapeIds, setAssigningScrapeIds] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState("all")
   const [activeTab, setActiveTab] = useState<CompletedScrapeTab>("repositories")
@@ -443,16 +445,23 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
   }, [loadScrapes, scrapes.length])
 
   const fetchProjects = useCallback(async () => {
+    setProjectsLoading(true)
     try {
-      const res = await fetch("/api/ecosystems")
-      const data = await res.json()
-      setProjects(
-        Array.isArray(data)
-          ? data.map((project: ProjectSummary) => ({ id: project.id, name: project.name }))
-          : []
-      )
+      const res = await fetch("/api/ecosystems", { cache: "no-store" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(getPublicApiError(data, "Projects could not load"))
+      if (
+        !Array.isArray(data) ||
+        data.some((project) => !project || typeof project.id !== "string" || typeof project.name !== "string")
+      ) {
+        throw new Error("Projects returned an invalid response")
+      }
+      setProjects(data.map((project: ProjectSummary) => ({ id: project.id, name: project.name })))
+      setProjectsError(null)
     } catch (err) {
-      console.error("[projects] Failed to fetch projects:", err)
+      setProjectsError(err instanceof Error ? err.message : "Projects could not load")
+    } finally {
+      setProjectsLoading(false)
     }
   }, [])
 
@@ -1564,6 +1573,24 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
             </SelectContent>
           </Select>
         </div>
+        {projectsError && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Project filters could not refresh</p>
+                <p className="break-words text-xs text-muted-foreground">{projectsError}</p>
+                {projects.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Showing the last successfully loaded Project options.</p>
+                )}
+              </div>
+            </div>
+            <Button type="button" size="sm" variant="outline" disabled={projectsLoading} onClick={fetchProjects}>
+              <RotateCw className={`mr-1 h-3 w-3 ${projectsLoading ? "animate-spin" : ""}`} />
+              Retry
+            </Button>
+          </div>
+        )}
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as CompletedScrapeTab)}
