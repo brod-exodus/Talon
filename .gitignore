@@ -8,6 +8,9 @@
 /out/
 /playwright-report/
 /test-results/
+/backups/
+*.dump
+*.dump.sha256
 
 # production
 /build

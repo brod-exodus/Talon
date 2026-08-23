@@ -1200,6 +1200,12 @@ checks respect each repository interval.
 
 ## Secret Rotation
 
+Database backup, isolated restore drills, recovery targets, external
+configuration inventory, and post-restore queue reconciliation are documented
+in [Disaster recovery](disaster-recovery.md). A checksum is necessary but does
+not satisfy the quarterly drill until the archive has been restored and read by
+an isolated Talon deployment.
+
 Rotate these first if credentials are exposed:
 
 1. GitHub personal access tokens.
