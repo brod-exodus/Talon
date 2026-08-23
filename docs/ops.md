@@ -696,6 +696,31 @@ When an SLO is missed:
 5. After a fix deploys, confirm new scrapes improve the rolling window; do not
    delete failed history merely to make the indicator green.
 
+### Fair scrape scheduling
+
+Migration 047 keeps atomic claims fair when multiple workspaces or long jobs
+share the worker. The selector briefly serializes only the claim decision; job
+execution remains outside that lock and can run independently. It applies this
+order:
+
+1. User-started scrapes before internal watched-repository checks.
+2. A background check waiting at least 15 minutes is promoted so it cannot
+   starve under continuous interactive traffic.
+3. The workspace least recently given a worker claim.
+4. Within that workspace, the job least recently claimed, followed by its due
+   time and creation time.
+
+The decision uses append-only `claimed` events and a partial index rather than
+mutable counters. The existing GitHub cooldown, cancellation predicate,
+workspace filter, row lease, attempt increment, and `FOR UPDATE SKIP LOCKED`
+contract remain inside the same service-role-only database function. Settings
+attests that the supporting index exists and is valid.
+
+Rollback by redeploying the previous application and restoring the prior
+`claim_scrape_job` definition from migration 037. The additive index and
+contract function may remain. Do not mark jobs complete or delete claim events
+during rollback.
+
 If a scrape is stuck:
 
 1. Open Settings Health and inspect queue depth, oldest queued age, stale locks, and the last successful worker run.
