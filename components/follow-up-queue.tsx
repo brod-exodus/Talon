@@ -40,6 +40,56 @@ type FollowUpQueueItem = {
   }
 }
 
+const OUTREACH_STATUSES = new Set([
+  "not_contacted", "contacted", "replied", "interested", "interviewing", "rejected", "archived",
+])
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string"
+}
+
+function isNullableDate(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && Number.isFinite(Date.parse(value)))
+}
+
+function isContacts(value: unknown): value is FollowUpQueueItem["contributor"]["contacts"] {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every((contact) => typeof contact === "string")
+}
+
+function isFollowUpQueueItem(value: unknown): value is FollowUpQueueItem {
+  if (!value || typeof value !== "object") return false
+  const item = value as Record<string, unknown>
+  if (!item.tracking || typeof item.tracking !== "object"
+    || !item.contributor || typeof item.contributor !== "object"
+    || !item.project || typeof item.project !== "object") return false
+
+  const tracking = item.tracking as Record<string, unknown>
+  const contributor = item.contributor as Record<string, unknown>
+  const project = item.project as Record<string, unknown>
+  const contacts = contributor.contacts
+
+  return typeof tracking.id === "string" && tracking.id.length > 0
+    && typeof tracking.projectId === "string" && tracking.projectId === project.id
+    && typeof tracking.contributorId === "string" && tracking.contributorId === contributor.id
+    && typeof tracking.status === "string" && OUTREACH_STATUSES.has(tracking.status)
+    && isNullableString(tracking.notes)
+    && isNullableDate(tracking.lastContactedAt)
+    && isNullableDate(tracking.nextFollowUpAt)
+    && typeof tracking.createdAt === "string" && Number.isFinite(Date.parse(tracking.createdAt))
+    && typeof tracking.updatedAt === "string" && Number.isFinite(Date.parse(tracking.updatedAt))
+    && typeof contributor.id === "string" && contributor.id.length > 0
+    && typeof contributor.username === "string" && contributor.username.length > 0
+    && typeof contributor.name === "string"
+    && typeof contributor.avatar === "string"
+    && isNullableString(contributor.bio)
+    && isNullableString(contributor.location)
+    && isNullableString(contributor.company)
+    && isContacts(contacts)
+    && typeof project.id === "string" && project.id.length > 0
+    && typeof project.name === "string" && project.name.length > 0
+}
+
 function todayString() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -80,6 +130,7 @@ export function FollowUpQueue() {
   const [followUps, setFollowUps] = useState<FollowUpQueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
   const [previewItem, setPreviewItem] = useState<FollowUpQueueItem | null>(null)
   const previewPrefetchTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
@@ -109,15 +160,18 @@ export function FollowUpQueue() {
 
   const loadFollowUps = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const response = await fetch("/api/follow-ups", { cache: "no-store" })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Follow-ups could not load")
-      setFollowUps(Array.isArray(data?.followUps) ? data.followUps : [])
+      if (!Array.isArray(data?.followUps) || !data.followUps.every(isFollowUpQueueItem)) {
+        throw new Error("Follow-ups response was incomplete")
+      }
+      setFollowUps(data.followUps)
+      setLastLoadedAt(new Date())
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Follow-ups could not load")
-      setFollowUps([])
     } finally {
       setLoading(false)
     }
@@ -165,19 +219,24 @@ export function FollowUpQueue() {
           {error && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
               {error}
+              {lastLoadedAt && (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Showing follow-ups last updated {lastLoadedAt.toLocaleTimeString()}.
+                </span>
+              )}
             </div>
           )}
 
-          {loading ? (
+          {loading && followUps.length === 0 ? (
             <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-4 py-5 text-sm font-semibold text-primary">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading due follow-ups...
             </div>
-          ) : followUps.length === 0 ? (
+          ) : !error && followUps.length === 0 ? (
             <div className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-4 py-5 text-sm font-medium text-emerald-300">
               No follow-ups due. You&apos;re clear.
             </div>
-          ) : (
+          ) : followUps.length > 0 ? (
             <div className="space-y-3">
               {previewItems.map((item) => (
                   <div
@@ -243,7 +302,7 @@ export function FollowUpQueue() {
                 </Button>
               )}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
