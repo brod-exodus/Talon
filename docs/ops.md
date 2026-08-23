@@ -1075,6 +1075,21 @@ deployment, start a scrape, confirm its operation updates, and exercise Cancel
 or Retry on an eligible job. Roll back by redeploying the prior application
 version.
 
+### Per-scrape execution timeline
+
+Administrators can expand **Timeline** on any recent Scrape Operations job to
+see its queue, worker, progress, retry, recovery, and terminal transitions in
+chronological order. The endpoint reads the newest 100 persisted events for the
+current workspace and returns only allowlisted labels and numeric context. Raw
+provider errors, repository metadata, worker identifiers, request identifiers,
+and secret values never enter the browser response. Completed jobs remain in
+the recent operations list so slow successful runs can be investigated.
+
+This release has no migration, environment-variable, or scheduler change. After
+deployment, complete a public repository scrape, open Scrape Operations as an
+admin, expand Timeline, and confirm the sequence begins with queue activity and
+ends with completion. Roll back by redeploying the prior application version.
+
 ### Reliable production diagnostics
 
 Production Readiness preserves the last successful health snapshot when its

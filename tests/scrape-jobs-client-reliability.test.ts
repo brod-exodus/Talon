@@ -25,3 +25,12 @@ test("Scrape Operations validates reads and preserves public mutation errors", a
   assert.match(source, /setRetrying\(\(prev\) => \{/)
   assert.match(source, /setCanceling\(\(prev\) => \{/)
 })
+
+test("Scrape Operations loads a safe execution timeline on demand", async () => {
+  const source = await readFile(panelPath, "utf8")
+
+  assert.match(source, /fetch\(`\/api\/scrape-jobs\/\$\{jobId\}\/events`, \{ cache: "no-store" \}\)/)
+  assert.match(source, /Execution timeline/)
+  assert.match(source, /Timeline returned an invalid response/)
+  assert.match(source, /No timeline events were recorded/)
+})

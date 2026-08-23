@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Clock, RotateCw, ServerCog, XCircle } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronUp, Clock, RotateCw, ServerCog, XCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,8 +24,10 @@ type ScrapeJobSummary = {
   recentEvents?: Array<{
     id: string
     eventType: string
-    message: string
-    createdAt: string
+    label: string
+    category: "queue" | "worker" | "progress" | "retry" | "terminal"
+    occurredAt: string
+    detail: string | null
   }>
   updatedAt: string
 }
@@ -59,6 +61,17 @@ function statusBadge(job: ScrapeJobSummary) {
   return <Badge variant="secondary">Succeeded</Badge>
 }
 
+function isTimelineEvent(value: unknown): value is NonNullable<ScrapeJobSummary["recentEvents"]>[number] {
+  if (!value || typeof value !== "object") return false
+  const event = value as Record<string, unknown>
+  return typeof event.id === "string"
+    && typeof event.eventType === "string"
+    && typeof event.label === "string"
+    && ["queue", "worker", "progress", "retry", "terminal"].includes(String(event.category))
+    && typeof event.occurredAt === "string"
+    && (event.detail === null || typeof event.detail === "string")
+}
+
 export function ScrapeJobsPanel() {
   const { canAdmin } = useAuthPermissions()
   const [jobs, setJobs] = useState<ScrapeJobSummary[]>([])
@@ -67,10 +80,14 @@ export function ScrapeJobsPanel() {
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
   const [retrying, setRetrying] = useState<Set<string>>(new Set())
   const [canceling, setCanceling] = useState<Set<string>>(new Set())
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
+  const [timelines, setTimelines] = useState<Record<string, NonNullable<ScrapeJobSummary["recentEvents"]>>>({})
+  const [timelineLoading, setTimelineLoading] = useState<Set<string>>(new Set())
+  const [timelineErrors, setTimelineErrors] = useState<Record<string, string>>({})
   const { toast } = useToast()
 
   const visibleJobs = useMemo(
-    () => jobs.filter((job) => job.status !== "succeeded").slice(0, 8),
+    () => jobs.slice(0, 8),
     [jobs]
   )
 
@@ -168,9 +185,47 @@ export function ScrapeJobsPanel() {
     }
   }, [canAdmin, loadJobs, toast])
 
-  if (!canAdmin) return null
-  if (!loading && !loadError && visibleJobs.length === 0) return null
+  const loadTimeline = useCallback(async (jobId: string) => {
+    setTimelineLoading((previous) => new Set(previous).add(jobId))
+    setTimelineErrors((previous) => {
+      const next = { ...previous }
+      delete next[jobId]
+      return next
+    })
+    try {
+      const response = await fetch(`/api/scrape-jobs/${jobId}/events`, { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Timeline could not load")
+      }
+      if (!data || !Array.isArray(data.events) || !data.events.every(isTimelineEvent)) {
+        throw new Error("Timeline returned an invalid response")
+      }
+      setTimelines((previous) => ({ ...previous, [jobId]: data.events }))
+    } catch (error) {
+      setTimelineErrors((previous) => ({
+        ...previous,
+        [jobId]: error instanceof Error ? error.message : "Timeline could not load",
+      }))
+    } finally {
+      setTimelineLoading((previous) => {
+        const next = new Set(previous)
+        next.delete(jobId)
+        return next
+      })
+    }
+  }, [])
 
+  const toggleTimeline = useCallback((jobId: string) => {
+    if (expandedJobId === jobId) {
+      setExpandedJobId(null)
+      return
+    }
+    setExpandedJobId(jobId)
+    if (!timelines[jobId]) void loadTimeline(jobId)
+  }, [expandedJobId, loadTimeline, timelines])
+
+  if (!canAdmin) return null
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -204,6 +259,8 @@ export function ScrapeJobsPanel() {
           )}
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading jobs...</p>
+          ) : visibleJobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No scrape processing history yet.</p>
           ) : visibleJobs.map((job) => (
             <div key={job.id} className="rounded-lg border border-border p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
@@ -221,18 +278,51 @@ export function ScrapeJobsPanel() {
                   <span className="break-words">{job.lastError}</span>
                 </div>
               )}
-              {job.recentEvents && job.recentEvents.length > 0 && (
+              {job.recentEvents && job.recentEvents.length > 0 && expandedJobId !== job.id && (
                 <div className="space-y-1 rounded-md border border-border bg-muted/20 p-2">
                   {job.recentEvents.slice(0, 3).map((event) => (
                     <div key={event.id} className="flex items-start justify-between gap-3 text-xs">
                       <span className="min-w-0 text-muted-foreground">
-                        <span className="font-mono text-foreground/80">{event.eventType}</span>
-                        {" · "}
-                        <span className="break-words">{event.message}</span>
+                        <span className="break-words text-foreground/80">{event.label}</span>
+                        {event.detail && <span> · {event.detail}</span>}
                       </span>
-                      <span className="shrink-0 text-muted-foreground">{formatTime(event.createdAt)}</span>
+                      <span className="shrink-0 text-muted-foreground">{formatTime(event.occurredAt)}</span>
                     </div>
                   ))}
+                </div>
+              )}
+              {expandedJobId === job.id && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                  <p className="text-xs font-medium text-foreground">Execution timeline</p>
+                  {timelineLoading.has(job.id) ? (
+                    <p className="text-xs text-muted-foreground">Loading timeline...</p>
+                  ) : timelineErrors[job.id] ? (
+                    <div className="flex items-center justify-between gap-3 text-xs text-destructive">
+                      <span>{timelineErrors[job.id]}</span>
+                      <Button size="sm" variant="outline" className="h-7" onClick={() => {
+                        setTimelines((previous) => {
+                          const next = { ...previous }
+                          delete next[job.id]
+                          return next
+                        })
+                        void loadTimeline(job.id)
+                      }}>Retry</Button>
+                    </div>
+                  ) : (timelines[job.id] ?? []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No timeline events were recorded.</p>
+                  ) : (
+                    <ol className="space-y-2 border-l border-border pl-3">
+                      {(timelines[job.id] ?? []).map((event) => (
+                        <li key={event.id} className="text-xs">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="font-medium text-foreground">{event.label}</span>
+                            <time className="shrink-0 text-muted-foreground">{formatTime(event.occurredAt)}</time>
+                          </div>
+                          {event.detail && <p className="text-muted-foreground">{event.detail}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </div>
               )}
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -242,6 +332,15 @@ export function ScrapeJobsPanel() {
                 </span>
                 {canAdmin && (
                   <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7"
+                      onClick={() => toggleTimeline(job.id)}
+                    >
+                      {expandedJobId === job.id ? <ChevronUp className="mr-1 h-3 w-3" /> : <ChevronDown className="mr-1 h-3 w-3" />}
+                      Timeline
+                    </Button>
                     {(job.status === "queued" || job.status === "running") && (
                       <Button
                         size="sm"
