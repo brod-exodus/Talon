@@ -139,6 +139,15 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
   await page.getByRole("button", { name: "View Contributors (1)" }).click()
   await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
   await expect(page.getByText("octocat@example.com", { exact: true })).toBeVisible()
+  const mergedPullRequestsHref = await page.getByRole("link", { name: "Merged PRs" }).getAttribute("href")
+  expect(mergedPullRequestsHref).toBeTruthy()
+  const mergedPullRequestsUrl = new URL(mergedPullRequestsHref!)
+  expect(mergedPullRequestsUrl.origin).toBe("https://github.com")
+  expect(mergedPullRequestsUrl.pathname).toBe("/search")
+  expect(mergedPullRequestsUrl.searchParams.get("q")).toBe(
+    "repo:octocat/Hello-World is:pr is:merged author:octocat"
+  )
+  expect(mergedPullRequestsUrl.searchParams.get("type")).toBe("pullrequests")
 
   await page.getByRole("button", { name: /Download/ }).click()
   const downloadPromise = page.waitForEvent("download")

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { buildPublicCsvContent } from "@/lib/csv-export"
 import { CopyableEmail } from "./copyable-email"
+import { buildMergedPullRequestsUrl } from "@/lib/github-merged-pr-search"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,11 @@ export default function SharePage() {
           <div className="space-y-3">
             {visible.map((contributor, idx) => {
               const con = contributor.contacts ?? {}
+              const mergedPullRequestsUrl = buildMergedPullRequestsUrl({
+                target: scrape.target,
+                type: scrape.type,
+                username: contributor.username,
+              })
               return (
                 <div
                   key={contributor.username}
@@ -276,15 +282,28 @@ export default function SharePage() {
                         </p>
                       </div>
                     </div>
-                    <a
-                      href={`https://github.com/${contributor.username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1.5 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors bg-transparent"
-                    >
-                      <Github className="w-3.5 h-3.5" />
-                      GitHub
-                    </a>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      <a
+                        href={`https://github.com/${contributor.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1.5 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors bg-transparent"
+                      >
+                        <Github className="w-3.5 h-3.5" />
+                        GitHub
+                      </a>
+                      {mergedPullRequestsUrl && (
+                        <a
+                          href={mergedPullRequestsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1.5 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors bg-transparent"
+                        >
+                          <Github className="w-3.5 h-3.5" />
+                          Merged PRs
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   {/* Row 2: contact links */}
