@@ -144,12 +144,24 @@ async function schemaVersionCheck(): Promise<HealthCheck> {
       }
     }
 
+    const { data: lifecycleData, error: lifecycleError } = await supabaseAdmin.rpc(
+      "get_talon_lifecycle_contract_issues"
+    )
+    if (lifecycleError || !Array.isArray(lifecycleData)) {
+      return {
+        status: "error",
+        message: "Database schema contract could not be verified",
+        detail: `Current v${currentVersion}; lifecycle attestation is unavailable. Apply migration ${EXPECTED_SCHEMA_VERSION}.`,
+      }
+    }
+
     const contractIssues = [
       ...parseContractIssues(contractData),
       ...parseContractIssues(appendOnlyData),
       ...parseContractIssues(sessionContractData),
       ...parseContractIssues(sessionLimitData),
       ...parseContractIssues(schedulingData),
+      ...parseContractIssues(lifecycleData),
     ]
     if (contractIssues.length > 0) {
       const visibleIssues = contractIssues.slice(0, 5).join(", ")

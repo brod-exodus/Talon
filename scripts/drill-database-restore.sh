@@ -227,6 +227,8 @@ contract_issue_count="$(PGDATABASE="$target_url" psql -X -v ON_ERROR_STOP=1 -Atq
     SELECT requirement_type, requirement_name FROM public.get_talon_session_limit_contract_issues()
     UNION ALL
     SELECT requirement_type, requirement_name FROM public.get_talon_scheduling_contract_issues()
+    UNION ALL
+    SELECT requirement_type, requirement_name FROM public.get_talon_lifecycle_contract_issues()
   ) AS contract_issues;
 ")"
 

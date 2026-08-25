@@ -50,6 +50,7 @@ const INTERNAL_ERROR_MESSAGES = {
   watched_repo_list_failed: "Failed to fetch watched repos",
   watched_repo_check_failed: "Failed to queue watched repository checks",
   github_rate_limit_check_failed: "Failed to check rate limit",
+  workspace_lifecycle_preview_failed: "Failed to preview workspace data",
 } as const
 
 const SERVICE_ERROR_MESSAGES = {
