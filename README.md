@@ -131,6 +131,10 @@ The portfolio deployment favors free infrastructure:
 - Supabase Cron and `pg_net` schedule bounded worker requests.
 - Vercel Cron performs a daily external keepalive.
 - The keepalive also applies documented retention windows to operational data.
+- The complete Postgres inventory, privacy classifications, deletion boundaries,
+  and non-database limitations live in
+  [`docs/data-lifecycle.md`](docs/data-lifecycle.md); CI requires every new table
+  to receive an explicit lifecycle decision.
 - The keepalive evaluates the seven-day scrape SLO and sends a state-change
   Slack alert for a new breach or recovery when `SLACK_WEBHOOK_URL` is set.
 - `system_runs` preserves operational outcomes beyond Vercel Hobby log
