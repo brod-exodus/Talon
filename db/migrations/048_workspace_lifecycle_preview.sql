@@ -95,7 +95,7 @@ AS $$
     ('authenticated', FALSE)
   ) AS required(role_name, allowed)
   WHERE has_function_privilege(required.role_name, 'public.preview_workspace_lifecycle(uuid)', 'EXECUTE') IS DISTINCT FROM required.allowed
-  ORDER BY requirement_type, requirement_name;
+  ORDER BY 1, 2;
 $$;
 
 REVOKE ALL ON FUNCTION public.get_talon_lifecycle_contract_issues() FROM PUBLIC;
