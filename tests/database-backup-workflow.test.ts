@@ -79,6 +79,7 @@ test("restore drills verify the archive, restore transactionally, and record rec
   assert.match(drill, /get_talon_session_contract_issues/)
   assert.match(drill, /get_talon_session_limit_contract_issues/)
   assert.match(drill, /get_talon_scheduling_contract_issues/)
+  assert.match(drill, /get_talon_lifecycle_contract_issues/)
   assert.match(drill, /EXPECTED_SCHEMA_VERSION/)
   assert.match(drill, /scrapes[\s\S]+contributors[\s\S]+ecosystems[\s\S]+team_memberships/)
   assert.match(drill, /elapsedSeconds/)

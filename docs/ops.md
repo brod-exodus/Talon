@@ -337,6 +337,8 @@ db/migrations/043_schema_contract_attestation.sql
 db/migrations/044_append_only_operational_history.sql
 db/migrations/045_revocable_sessions.sql
 db/migrations/046_bounded_active_sessions.sql
+db/migrations/047_fair_scrape_job_scheduling.sql
+db/migrations/048_workspace_lifecycle_preview.sql
 ```
 
 They create or enforce:

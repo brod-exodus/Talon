@@ -34,5 +34,5 @@ test("fair scheduling is indexed, attestable, service-role only, and schema v47"
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.claim_scrape_job\(TEXT, UUID\) FROM PUBLIC/i)
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.claim_scrape_job\(TEXT, UUID\) TO service_role/i)
   assert.match(migration, /VALUES \(47, 'fair_scrape_job_scheduling'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 47)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 47)
 })

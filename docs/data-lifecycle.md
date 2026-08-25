@@ -63,11 +63,17 @@ automatic expiry for that data.
 
 ## Required design before workspace deletion
 
+Owners can request `GET /api/workspace-lifecycle/preview` to receive current,
+count-only Postgres scope and active-work blockers. The response excludes row
+content and workspace identifiers, is never cached, and marks Auth, Storage,
+backups, and downloaded exports as outside the database count. This is a safety
+diagnostic, not confirmation that deletion is safe or available.
+
 A future deletion feature must not start as a collection of browser-side delete
 requests. It requires one owner-only, database-transactional operation with:
 
-1. A read-only preview of affected live rows, active jobs, public shares,
-   memberships, Auth identity, and Storage objects.
+1. The existing read-only preview plus explicit Auth identity and Storage object
+   lookup during the destructive operation.
 2. Explicit handling for queued/running work and notification deliveries so an
    old lease cannot recreate or mutate data during deletion.
 3. Revocation of shares and sessions before destructive work begins.

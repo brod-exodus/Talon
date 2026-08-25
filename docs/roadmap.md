@@ -120,6 +120,10 @@ Effort is a rough estimate for one experienced engineer.
   Auth, Storage, backup, export, and audit boundaries, and defines the safety
   requirements for a future transactional deletion design. It does not yet
   authorize or implement workspace deletion.
+- **Preview delivered:** Owners now have a count-only, non-cached lifecycle
+  diagnostic backed by one team-scoped database function. It reports live
+  Postgres scope, active-work blockers, and external systems that remain
+  uncounted without exposing row content or enabling deletion.
 
 ### 6. Finish teammate invitations and email onboarding
 
