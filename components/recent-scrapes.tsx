@@ -230,6 +230,12 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
 
   return (
     <div className="pl-14 pt-3 border-t border-border space-y-3">
+      <div>
+        <p className="text-xs font-semibold text-foreground">Contributor contact record</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          This general record follows the contributor across scrapes. Use a Project for role-specific outreach and follow-ups.
+        </p>
+      </div>
       <div className="flex items-center gap-3">
         <Switch
           id={`contacted-${contributor.username}`}
@@ -297,7 +303,7 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
             </div>
             <div>
               <Label htmlFor={`notes-${contributor.username}`} className="text-xs text-muted-foreground">
-                Notes (optional)
+                Contributor notes (optional)
               </Label>
               <Input
                 id={`notes-${contributor.username}`}

@@ -145,7 +145,7 @@ export function ProjectOutreachForm({
     <div className={compact ? "space-y-3" : "space-y-4"}>
       <div className={compact ? "space-y-2" : "grid gap-3 sm:grid-cols-3"}>
         <div className="space-y-2">
-          <Label>Status</Label>
+          <Label>Project outreach status</Label>
           {nativeStatus ? (
             <select
               value={status}
@@ -175,7 +175,7 @@ export function ProjectOutreachForm({
           )}
         </div>
         <div className="space-y-2">
-          <Label>Last contacted</Label>
+          <Label>Project last contacted</Label>
           <Input
             type="date"
             value={lastContactedAt}
@@ -185,7 +185,7 @@ export function ProjectOutreachForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Next follow-up</Label>
+          <Label>Project next follow-up</Label>
           <Input
             type="date"
             value={nextFollowUpAt}
@@ -196,7 +196,7 @@ export function ProjectOutreachForm({
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Notes</Label>
+        <Label>Project outreach notes</Label>
         <textarea
           value={notes}
           onChange={(event) => setNotes(event.target.value)}

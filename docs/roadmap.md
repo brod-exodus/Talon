@@ -16,29 +16,27 @@ more infrastructure or speculative intelligence.
 Ranking considers user value, risk reduction, effort, and strategic importance.
 Effort is a rough estimate for one experienced engineer.
 
-## Now
+## Completed
 
-### 1. Clarify the recruiter workflow and state ownership
+### Clarify the recruiter workflow and state ownership
 
 - **User problem:** Talon has global contributor status and notes, project-level
   outreach state, lists, reminders, Pipeline, and Follow-ups. The product does
   not clearly explain which state applies everywhere and which belongs to one
   project.
-- **Outcome:** Define one primary workflow and make labels, empty states, and
-  navigation guide users from contactable scrape result → shortlist/project →
-  outreach → follow-up.
+- **Delivered:** Defined and documented the Discover → Organize → Outreach
+  workflow, made it visible on the Dashboard, Projects, and Pipeline, and
+  clarified contributor-wide versus Project-specific state without migrating or
+  changing existing records.
 - **Why it matters:** Powerful features create little value when recruiters
   cannot form a dependable mental model of the product.
-- **Effort / risk:** Medium (3–5 days) / medium; careless changes could confuse
-  existing saved state.
-- **Dependencies:** Inventory every contributor-editing surface and document a
-  state-ownership decision before changing behavior.
-- **Acceptance:** Each editable field has one documented owner; identical terms
-  are used across completed results, Projects, profiles, Pipeline, and
-  Follow-ups; a first-time operator can complete the workflow without an
-  external runbook; existing records remain compatible.
+- **Evidence:** `docs/recruiter-workflow.md` owns the field-level contract;
+  product labels distinguish Contributor notes and reminders from Project
+  outreach status, notes, contact dates, and follow-ups.
 
-### 2. Make contactable candidate review faster
+## Now
+
+### 1. Make contactable candidate review faster
 
 - **User problem:** A completed scrape finds actionable people, but recruiters
   still open multiple surfaces to judge relevance and organize a shortlist.
@@ -55,7 +53,7 @@ Effort is a rough estimate for one experienced engineer.
   no additional GitHub request is required to reopen stored evidence; keyboard
   operation and clear loading/error states are covered by browser tests.
 
-### 3. Establish an accessibility and mobile acceptance baseline
+### 2. Establish an accessibility and mobile acceptance baseline
 
 - **User problem:** Responsive classes and keyboard primitives exist, but CI has
   no automated accessibility check and only desktop Chromium coverage. Dense
@@ -74,7 +72,7 @@ Effort is a rough estimate for one experienced engineer.
 
 ## Next
 
-### 4. Add safe self-service password recovery
+### 3. Add safe self-service password recovery
 
 - **User problem:** A user who forgets a password must ask an owner to set and
   communicate a temporary password.
@@ -90,7 +88,7 @@ Effort is a rough estimate for one experienced engineer.
   unknown emails receive the same response; used tokens fail; all existing Talon
   sessions are revoked; route, browser, and production email checks pass.
 
-### 5. Add privacy-aware data lifecycle controls
+### 4. Add privacy-aware data lifecycle controls
 
 - **User problem:** Contributor contacts, recruiter notes, and outreach history
   otherwise persist until their containing records are manually deleted.
@@ -106,7 +104,7 @@ Effort is a rough estimate for one experienced engineer.
   deliberately, and verify no workspace or public-share data remains; audit and
   backup limitations are documented.
 
-### 6. Validate queue capacity and fairness under real concurrency
+### 5. Validate queue capacity and fairness under real concurrency
 
 - **User problem:** Talon has a deterministic capacity model and production SLOs,
   but no controlled integration test for overlapping workspaces, workers, rate
@@ -122,7 +120,7 @@ Effort is a rough estimate for one experienced engineer.
   work progresses; workspace rotation is measurable; cooldown pauses affected
   work; interrupted leases recover within the documented bound.
 
-### 7. Finish teammate invitations and email onboarding
+### 6. Finish teammate invitations and email onboarding
 
 - **User problem:** Owners can create accounts, but onboarding relies on a
   temporary password instead of an auditable invitation lifecycle.
@@ -139,7 +137,7 @@ Effort is a rough estimate for one experienced engineer.
 
 ## Later
 
-### 8. Privacy-preserving product usage evidence
+### 7. Privacy-preserving product usage evidence
 
 - **User problem:** Talon measures system reliability but not whether recruiters
   reach outcomes such as creating a shortlist or scheduling follow-up.
@@ -154,7 +152,7 @@ Effort is a rough estimate for one experienced engineer.
   disabled, contain no sensitive dimensions, and reveal the largest workflow
   drop-off.
 
-### 9. Explore ecosystem relationships and contributor movement
+### 8. Explore ecosystem relationships and contributor movement
 
 - **User problem:** Projects aggregate contributors but do not show durable
   repository relationships or changes in contributor activity over time.
@@ -169,7 +167,7 @@ Effort is a rough estimate for one experienced engineer.
   Projects; every relationship is traceable to stored public evidence; no
   inference is presented as fact.
 
-### 10. Evaluate one selective recruiting integration
+### 9. Evaluate one selective recruiting integration
 
 - **User problem:** A real team may eventually need to hand candidates to an ATS
   or messaging system, but premature integrations add security and maintenance

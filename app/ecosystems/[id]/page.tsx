@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
+import { RecruiterWorkflowGuide } from "@/components/recruiter-workflow-guide"
 import {
   ContributorQuickPreview,
   prefetchContributorPreview,
@@ -776,6 +777,10 @@ export default function EcosystemDetailPage() {
           )}
         </div>
 
+        <div className="mb-8">
+          <RecruiterWorkflowGuide compact />
+        </div>
+
         {/* ── Scrapes panel ────────────────────────────────────────────── */}
         <section className="mb-10">
           <h2 className="text-base font-semibold mb-3 text-muted-foreground uppercase tracking-wide text-xs">
@@ -1033,8 +1038,11 @@ export default function EcosystemDetailPage() {
           <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-muted-foreground uppercase tracking-wide text-xs">
-                Contributor Intelligence
+                Project Candidates
               </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Shortlist candidates and manage outreach for this Project. These statuses and follow-ups do not change their other Projects.
+              </p>
               {!contributorsLoading && projectContributorCount > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Showing {contributors.length} of {contributorsTotal} contributors

@@ -1,5 +1,6 @@
 import { Header } from "@/components/header"
 import { PipelineWorkspace } from "@/components/pipeline-workspace"
+import { RecruiterWorkflowGuide } from "@/components/recruiter-workflow-guide"
 
 export default function PipelinePage() {
   return (
@@ -17,6 +18,10 @@ export default function PipelinePage() {
               Work follow-ups, update Project-specific statuses, and keep recruiter outreach moving without crowding discovery.
             </p>
           </div>
+        </div>
+
+        <div className="mb-8">
+          <RecruiterWorkflowGuide compact />
         </div>
 
         <PipelineWorkspace />

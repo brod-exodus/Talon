@@ -274,9 +274,11 @@ export default function ContributorProfilePage() {
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Notes</CardTitle>
+                    <CardTitle>Contributor notes</CardTitle>
                     <CardDescription>
-                      {contributor.notesUpdatedAt ? `Updated ${formatDateTime(contributor.notesUpdatedAt)}` : "Private recruiter notes for this contributor."}
+                      {contributor.notesUpdatedAt
+                        ? `Updated ${formatDateTime(contributor.notesUpdatedAt)} · Shared across every scrape and Project.`
+                        : "Private recruiter notes shared across every scrape and Project."}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -346,9 +348,11 @@ export default function ContributorProfilePage() {
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Reminder</CardTitle>
+                    <CardTitle>Contributor reminder</CardTitle>
                     <CardDescription>
-                      {contributor.reminder.updatedAt ? `Updated ${formatDateTime(contributor.reminder.updatedAt)}` : "Create a lightweight follow-up reminder."}
+                      {contributor.reminder.updatedAt
+                        ? `Updated ${formatDateTime(contributor.reminder.updatedAt)} · Applies to the contributor everywhere.`
+                        : "A general reminder for this contributor. Project follow-ups belong in the Pipeline."}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
