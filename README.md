@@ -309,6 +309,7 @@ Useful tuning variables are `SMOKE_CANCEL_REPO`, `POLL_SECONDS`, and
 
 ## Operations and security
 
+- [Product and engineering roadmap](docs/roadmap.md)
 - [Operations runbook](docs/ops.md)
 - [Disaster recovery](docs/disaster-recovery.md)
 - [Capacity benchmark](docs/capacity-benchmark.md)
