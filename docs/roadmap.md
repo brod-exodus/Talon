@@ -115,6 +115,11 @@ Effort is a rough estimate for one experienced engineer.
 - **Acceptance:** Owners can preview scope, export their workspace, delete it
   deliberately, and verify no workspace or public-share data remains; audit and
   backup limitations are documented.
+- **Foundation delivered:** A CI-enforced lifecycle contract now classifies every
+  Postgres table, documents existing retention and cascade behavior, identifies
+  Auth, Storage, backup, export, and audit boundaries, and defines the safety
+  requirements for a future transactional deletion design. It does not yet
+  authorize or implement workspace deletion.
 
 ### 6. Finish teammate invitations and email onboarding
 
