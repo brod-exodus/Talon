@@ -38,13 +38,13 @@ Effort is a rough estimate for one experienced engineer.
 - **Delivered:** The deterministic worker-concurrency benchmark covers these
   boundaries without production traffic or schema changes.
 
-### 2. Produce repeatable isolated restore-drill evidence
+### 2. Produce repeatable isolated restore-drill evidence — completed
 
 - **User problem:** Talon can create and validate logical backups, but a valid
   archive alone does not prove that a clean environment can restore it within
   the documented recovery target.
 - **Outcome:** Add an operator-triggered isolated restore drill that records
-  elapsed time, integrity checks, recovery-point evidence, and cleanup status.
+  elapsed time, integrity checks, backup age, and cleanup status.
 - **Why it matters:** Recoverability should be demonstrated, not inferred from a
   backup file.
 - **Effort / risk:** Medium (3–5 days) / medium because database restores are
@@ -53,8 +53,13 @@ Effort is a rough estimate for one experienced engineer.
   non-production target, and fail-closed target validation.
 - **Acceptance:** The command refuses production-like or ambiguous targets;
   restores a verified backup into an empty isolated database; runs schema and
-  referential-integrity checks; reports measured RTO/RPO evidence; and always
-  reports whether cleanup succeeded.
+  integrity checks; records elapsed restore time and backup age for RTO/RPO
+  review; and records cleanup responsibility without silently deleting the
+  drill environment.
+- **Delivered:** The operator-triggered restore command enforces an empty,
+  explicitly named non-production target, validates the restored physical schema
+  and aggregate row counts, and writes a secret-free evidence record on success
+  or post-restore failure.
 
 ### 3. Add worker fault-injection integration coverage
 
