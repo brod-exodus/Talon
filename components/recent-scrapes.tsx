@@ -53,6 +53,7 @@ import { getRecentlyViewedScope, recordRecentlyViewed } from "@/lib/recently-vie
 import { setBoundedMapEntry } from "@/lib/bounded-cache"
 import { buildCsvContent, hasExportableContact } from "@/lib/csv-export"
 import { contributorMatchesLocation } from "@/lib/contributor-location-search"
+import { buildMergedPullRequestsUrl } from "@/lib/github-merged-pr-search"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1237,7 +1238,13 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                       )}
 
                       {/* Contributor rows */}
-                      {visibleContributors.map((contributor) => (
+                      {visibleContributors.map((contributor) => {
+                        const mergedPullRequestsUrl = buildMergedPullRequestsUrl({
+                          target: scrape.target,
+                          type: scrape.type,
+                          username: contributor.username,
+                        })
+                        return (
                         <motion.div
                           key={contributor.username}
                           initial={{ opacity: 0, x: -20 }}
@@ -1272,7 +1279,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                                 )}
                               </div>
                             </Link>
-                            <div className="flex shrink-0 gap-2">
+                            <div className="flex shrink-0 flex-wrap justify-end gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1324,11 +1331,30 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                                 size="sm"
                                 variant="outline"
                                 className="bg-transparent hover:bg-primary/10 transition-all duration-300"
-                                onClick={() => window.open(`https://github.com/${contributor.username}`)}
+                                asChild
                               >
-                                <ExternalLink className="w-3 h-3 mr-1" />
-                                GitHub
+                                <a
+                                  href={`https://github.com/${contributor.username}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  GitHub
+                                </a>
                               </Button>
+                              {mergedPullRequestsUrl && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-transparent hover:bg-primary/10 transition-all duration-300"
+                                  asChild
+                                >
+                                  <a href={mergedPullRequestsUrl} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="w-3 h-3 mr-1" />
+                                    Merged PRs
+                                  </a>
+                                </Button>
+                              )}
                             </div>
                           </div>
 
@@ -1386,7 +1412,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                             />
                           )}
                         </motion.div>
-                      ))}
+                        )
+                      })}
                       {isLoadingContributors && contributors !== null && (
                         <p className="py-2 text-center text-xs text-muted-foreground">Loading more contributors…</p>
                       )}

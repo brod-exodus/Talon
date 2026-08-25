@@ -1106,6 +1106,22 @@ deployment, inspect a failed or retrying scrape and confirm its public error and
 Timeline guidance are actionable but contain no raw provider response. Roll back
 by redeploying the prior application version.
 
+### Merged pull-request search links
+
+Completed and shared scrape results include a **Merged PRs** action beside each
+valid contributor's GitHub profile link. Talon builds a GitHub web-search URL
+from the stored scrape type, original target, and contributor username. A
+repository scrape uses `repo:OWNER/REPO`, while an organization scrape uses
+`org:ORGANIZATION`; both require `is:pr is:merged author:USERNAME`. The helper
+normalizes supported GitHub URLs, validates every scope component, and omits the
+action when it cannot safely construct the search. It does not call the GitHub
+API or fetch, store, score, or summarize pull requests.
+
+This release has no migration, environment-variable, scheduler, or GitHub-token
+scope change. After deployment, open repository and organization scrape results,
+select **Merged PRs**, and confirm GitHub shows merged pull requests by that
+contributor in the selected scope. Roll back by redeploying the prior version.
+
 ### Reliable production diagnostics
 
 Production Readiness preserves the last successful health snapshot when its
