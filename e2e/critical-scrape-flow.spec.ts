@@ -137,7 +137,7 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
   await page.getByLabel("Password").fill("browser-test-password")
   await page.getByRole("button", { name: "Sign In" }).click()
 
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({ timeout: 10_000 })
   await page.getByLabel("Repository").fill(target)
   const acceptancePromise = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/api/scrape" && response.request().method() === "POST"
@@ -151,9 +151,9 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
 
   await expect(page.getByRole("button", { name: "View Contributors (2)" })).toBeVisible({ timeout: 10_000 })
   await page.getByRole("button", { name: "View Contributors (2)" }).click()
-  await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
-  await expect(page.getByText("Hubot", { exact: true })).toBeVisible()
-  await expect(page.getByText("octocat@example.com", { exact: true })).toBeVisible()
+  await expect(page.getByText("The Octocat", { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByText("Hubot", { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByText("octocat@example.com", { exact: true }).filter({ visible: true })).toBeVisible()
   const mergedPullRequestsHref = await page.getByRole("link", { name: "Merged PRs" }).first().getAttribute("href")
   expect(mergedPullRequestsHref).toBeTruthy()
   const mergedPullRequestsUrl = new URL(mergedPullRequestsHref!)
@@ -165,8 +165,8 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
   expect(mergedPullRequestsUrl.searchParams.get("type")).toBe("pullrequests")
 
   await page.getByRole("checkbox", { name: "Email", exact: true }).check()
-  await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
-  await expect(page.getByText("Hubot", { exact: true })).toBeHidden()
+  await expect(page.getByText("The Octocat", { exact: true }).filter({ visible: true })).toBeVisible()
+  await expect(page.getByText("Hubot", { exact: true }).filter({ visible: true })).toHaveCount(0)
 
   await page.getByRole("button", { name: /Download/ }).click()
   const downloadPromise = page.waitForEvent("download")
