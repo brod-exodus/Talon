@@ -9,6 +9,7 @@
     "backup:database": "bash ./scripts/backup-database.sh",
     "backup:verify": "bash ./scripts/verify-database-backup.sh",
     "benchmark:capacity": "node --experimental-strip-types scripts/benchmark-capacity.ts",
+    "benchmark:concurrency": "node --experimental-strip-types scripts/benchmark-worker-concurrency.ts",
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "migrations:check": "node --experimental-strip-types scripts/check-migrations.ts",

@@ -9,6 +9,8 @@ Run it from the repository root:
 ```bash
 pnpm benchmark:capacity
 pnpm benchmark:capacity -- --json
+pnpm benchmark:concurrency
+pnpm benchmark:concurrency -- --json
 ```
 
 The default cold-cache scenarios cover 100, 400, 1,000, and 5,000 contributors.
@@ -69,7 +71,25 @@ controlled durations to make a regression pass.
 
 The harness does not call GitHub, Supabase, or Vercel. It cannot measure network
 variance, database contention, rate-limit responses, or multi-job fairness.
-Production Readiness provides the real seven-day evidence. A later concurrency
-benchmark should use controlled adapters around the queue and worker leases;
-production load tests must remain explicitly operator-triggered and use public,
-non-sensitive targets.
+Production Readiness provides the real seven-day evidence. The companion
+benchmark below uses a deterministic queue adapter to exercise scheduling and
+lease contracts without touching production. Production load tests must remain
+explicitly operator-triggered and use public, non-sensitive targets.
+
+## Worker concurrency benchmark
+
+The companion concurrency benchmark models four failure boundaries that a
+single-job throughput calculation cannot cover:
+
+- simultaneous workers receive at most one lease for one queued job;
+- workspaces rotate and a background check waiting 15 minutes is promoted;
+- an interrupted lease is recovered while the stale worker's late completion is
+  rejected;
+- a token-wide GitHub cooldown blocks every claim without consuming attempts,
+  then releases work at its boundary.
+
+The model mirrors migrations 030, 037, and 047 and fails CI when any invariant
+changes. CI stores its JSON result for seven days beside the capacity report.
+It is deliberately not a database or production load test: SQL migration
+contract tests cover the real functions structurally, while Production
+Readiness remains the source of live operational evidence.
