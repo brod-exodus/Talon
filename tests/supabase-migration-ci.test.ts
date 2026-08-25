@@ -61,6 +61,8 @@ test("CI executes all migrations against a fresh pinned Supabase database", () =
   assert.match(databaseJob, /version: 2\.114\.0/)
   assert.match(databaseJob, /prepare-supabase-migrations\.ts/)
   assert.match(databaseJob, /supabase db start --workdir/)
+  assert.match(databaseJob, /tests\/integration\/worker-fault-injection\.sql/)
+  assert.match(databaseJob, /worker-fault-injection\.log/)
   assert.match(databaseJob, /supabase stop --workdir/)
   assert.doesNotMatch(databaseJob, /SUPABASE_(?:SERVICE_ROLE_KEY|ACCESS_TOKEN)/)
 })

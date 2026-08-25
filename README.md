@@ -263,7 +263,10 @@ pnpm test:e2e
 ```
 
 CI runs whitespace checks, lint, TypeScript, tests, the production build, and a
-fresh Supabase database migration on every pull request. A separate Chromium
+fresh Supabase database migration on every pull request. The disposable database
+then exercises stale-worker handoff, idempotent hydration replay, cancellation,
+global GitHub cooldown, and workspace-scoped claims through the real transition
+functions; its concise trace is retained for seven days. A separate Chromium
 job exercises the critical browser workflow from login through scrape queueing,
 background completion, contributor inspection, and CSV export using a
 deterministic API fixture. Controlled failure scenarios also verify that active

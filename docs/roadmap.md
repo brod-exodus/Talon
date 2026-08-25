@@ -61,7 +61,7 @@ Effort is a rough estimate for one experienced engineer.
   and aggregate row counts, and writes a secret-free evidence record on success
   or post-restore failure.
 
-### 3. Add worker fault-injection integration coverage
+### 3. Add worker fault-injection integration coverage — completed
 
 - **User problem:** Invariant and deterministic tests cover individual queue
   boundaries, but no isolated integration scenario interrupts work immediately
@@ -76,6 +76,11 @@ Effort is a rough estimate for one experienced engineer.
 - **Acceptance:** Every interruption point resumes idempotently; terminal counts
   reconcile; cancellation and newer leases win; cooldown is global; no fixture
   crosses workspace scope; CI produces a concise failure trace.
+- **Delivered:** The disposable Supabase CI database now exercises checkpoint
+  recovery after stale-lease handoff, committed hydration replay, verified
+  completion, cancellation precedence, global cooldown behavior, and
+  workspace-scoped claims through the real database functions. Fixtures run in
+  a rolled-back transaction, and CI retains a short trace for seven days.
 
 ## Next
 
