@@ -7,6 +7,7 @@
   "scripts": {
     "build": "next build",
     "backup:database": "bash ./scripts/backup-database.sh",
+    "backup:drill": "bash ./scripts/drill-database-restore.sh",
     "backup:verify": "bash ./scripts/verify-database-backup.sh",
     "benchmark:capacity": "node --experimental-strip-types scripts/benchmark-capacity.ts",
     "benchmark:concurrency": "node --experimental-strip-types scripts/benchmark-worker-concurrency.ts",

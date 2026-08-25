@@ -58,21 +58,46 @@ contain recruiter notes and public contact data.
 
 ## Isolated restore drill
 
-Never test a restore against Production. Create a disposable Supabase project,
-label it clearly as a recovery drill, and confirm its database hostname twice.
+Never test a restore against Production. Create an empty disposable Supabase
+project, label it clearly as a recovery drill, and confirm its database hostname
+twice. Talon provides an operator-triggered command that refuses a matching
+production hostname, a non-empty public schema, an invalid target label, or a
+missing typed confirmation. It never uses `--clean`.
+
+```bash
+cd /path/to/Talon-main
+read -s "TALON_RESTORE_DATABASE_URL?Disposable drill database URL: "
+export TALON_RESTORE_DATABASE_URL
+export TALON_RESTORE_TARGET_NAME="talon-recovery-drill-quarterly"
+export TALON_RESTORE_CONFIRMATION="RESTORE $TALON_RESTORE_TARGET_NAME"
+export TALON_PRODUCTION_DATABASE_HOST="db.production-project.supabase.co"
+export TALON_RESTORE_EVIDENCE_DIR="/path/to/encrypted/talon-recovery-evidence"
+pnpm backup:drill -- /path/to/encrypted/talon-backups/talon-public-YYYYMMDDTHHMMSSZ.dump
+unset TALON_RESTORE_DATABASE_URL TALON_RESTORE_TARGET_NAME TALON_RESTORE_CONFIRMATION
+unset TALON_PRODUCTION_DATABASE_HOST TALON_RESTORE_EVIDENCE_DIR
+```
+
+The command verifies the archive and checksum, restores without placing the
+database password in process arguments, requires the restored schema version to
+match the checked-out Talon commit, validates every current physical contract,
+records aggregate row counts, and writes a private JSON
+record containing elapsed recovery time and backup age. It does not configure
+or call GitHub, Slack, cron, email, or Vercel. It also does not delete the
+disposable project: cleanup remains an explicit operator action after the
+application checks below, and the evidence records that responsibility.
 
 1. Record the production commit, current schema version, backup timestamp, and
    backup checksum.
 2. Create the isolated target and configure no GitHub, Slack, cron, or email
    credentials.
-3. Restore the custom archive into that isolated database with `pg_restore`.
-   `--clean --if-exists` is permitted only after the target has been verified as
-   disposable and non-production.
+3. Run `pnpm backup:drill` to restore and validate the custom archive. The target
+   must be empty; do not weaken this safeguard or add `--clean`.
 4. Deploy the recorded Talon commit to a non-production Vercel environment using
    non-production Supabase keys.
 5. Keep `GITHUB_TOKEN`, `CRON_SECRET`, and `SLACK_WEBHOOK_URL` unset so restored
    queued work cannot call external providers.
-6. Run the validation queries below and the read-only application checks.
+6. Review the command's validation evidence, then run the read-only application
+   checks below.
 7. Delete the drill environment and its restored private data when evidence has
    been recorded.
 
@@ -124,7 +149,8 @@ and CSV export using non-sensitive test data.
 
 ## Quarterly drill record
 
-Record this evidence without secrets or contributor data:
+The command records the first six items below without secrets or contributor
+data. Add the application and cleanup results beside that evidence file:
 
 - Date, operator, source commit, and backup timestamp
 - SHA-256 verification result and restorable-entry count
@@ -134,6 +160,7 @@ Record this evidence without secrets or contributor data:
 - Measured recovery time and estimated data gap
 - Deviations from the 24-hour RPO or 4-hour RTO
 - Follow-up owner and due date
+- Disposable target deletion time and operator
 
 A checksum check alone is not a restore drill. The quarterly requirement is
 complete only after the archive has been restored into an isolated database and
