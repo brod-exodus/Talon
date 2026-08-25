@@ -57,11 +57,14 @@ state. Contributor upserts and persisted-login checks make replay safe.
 ### 3. Inspect the completed list
 
 Open **View Contributors** when the card completes. Show the first page arriving
-before later pages, then demonstrate one contact-channel filter and one public
-profile. Avoid opening personal notes during a recorded or public demo.
+before later pages. Point out that the default list includes contributors even
+when they do not publish contact information, then demonstrate one
+contact-channel filter and one public profile. Avoid opening personal notes
+during a recorded or public demo.
 
 Download **CSV** and explain that Talon intentionally removed its former fake
-`.xlsx` option: the file extension now matches the actual format.
+`.xlsx` option: the file extension now matches the actual format. The sourcing
+export remains limited to contributors with public contact information.
 
 ### 4. Demonstrate safe sharing
 

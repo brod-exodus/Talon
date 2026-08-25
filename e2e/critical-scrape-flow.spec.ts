@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import { readFile } from "node:fs/promises"
 
 const scrapeId = "scrape-browser-test"
 const jobId = "00000000-0000-4000-8000-000000000001"
@@ -73,7 +74,7 @@ async function installApiFixture(page: Page) {
           target,
           type: "repository",
           completedAt: timestamp,
-          contributorCount: 1,
+          contributorCount: 2,
           contactInfoCount: 1,
           projects: [],
           job: { id: jobId, status: "succeeded", attempts: 1, maxAttempts: 3, lastError: null },
@@ -90,22 +91,35 @@ async function installApiFixture(page: Page) {
         target,
         status: "completed",
         progress: 100,
-        current: 1,
-        total: 1,
+        current: 2,
+        total: 2,
         startedAt: timestamp,
         completedAt: timestamp,
-        contributors: [{
-          id: "contributor-browser-test",
-          username: "octocat",
-          name: "The Octocat",
-          avatar: "",
-          bio: "GitHub mascot",
-          company: "GitHub",
-          location: "San Francisco",
-          contributions: 42,
-          contacts: { email: "octocat@example.com", website: "https://github.com/octocat" },
-        }],
-        contributorTotal: 1,
+        contributors: [
+          {
+            id: "contributor-browser-test",
+            username: "octocat",
+            name: "The Octocat",
+            avatar: "",
+            bio: "GitHub mascot",
+            company: "GitHub",
+            location: "San Francisco",
+            contributions: 42,
+            contacts: { email: "octocat@example.com", website: "https://github.com/octocat" },
+          },
+          {
+            id: "contributor-without-contacts",
+            username: "hubot",
+            name: "Hubot",
+            avatar: "",
+            bio: "Automation contributor",
+            company: "GitHub",
+            location: "The Internet",
+            contributions: 7,
+            contacts: {},
+          },
+        ],
+        contributorTotal: 2,
         page: 1,
         hasMore: false,
       })
@@ -135,11 +149,12 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
   await expect(page.getByRole("heading", { name: "Active Scrapes" })).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(target, { exact: true }).first()).toBeVisible()
 
-  await expect(page.getByRole("button", { name: "View Contributors (1)" })).toBeVisible({ timeout: 10_000 })
-  await page.getByRole("button", { name: "View Contributors (1)" }).click()
+  await expect(page.getByRole("button", { name: "View Contributors (2)" })).toBeVisible({ timeout: 10_000 })
+  await page.getByRole("button", { name: "View Contributors (2)" }).click()
   await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
+  await expect(page.getByText("Hubot", { exact: true })).toBeVisible()
   await expect(page.getByText("octocat@example.com", { exact: true })).toBeVisible()
-  const mergedPullRequestsHref = await page.getByRole("link", { name: "Merged PRs" }).getAttribute("href")
+  const mergedPullRequestsHref = await page.getByRole("link", { name: "Merged PRs" }).first().getAttribute("href")
   expect(mergedPullRequestsHref).toBeTruthy()
   const mergedPullRequestsUrl = new URL(mergedPullRequestsHref!)
   expect(mergedPullRequestsUrl.origin).toBe("https://github.com")
@@ -149,9 +164,18 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
   )
   expect(mergedPullRequestsUrl.searchParams.get("type")).toBe("pullrequests")
 
+  await page.getByRole("checkbox", { name: "Email", exact: true }).check()
+  await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
+  await expect(page.getByText("Hubot", { exact: true })).toBeHidden()
+
   await page.getByRole("button", { name: /Download/ }).click()
   const downloadPromise = page.waitForEvent("download")
   await page.getByRole("menuitem", { name: "CSV" }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe("octocat-Hello-World-contributors.csv")
+  const downloadPath = await download.path()
+  expect(downloadPath).not.toBeNull()
+  const csv = await readFile(downloadPath!, "utf8")
+  expect(csv).toContain("octocat@example.com")
+  expect(csv).not.toContain("hubot")
 })

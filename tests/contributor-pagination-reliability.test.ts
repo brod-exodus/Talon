@@ -13,6 +13,11 @@ test("Contributor pagination validates pages before caching them", async () => {
   assert.match(source, /getPublicApiError\(data, "Failed to load contributors"\)/)
   assert.match(source, /all\.push\(\.\.\.data\.contributors\)[\s\S]*writeContributorCache/)
   assert.doesNotMatch(source, /console\.error\("\[v0\] Failed to fetch contributors/)
+  assert.doesNotMatch(source, /contactableOnly:\s*"true"/)
+  assert.match(source, /const filteredByToggles = contributors/)
+  assert.match(source, /View Contributors \(\{scrape\.contributorCount\}\)/)
+  assert.match(source, /const contactInfoCount = scrape\.contactInfoCount/)
+  assert.match(source, /disabled=\{!contributors \|\| isLoadingContributors \|\| Boolean\(contributorError\)\}/)
 })
 
 test("Contributor retry preserves partial data and resumes the failed page", async () => {

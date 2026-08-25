@@ -511,7 +511,6 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
           const params = new URLSearchParams({
             page: String(page),
             pageSize: String(CONTRIBUTOR_FETCH_PAGE_SIZE),
-            contactableOnly: "true",
           })
           const res = await fetch(`/api/scrape/${scrapeId}?${params.toString()}`)
           const data = await res.json().catch(() => null)
@@ -940,8 +939,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const isLoadingContributors = loadingExpansions.has(scrape.id)
       const contributorError = contributorErrors.get(scrape.id)
       const contributors = contributorCache.get(scrape.id) ?? null
-      const withContacts = contributors ? contributors.filter(hasContactInfo) : null
-      const contactInfoCount = withContacts !== null ? withContacts.length : scrape.contactInfoCount
+      const contactInfoCount = scrape.contactInfoCount
       const assignedProjectIds = new Set((scrape.projects ?? []).map((project) => project.id))
       const availableProjects = projects.filter((project) => !assignedProjectIds.has(project.id))
       const isAssigning = assigningScrapeIds.has(scrape.id)
@@ -949,8 +947,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
       const { filters: activeFilters, sort: sortOrder, contributorSearch, locationSearch } =
         cardSettings.get(scrape.id) ?? defaultCardSettings()
 
-      const filteredByToggles = withContacts
-        ? withContacts.filter((c) => {
+      const filteredByToggles = contributors
+        ? contributors.filter((c) => {
             if (activeFilters.has("email") && !c.contacts?.email?.trim()) return false
             if (activeFilters.has("linkedin") && !c.contacts?.linkedin?.trim()) return false
             if (activeFilters.has("twitter") && !c.contacts?.twitter?.trim()) return false
@@ -1060,7 +1058,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                     {isExpanded ? (
                       <><ChevronUp className="w-4 h-4 mr-2" />Hide Contributors</>
                     ) : (
-                      <><ChevronDown className="w-4 h-4 mr-2" />View Contributors ({contactInfoCount})</>
+                      <><ChevronDown className="w-4 h-4 mr-2" />View Contributors ({scrape.contributorCount})</>
                     )}
                   </Button>
 
@@ -1068,7 +1066,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="outline"
-                        disabled={!contributors}
+                        disabled={!contributors || isLoadingContributors || Boolean(contributorError)}
                         className="bg-transparent hover:bg-primary/10 transition-all duration-300"
                       >
                         <Download className="w-4 h-4 mr-2" />
@@ -1209,8 +1207,8 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Showing {visibleContributors.length} of {sorted.length} matching contributors
-                            {sorted.length !== (withContacts?.length ?? scrape.contactInfoCount)
-                              ? ` (${withContacts?.length ?? scrape.contactInfoCount} contactable total)`
+                            {sorted.length !== (contributors?.length ?? scrape.contributorCount)
+                              ? ` (${contributors?.length ?? scrape.contributorCount} total)`
                               : ""}
                           </p>
                         </div>
@@ -1457,7 +1455,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                             ? "No contributors match your search."
                             : activeFilters.size > 0
                               ? "No contributors match the active filters."
-                              : "No contributors with contact information found."}
+                              : "No contributors found."}
                         </p>
                       )}
                       </div>{/* end scrollable list */}

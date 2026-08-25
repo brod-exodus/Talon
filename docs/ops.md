@@ -1122,6 +1122,24 @@ scope change. After deployment, open repository and organization scrape results,
 select **Merged PRs**, and confirm GitHub shows merged pull requests by that
 contributor in the selected scope. Roll back by redeploying the prior version.
 
+### Complete authenticated contributor results
+
+Authenticated completed scrape cards load every persisted contributor rather
+than only the contactable subset. The default list supports profile inspection,
+location and text search, Projects/lists, GitHub, and Merged PRs for contributors
+without public contact fields. Email, LinkedIn, and X remain optional narrowing
+filters. The headline “With Contact Info” count and CSV export remain
+contact-focused, and public shared lists retain their existing contact-focused
+scope. The change uses the existing lightweight all-contributor pagination and
+does not add GitHub requests or schema work.
+
+This release has no migration, environment-variable, scheduler, or credential
+change. After deployment, open a scrape where Total Contributors exceeds With
+Contact Info, confirm the expanded default list includes both populations, then
+select Email and confirm the list narrows. Download CSV and confirm it contains
+only contributors with public contact information. Roll back by redeploying the
+prior version.
+
 ### Reliable production diagnostics
 
 Production Readiness preserves the last successful health snapshot when its
