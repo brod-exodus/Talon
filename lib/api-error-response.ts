@@ -51,6 +51,7 @@ const INTERNAL_ERROR_MESSAGES = {
   watched_repo_check_failed: "Failed to queue watched repository checks",
   github_rate_limit_check_failed: "Failed to check rate limit",
   workspace_lifecycle_preview_failed: "Failed to preview workspace data",
+  workspace_export_failed: "Failed to export workspace data",
 } as const
 
 const SERVICE_ERROR_MESSAGES = {
@@ -73,6 +74,7 @@ const SERVICE_ERROR_MESSAGES = {
   project_tracking_update_failed: { message: "Failed to update project tracking", status: 500 },
   project_tracking_schema_outdated: { message: "Project outreach tracking schema is out of date. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.", status: 503 },
   project_tracking_unique_constraint_missing: { message: "Project outreach tracking is missing its project/contributor unique constraint. Re-run db/migrations/017_project_contributor_tracking.sql in Supabase.", status: 503 },
+  workspace_export_too_large: { message: "This workspace is too large for an immediate export. Contact the Talon operator.", status: 413 },
   slack_webhook_rejected: { message: "Slack rejected the webhook request. Please check the URL.", status: 502 },
 } as const
 

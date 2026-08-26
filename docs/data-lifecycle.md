@@ -69,6 +69,16 @@ content and workspace identifiers, is never cached, and marks Auth, Storage,
 backups, and downloaded exports as outside the database count. This is a safety
 diagnostic, not confirmation that deletion is safe or available.
 
+Owners can request `POST /api/workspace-lifecycle/export` to download a
+versioned JSON copy of recruiter-owned workspace data. The export includes
+members, contributors and private recruiting fields, scrape results, Projects,
+lists, tracking, non-secret share metadata, and watched-repository state. It
+excludes Auth and Storage data, sessions, operational histories, derived caches,
+backups, and secrets. Immediate downloads are capped at 4 MiB; larger workspaces
+fail safely rather than returning a partial file. The downloaded file contains
+private contact information and recruiter notes, leaves Talon's access controls,
+and must be stored and shared accordingly.
+
 A future deletion feature must not start as a collection of browser-side delete
 requests. It requires one owner-only, database-transactional operation with:
 

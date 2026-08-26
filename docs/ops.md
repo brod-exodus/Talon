@@ -339,6 +339,7 @@ db/migrations/045_revocable_sessions.sql
 db/migrations/046_bounded_active_sessions.sql
 db/migrations/047_fair_scrape_job_scheduling.sql
 db/migrations/048_workspace_lifecycle_preview.sql
+db/migrations/049_workspace_data_export.sql
 ```
 
 They create or enforce:
