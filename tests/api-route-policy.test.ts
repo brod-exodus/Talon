@@ -9,6 +9,8 @@ const repositoryRoot = resolve(import.meta.dirname, "..")
 const PUBLIC_HANDLERS = new Set([
   "app/api/auth/login/route.ts#POST",
   "app/api/auth/logout/route.ts#POST",
+  "app/api/auth/password/reset-request/route.ts#POST",
+  "app/api/auth/password/reset/route.ts#POST",
   "app/api/auth/signup/route.ts#POST",
   "app/api/share/[token]/route.ts#GET",
 ])
@@ -68,6 +70,8 @@ test("public authentication mutations enforce the same-origin boundary", () => {
   for (const key of [
     "app/api/auth/login/route.ts#POST",
     "app/api/auth/logout/route.ts#POST",
+    "app/api/auth/password/reset-request/route.ts#POST",
+    "app/api/auth/password/reset/route.ts#POST",
     "app/api/auth/signup/route.ts#POST",
   ]) {
     const [file] = key.split("#")

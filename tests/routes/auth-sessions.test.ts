@@ -85,6 +85,7 @@ import {
   issueSessionToken,
   listActiveAuthSessions,
   revokeAllAuthSessions,
+  revokeAllAuthSessionsForIdentity,
   revokeOtherAuthSessions,
 } from "@/lib/auth-sessions"
 
@@ -147,6 +148,17 @@ describe("revocable session registry", () => {
       revoked_at: expect.any(String),
     }))
     expect(dbMocks.filters).toContainEqual(["subject_hash", expect.stringMatching(/^[0-9a-f]{64}$/)])
+  })
+
+  test("recovery can revoke a user's sessions without an existing Talon session", async () => {
+    await revokeAllAuthSessionsForIdentity({
+      teamId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      email: "Recruiter@Example.com",
+    }, "password_change")
+
+    expect(dbMocks.update).toHaveBeenCalledWith(expect.objectContaining({ revoke_reason: "password_change" }))
+    expect(dbMocks.filters).toContainEqual(["subject_hash", expect.stringMatching(/^[0-9a-f]{64}$/)])
+    expect(JSON.stringify(dbMocks.filters)).not.toContain("recruiter@example.com")
   })
 
   test("lists only unrevoked, unexpired sessions for the keyed subject", async () => {

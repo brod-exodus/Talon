@@ -21,8 +21,10 @@ type RateLimitDecision = {
 
 const fallbackStore = new Map<string, RateLimitState>()
 
-function keyForRequest(request: NextRequest): string {
-  return `login:${hashAuditValue(getClientIp(request))}`
+type AuthRateLimitScope = "login" | "password_reset"
+
+function keyForRequest(request: NextRequest, scope: AuthRateLimitScope): string {
+  return `${scope}:${hashAuditValue(getClientIp(request))}`
 }
 
 function retryAfterSeconds(lockedUntil: number): number {
@@ -52,7 +54,11 @@ function fallbackReset(key: string): void {
 }
 
 export async function checkLoginRateLimit(request: NextRequest): Promise<RateLimitDecision> {
-  const key = keyForRequest(request)
+  return checkAuthRateLimit(request, "login")
+}
+
+async function checkAuthRateLimit(request: NextRequest, scope: AuthRateLimitScope): Promise<RateLimitDecision> {
+  const key = keyForRequest(request, scope)
   try {
     const { data, error } = await supabaseAdmin
       .from("auth_rate_limits")
@@ -73,7 +79,11 @@ export async function checkLoginRateLimit(request: NextRequest): Promise<RateLim
 }
 
 export async function recordLoginFailure(request: NextRequest): Promise<void> {
-  const key = keyForRequest(request)
+  return recordAuthRateLimitAttempt(request, "login")
+}
+
+async function recordAuthRateLimitAttempt(request: NextRequest, scope: AuthRateLimitScope): Promise<void> {
+  const key = keyForRequest(request, scope)
   const now = Date.now()
 
   try {
@@ -105,7 +115,11 @@ export async function recordLoginFailure(request: NextRequest): Promise<void> {
 }
 
 export async function resetLoginRateLimit(request: NextRequest): Promise<void> {
-  const key = keyForRequest(request)
+  return resetAuthRateLimit(request, "login")
+}
+
+async function resetAuthRateLimit(request: NextRequest, scope: AuthRateLimitScope): Promise<void> {
+  const key = keyForRequest(request, scope)
   try {
     const { error } = await supabaseAdmin.from("auth_rate_limits").delete().eq("key", key)
     if (error) throw error
@@ -114,4 +128,12 @@ export async function resetLoginRateLimit(request: NextRequest): Promise<void> {
   } finally {
     fallbackReset(key)
   }
+}
+
+export function checkPasswordResetRateLimit(request: NextRequest): Promise<RateLimitDecision> {
+  return checkAuthRateLimit(request, "password_reset")
+}
+
+export function recordPasswordResetRequest(request: NextRequest): Promise<void> {
+  return recordAuthRateLimitAttempt(request, "password_reset")
 }

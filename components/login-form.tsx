@@ -22,13 +22,31 @@ export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<"signin" | "signup">("signin")
+  const [resetMode, setResetMode] = useState(false)
+  const [notice, setNotice] = useState("")
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
     setError("")
+    setNotice("")
 
     try {
+      if (resetMode) {
+        const response = await fetch("/api/auth/password/reset-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        })
+        const data = await response.json().catch(() => null)
+        if (!response.ok) {
+          setError(data?.error ?? "Unable to request a password reset")
+          return
+        }
+        setNotice(data?.message ?? "If that email belongs to a Talon account, a password reset link is on its way.")
+        return
+      }
+
       const response = await fetch(mode === "signin" ? "/api/auth/login" : "/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,14 +76,16 @@ export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
             <TalonLogo markClassName="h-11 w-11" wordmarkClassName="text-[1.6rem]" />
           </div>
           <CardDescription>
-            {mode === "signin"
+            {resetMode
+              ? "Request a secure password reset link."
+              : mode === "signin"
               ? "Sign in with your team email and password."
               : "Create your private Talon workspace."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
-            {mode === "signup" && (
+            {mode === "signup" && !resetMode && (
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display name</Label>
                 <Input
@@ -89,23 +109,32 @@ export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
                 placeholder="recruiter@example.com"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
-              />
-            </div>
+            {!resetMode && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                />
+              </div>
+            )}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+            {notice && (
+              <Alert>
+                <AlertDescription>{notice}</AlertDescription>
+              </Alert>
+            )}
             <Button className="w-full" type="submit" disabled={loading}>
-              {loading
+              {resetMode
+                ? loading ? "Sending..." : "Send Reset Link"
+                : loading
                 ? mode === "signin"
                   ? "Signing in..."
                   : "Creating workspace..."
@@ -113,7 +142,21 @@ export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
                   ? "Sign In"
                   : "Create Workspace"}
             </Button>
-            {allowSelfServiceSignup && (
+            {mode === "signin" && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-xs"
+                onClick={() => {
+                  setError("")
+                  setNotice("")
+                  setResetMode((current) => !current)
+                }}
+              >
+                {resetMode ? "Back to sign in" : "Forgot password?"}
+              </Button>
+            )}
+            {allowSelfServiceSignup && !resetMode && (
               <Button
                 type="button"
                 variant="ghost"

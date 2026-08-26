@@ -57,6 +57,8 @@ const INTERNAL_ERROR_MESSAGES = {
 const SERVICE_ERROR_MESSAGES = {
   auth_logout_revoke_unavailable: { message: "Signed out locally, but the server session could not be revoked.", status: 503 },
   auth_password_session_revoke_unavailable: { message: "Password changed, but existing sessions could not be revoked. Contact an administrator.", status: 503 },
+  auth_password_reset_session_revoke_unavailable: { message: "Password recovery could not be completed safely. Request a new link and try again.", status: 503 },
+  auth_password_reset_unavailable: { message: "Password recovery is temporarily unavailable. Request a new link and try again.", status: 503 },
   auth_session_list_unavailable: { message: "Could not load active sessions.", status: 503 },
   auth_session_revoke_unavailable: { message: "Could not revoke active sessions.", status: 503 },
   github_credentials_invalid: { message: "The configured GitHub token is invalid.", status: 502 },

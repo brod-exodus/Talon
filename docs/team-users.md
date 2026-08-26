@@ -31,6 +31,30 @@ set role = excluded.role;
 Ask the recruiter to sign in with their email and temporary password, then have
 them change it from Settings.
 
+## Password Recovery
+
+Talon provides a non-enumerating **Forgot password?** flow for existing team
+users. Production activation requires Supabase Auth email delivery and a custom
+Recovery email template. In **Authentication → Email Templates → Reset
+Password**, use a link with this exact shape:
+
+```html
+<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">
+  Reset your Talon password
+</a>
+```
+
+In **Authentication → URL Configuration**, set the production Site URL and add
+`https://github-scraper-v2.vercel.app/reset-password` to the redirect allowlist.
+Configure a custom SMTP sender before relying on recovery for real users; the
+Supabase trial sender is rate-limited and best-effort. Disable provider link
+tracking because rewritten authentication links can fail.
+
+After changing the template, request a reset for a test team user, open the
+email, set a new password, confirm the old password no longer works, and confirm
+every previously active Talon session requires login again. Never paste a reset
+link into logs, tickets, SQL Editor, or a pull request.
+
 ## Roles
 
 - `owner`: full access, including teammate accounts, roles, and ownership.
