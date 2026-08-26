@@ -116,6 +116,11 @@ Effort is a rough estimate for one experienced engineer.
 - **Acceptance:** Existing users can request and complete one time-limited reset;
   unknown emails receive the same response; used tokens fail; all existing Talon
   sessions are revoked; route, browser, and production email checks pass.
+- **Application flow delivered:** Talon now provides the non-enumerating request,
+  one-time server-side token verification, password update, and fail-closed
+  Talon-session revocation flow. Production activation remains dependent on the
+  documented Supabase recovery template, redirect allowlist, SMTP sender, and a
+  real delivery test.
 
 ### 5. Add privacy-aware data lifecycle controls
 

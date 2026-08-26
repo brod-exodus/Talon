@@ -24,6 +24,10 @@ function subjectValue(session: AuthSession): string {
     : `user:${session.teamId}:${session.email.trim().toLowerCase()}`
 }
 
+function userSubjectValue(identity: { teamId: string; email: string }): string {
+  return `user:${identity.teamId}:${identity.email.trim().toLowerCase()}`
+}
+
 export function sessionSubjectHash(session: AuthSession): string {
   const secret = sessionSecret()
   if (!secret) throw new Error("TALON_SESSION_SECRET or TALON_ADMIN_PASSWORD is required")
@@ -92,6 +96,23 @@ export async function revokeAllAuthSessions(
     .from("auth_sessions")
     .update({ revoked_at: new Date().toISOString(), revoke_reason: reason })
     .eq("subject_hash", sessionSubjectHash(session))
+    .is("revoked_at", null)
+  if (error) throw new Error("Could not revoke the authenticated sessions.")
+}
+
+export async function revokeAllAuthSessionsForIdentity(
+  identity: { teamId: string; email: string },
+  reason: SessionRevokeReason
+): Promise<void> {
+  if (isAuthOptionalForLocalDev()) return
+
+  const secret = sessionSecret()
+  if (!secret) throw new Error("TALON_SESSION_SECRET or TALON_ADMIN_PASSWORD is required")
+  const subjectHash = createHmac("sha256", secret).update(userSubjectValue(identity)).digest("hex")
+  const { error } = await supabaseAdmin
+    .from("auth_sessions")
+    .update({ revoked_at: new Date().toISOString(), revoke_reason: reason })
+    .eq("subject_hash", subjectHash)
     .is("revoked_at", null)
   if (error) throw new Error("Could not revoke the authenticated sessions.")
 }

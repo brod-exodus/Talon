@@ -6,6 +6,8 @@ import { resolve } from "node:path"
 const securityBoundaryFiles = [
   "app/api/auth/me/route.ts",
   "app/api/auth/password/route.ts",
+  "app/api/auth/password/reset-request/route.ts",
+  "app/api/auth/password/reset/route.ts",
   "app/api/auth/signup/route.ts",
   "app/api/profile/route.ts",
   "app/api/profile/photo/route.ts",
