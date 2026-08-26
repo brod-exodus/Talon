@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { resolve } from "node:path"
 import test from "node:test"
 import { EXPECTED_SCHEMA_VERSION } from "../lib/schema-version.ts"
@@ -7,6 +10,7 @@ import {
   MAX_IMMEDIATE_WORKSPACE_EXPORT_BYTES,
   normalizeWorkspaceExport,
   serializeWorkspaceExport,
+  verifyWorkspaceExport,
 } from "../lib/workspace-export.ts"
 
 const migration = readFileSync(
@@ -28,6 +32,21 @@ function emptyExport() {
     workspace: { name: "Recruiting", kind: "private", teamId: "must-not-escape" },
     data: Object.fromEntries(dataKeys.map((key) => [key, []])),
     tokenHash: "must-not-escape",
+  }
+}
+
+function strictEmptyExport() {
+  const value = emptyExport()
+  return {
+    format: value.format,
+    version: value.version,
+    generatedAt: value.generatedAt,
+    workspace: { name: value.workspace.name, kind: value.workspace.kind },
+    data: value.data,
+    excluded: [
+      "supabase_auth", "profile_photo_storage", "operational_history", "auth_sessions",
+      "derived_caches", "encrypted_backups", "secrets",
+    ],
   }
 }
 
@@ -83,4 +102,52 @@ test("serialization produces a bounded, newline-terminated JSON document", () =>
   assert.equal(exported.body.endsWith("\n"), true)
   assert.equal(exported.bytes, new TextEncoder().encode(exported.body).byteLength)
   assert.equal(MAX_IMMEDIATE_WORKSPACE_EXPORT_BYTES, 4 * 1024 * 1024)
+})
+
+test("verification accepts a strict export and reports only aggregate evidence", () => {
+  const result = verifyWorkspaceExport(strictEmptyExport())
+  assert.equal(result.formatVersion, 1)
+  assert.equal(result.generatedAt, "2026-08-25T12:00:00.000Z")
+  assert.deepEqual(result.counts, Object.fromEntries(dataKeys.map((key) => [key, 0])))
+})
+
+test("verification rejects unexpected fields and orphaned relationships", () => {
+  assert.throws(
+    () => verifyWorkspaceExport({ ...strictEmptyExport(), tokenHash: "secret" }),
+    /Unexpected fields in workspace export/
+  )
+  assert.throws(
+    () => verifyWorkspaceExport({
+      ...strictEmptyExport(),
+      data: {
+        ...strictEmptyExport().data,
+        scrapeContributors: [{ scrapeId: "missing", contributorId: "missing", contributions: 1 }],
+      },
+    }),
+    /Missing reference for scrapeContributors\.scrapeId/
+  )
+})
+
+test("verification command never prints private export contents", () => {
+  const directory = mkdtempSync(join(tmpdir(), "talon-workspace-export-"))
+  const validPath = join(directory, "talon-workspace-export.json")
+  const invalidPath = join(directory, "invalid.json")
+  const malformedPath = join(directory, "malformed.json")
+  writeFileSync(validPath, JSON.stringify(strictEmptyExport()))
+  writeFileSync(invalidPath, JSON.stringify({ privateNote: "must-not-appear" }))
+  writeFileSync(malformedPath, '{"privateNote":"malformed-secret",}')
+
+  const command = resolve(import.meta.dirname, "../scripts/verify-workspace-export.ts")
+  const valid = spawnSync(process.execPath, ["--experimental-strip-types", command, validPath], { encoding: "utf8" })
+  const invalid = spawnSync(process.execPath, ["--experimental-strip-types", command, invalidPath], { encoding: "utf8" })
+  const malformed = spawnSync(process.execPath, ["--experimental-strip-types", command, malformedPath], { encoding: "utf8" })
+
+  assert.equal(valid.status, 0)
+  assert.match(valid.stdout, /Workspace export verified: format v1, 0 rows/)
+  assert.equal(invalid.status, 1)
+  assert.match(invalid.stderr, /Workspace export verification failed/)
+  assert.doesNotMatch(`${invalid.stdout}${invalid.stderr}`, /must-not-appear/)
+  assert.equal(malformed.status, 1)
+  assert.match(malformed.stderr, /Export file is not valid JSON/)
+  assert.doesNotMatch(`${malformed.stdout}${malformed.stderr}`, /malformed-secret|privateNote/)
 })

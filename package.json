@@ -12,6 +12,7 @@
     "benchmark:capacity": "node --experimental-strip-types scripts/benchmark-capacity.ts",
     "benchmark:concurrency": "node --experimental-strip-types scripts/benchmark-worker-concurrency.ts",
     "dev": "next dev",
+    "export:verify": "node --experimental-strip-types scripts/verify-workspace-export.ts",
     "lint": "eslint . --max-warnings=0",
     "migrations:check": "node --experimental-strip-types scripts/check-migrations.ts",
     "security:audit": "pnpm audit --audit-level=high",

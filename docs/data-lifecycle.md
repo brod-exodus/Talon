@@ -79,6 +79,17 @@ fail safely rather than returning a partial file. The downloaded file contains
 private contact information and recruiter notes, leaves Talon's access controls,
 and must be stored and shared accordingly.
 
+Verify a downloaded file without printing its private contents:
+
+```bash
+pnpm export:verify -- /absolute/path/to/talon-workspace-export-YYYY-MM-DD.json
+```
+
+The verifier checks the versioned field contract, size bound, duplicate entity
+identifiers, and references between contributors, scrapes, Projects, lists,
+tracking records, share metadata, and watched repositories. It reports only the
+format version, generation time, and total row count.
+
 A future deletion feature must not start as a collection of browser-side delete
 requests. It requires one owner-only, database-transactional operation with:
 
