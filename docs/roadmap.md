@@ -84,6 +84,23 @@ Effort is a rough estimate for one experienced engineer.
 
 ## Next
 
+### Release sequencing guard — completed
+
+- **User problem:** A migration PR could be merged even when its checklist still
+  said the Production migration had not been applied, briefly deploying an
+  application ahead of its database.
+- **Outcome:** Make the existing required Verify check block migration PRs until
+  the operator confirms application and lists every new migration file.
+- **Why it matters:** This prevents a repeated, avoidable deployment mismatch
+  without granting GitHub or CI access to the Production database.
+- **Effort / risk:** Small / low; release-process enforcement only.
+- **Dependencies:** Expand-first migrations, the existing PR template, and the
+  required Verify check.
+- **Acceptance:** Migration-free PRs pass automatically; a migration PR fails
+  while unchecked or incompletely listed; editing the PR reruns CI; exact
+  migration paths and a checked acknowledgement pass; no Production secret is
+  read or stored.
+
 ### 4. Add safe self-service password recovery
 
 - **User problem:** A user who forgets a password must ask an owner to set and

@@ -447,6 +447,13 @@ For every future database change:
 6. Open **Settings → Production Readiness** and verify **Database Schema** says
    the current and expected versions match.
 
+Pull requests that add a new `db/migrations/*.sql` file are blocked by the
+existing **Verify** check until the PR description both checks **Required DB
+migrations were applied** and lists every new migration path in backticks. Apply
+the migrations in Production first, edit the PR description, and wait for the
+rerun to pass before merging. This is an operator attestation, not direct CI
+access to Production; GitHub receives no Supabase database credential.
+
 If the database is behind, `/api/health` returns HTTP `503`. If the database is
 ahead after an application rollback, health reports a warning so the operator
 can verify backward compatibility. Additive migrations should normally remain
