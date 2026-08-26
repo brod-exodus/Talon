@@ -129,6 +129,10 @@ Effort is a rough estimate for one experienced engineer.
   export uses an explicit field allowlist, omits operational and secret-bearing
   systems, and fails rather than returning a partial file when the immediate
   download limit is exceeded.
+- **Offline verification delivered:** A local command validates the export
+  format, size, entity uniqueness, and cross-record references without printing
+  contacts or recruiter notes. This makes a downloaded archive testable instead
+  of merely assuming that valid JSON is complete.
 
 ### 6. Finish teammate invitations and email onboarding
 
