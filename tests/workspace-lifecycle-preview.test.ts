@@ -41,5 +41,5 @@ test("workspace lifecycle preview is service-role only and advances schema v48",
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.preview_workspace_lifecycle\(UUID\) TO service_role/i)
   assert.match(migration, /get_talon_lifecycle_contract_issues/i)
   assert.match(migration, /\(48, 'workspace_lifecycle_preview'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 48)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 48)
 })

@@ -56,6 +56,12 @@ jobs:
             --no-psqlrc \
             --file tests/integration/workspace-lifecycle-preview.sql
 
+      - name: Verify workspace data export
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            --no-psqlrc \
+            --file tests/integration/workspace-data-export.sql
+
       - name: Upload worker fault-injection trace
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

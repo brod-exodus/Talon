@@ -124,6 +124,11 @@ Effort is a rough estimate for one experienced engineer.
   diagnostic backed by one team-scoped database function. It reports live
   Postgres scope, active-work blockers, and external systems that remain
   uncounted without exposing row content or enabling deletion.
+- **Portable export delivered:** Owners can download a versioned JSON copy of
+  recruiter-owned workspace data through a non-cached, audited endpoint. The
+  export uses an explicit field allowlist, omits operational and secret-bearing
+  systems, and fails rather than returning a partial file when the immediate
+  download limit is exceeded.
 
 ### 6. Finish teammate invitations and email onboarding
 
