@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CheckCircle2, AlertCircle, Key, ExternalLink, Bell, Shield, RefreshCw, Download, Users, UserPlus, Trash2, LockKeyhole, ClipboardCheck, MonitorSmartphone, LogOut } from "lucide-react"
 import { useAuthMe } from "@/lib/client-permissions"
 import { type AuthRole } from "@/lib/auth-token"
+import { WorkspaceLifecycleControls } from "@/components/workspace-lifecycle-controls"
 
 type AuditEvent = {
   id: string
@@ -1079,6 +1080,10 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {me?.actor === "user" && me.role === "owner" && (
+            <WorkspaceLifecycleControls teamSlug={me.teamSlug} />
           )}
 
           {canAdmin && (

@@ -6,12 +6,19 @@ import test from "node:test"
 const loginForm = readFileSync(resolve(import.meta.dirname, "../components/login-form.tsx"), "utf8")
 const resetForm = readFileSync(resolve(import.meta.dirname, "../components/reset-password-form.tsx"), "utf8")
 const resetPage = readFileSync(resolve(import.meta.dirname, "../app/reset-password/page.tsx"), "utf8")
+const loginPage = readFileSync(resolve(import.meta.dirname, "../app/login/page.tsx"), "utf8")
 
 test("login exposes recovery without opening self-service registration", () => {
   assert.match(loginForm, /Forgot password\?/)
   assert.match(loginForm, /\/api\/auth\/password\/reset-request/)
   assert.match(loginForm, /allowSelfServiceSignup && !resetMode/)
   assert.match(loginForm, /mode === "signin" && allowPasswordRecovery/)
+})
+
+test("workspace deletion outcomes remain visible after the session is cleared", () => {
+  assert.match(loginPage, /Workspace data was permanently deleted/)
+  assert.match(loginPage, /Profile-photo storage cleanup still requires operator follow-up/)
+  assert.match(loginForm, /initialNotice/)
 })
 
 test("the recovery token is removed from the address bar and never persisted", () => {
