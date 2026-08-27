@@ -19,7 +19,7 @@ automatic expiry for that data.
 
 | Table | Data and sensitivity | Workspace boundary | Current lifecycle |
 | --- | --- | --- | --- |
-| `teams` | Workspace identity and private-owner email | Root workspace record | Retained; Talon has no workspace-deletion action |
+| `teams` | Workspace identity and private-owner email | Root workspace record | Owner deletion cascades workspace-owned Postgres data |
 | `team_memberships` | Account email and role | Workspace-owned | Retained; owners can remove non-required memberships |
 | `auth_sessions` | Hashed session subject, workspace and revocation evidence | Account/workspace scoped | Automatic: expired sessions removed 7 days after expiry |
 | `auth_rate_limits` | Hashed login key, failure count and lockout | Global security control | Automatic: inactive unlocked records after 30 days |
@@ -61,7 +61,7 @@ automatic expiry for that data.
 - CSV exports and data copied from a public share leave Talon's control. The
   product can revoke future access but cannot recall an already downloaded copy.
 
-## Required design before workspace deletion
+## Workspace export and deletion
 
 Owners can request `GET /api/workspace-lifecycle/preview` to receive current,
 count-only Postgres scope and active-work blockers. The response excludes row
@@ -90,22 +90,28 @@ identifiers, and references between contributors, scrapes, Projects, lists,
 tracking records, share metadata, and watched repositories. It reports only the
 format version, generation time, and total row count.
 
-A future deletion feature must not start as a collection of browser-side delete
-requests. It requires one owner-only, database-transactional operation with:
+Owners can use the Workspace Data card in Settings to refresh the preview,
+download an export, and permanently delete a workspace. The destructive action
+is available only to a signed-in owner, requires the exact workspace slug, and
+is refused while scrapes or notification deliveries are active. The database
+locks the workspace root and deletes all Postgres-owned workspace data in one
+transaction, so an old worker lease cannot recreate data after the team row is
+removed. Workspace-linked audit history is removed and replaced by one global,
+non-identifying deletion receipt.
 
-1. The existing read-only preview plus explicit Auth identity and Storage object
-   lookup during the destructive operation.
-2. Explicit handling for queued/running work and notification deliveries so an
-   old lease cannot recreate or mutate data during deletion.
-3. Revocation of shares and sessions before destructive work begins.
-4. A decision on the final audit record: preserving a non-identifying deletion
-   receipt or deleting workspace-linked audit rows after recording external
-   operator evidence.
-5. Idempotent retry and an observable terminal result for partial failures
-   outside Postgres, especially Auth and Storage.
-6. Documentation that live deletion does not immediately remove older encrypted
-   backups or copies previously exported by users.
+Profile-photo paths are captured by the transaction and removed from Supabase
+Storage immediately afterward. If that external cleanup fails, the database
+deletion remains committed and Talon returns `profilePhotoCleanup: required` so
+the operator can remove the orphaned objects from the `team-avatars` bucket.
+Supabase Auth identities are intentionally retained because one identity may be
+used by another workspace; deleted members can no longer resolve live workspace
+membership for the deleted workspace.
 
-This inventory does not authorize workspace deletion, introduce new retention
-windows, or change current product behavior. Those decisions require a separate
-reviewable migration and explicit operator acceptance criteria.
+The deletion boundary has these deliberate limitations:
+
+1. Live deletion does not immediately remove older encrypted backups.
+2. Talon cannot recall exports, CSV files, or public-share data already copied
+   by another person.
+3. A failed post-transaction Storage cleanup requires operator follow-up; the
+   response and correlated server log identify that state without returning an
+   object path to the browser.

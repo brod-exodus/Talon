@@ -69,7 +69,7 @@ test("workspace export covers recruiter-owned relationships and advances schema 
     assert.match(migration, new RegExp(`FROM public\\.${table}[^;]+team_id = p_team_id`, "i"), table)
   }
   assert.match(migration, /\(49, 'workspace_data_export'\)/i)
-  assert.equal(EXPECTED_SCHEMA_VERSION, 49)
+  assert.ok(EXPECTED_SCHEMA_VERSION >= 49)
 })
 
 test("normalization strips unexpected database fields and pins exclusions", () => {

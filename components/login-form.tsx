@@ -13,9 +13,10 @@ import { TalonLogo } from "@/components/talon-logo"
 type LoginFormProps = {
   allowSelfServiceSignup: boolean
   allowPasswordRecovery: boolean
+  initialNotice?: string
 }
 
-export function LoginForm({ allowSelfServiceSignup, allowPasswordRecovery }: LoginFormProps) {
+export function LoginForm({ allowSelfServiceSignup, allowPasswordRecovery, initialNotice = "" }: LoginFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [displayName, setDisplayName] = useState("")
@@ -24,7 +25,7 @@ export function LoginForm({ allowSelfServiceSignup, allowPasswordRecovery }: Log
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<"signin" | "signup">("signin")
   const [resetMode, setResetMode] = useState(false)
-  const [notice, setNotice] = useState("")
+  const [notice, setNotice] = useState(initialNotice)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()

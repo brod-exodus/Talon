@@ -143,8 +143,7 @@ Effort is a rough estimate for one experienced engineer.
 - **Foundation delivered:** A CI-enforced lifecycle contract now classifies every
   Postgres table, documents existing retention and cascade behavior, identifies
   Auth, Storage, backup, export, and audit boundaries, and defines the safety
-  requirements for a future transactional deletion design. It does not yet
-  authorize or implement workspace deletion.
+  requirements for the transactional deletion design.
 - **Preview delivered:** Owners now have a count-only, non-cached lifecycle
   diagnostic backed by one team-scoped database function. It reports live
   Postgres scope, active-work blockers, and external systems that remain
@@ -158,6 +157,12 @@ Effort is a rough estimate for one experienced engineer.
   format, size, entity uniqueness, and cross-record references without printing
   contacts or recruiter notes. This makes a downloaded archive testable instead
   of merely assuming that valid JSON is complete.
+- **Guarded deletion delivered:** Signed-in owners can preview, export, and
+  permanently delete a workspace from Settings. Exact slug confirmation,
+  active-work blockers, a locked database transaction, an anonymous receipt,
+  session removal, and separately reported Storage cleanup preserve the
+  workspace and privacy boundaries. Supabase Auth accounts and backups remain
+  intentionally outside the deletion boundary.
 
 ### 6. Finish teammate invitations and email onboarding
 
