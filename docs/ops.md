@@ -342,6 +342,7 @@ db/migrations/048_workspace_lifecycle_preview.sql
 db/migrations/049_workspace_data_export.sql
 db/migrations/050_transactional_workspace_deletion.sql
 db/migrations/051_durable_workspace_storage_cleanup.sql
+db/migrations/052_minimize_completed_storage_cleanup.sql
 ```
 
 They create or enforce:
@@ -363,6 +364,11 @@ action once. It resets only terminal cleanup tasks, records the recovery action,
 and lets the durable worker process them; it does not reveal workspace IDs,
 object paths, or provider errors. A concurrent second click is harmless and
 reports that no additional task changed.
+
+Migration `052_minimize_completed_storage_cleanup.sql` scrubs profile-photo
+paths from successful cleanup tasks, including existing completed rows. Queued,
+running, and failed tasks retain their paths because the worker still needs them
+for recovery. The successful task row remains as path-free operational evidence.
 
 Apply migration `026` before deploying the matching application release. It is
 expand-first: the prior release can continue creating and opening shares during
