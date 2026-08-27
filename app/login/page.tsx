@@ -11,10 +11,10 @@ export default async function LoginPage({
 }) {
   const params = await searchParams
   const workspaceDeleted = params.workspaceDeleted === "1"
-  const cleanupRequired = params.profilePhotoCleanup === "required"
+  const cleanupQueued = params.profilePhotoCleanup === "queued"
   const initialNotice = workspaceDeleted
-    ? cleanupRequired
-      ? "Workspace data was deleted. Profile-photo storage cleanup still requires operator follow-up."
+    ? cleanupQueued
+      ? "Workspace data was deleted. Profile-photo cleanup is queued and will retry automatically."
       : "Workspace data was permanently deleted."
     : ""
 

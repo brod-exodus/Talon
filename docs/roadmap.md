@@ -163,6 +163,10 @@ Effort is a rough estimate for one experienced engineer.
   session removal, and separately reported Storage cleanup preserve the
   workspace and privacy boundaries. Supabase Auth accounts and backups remain
   intentionally outside the deletion boundary.
+- **External cleanup recovery delivered:** Profile-photo deletion now uses a
+  private durable task created in the same transaction as workspace deletion.
+  The one-minute worker retries failures with leases and bounded backoff, while
+  terminal failures remain operationally visible.
 
 ### 6. Finish teammate invitations and email onboarding
 

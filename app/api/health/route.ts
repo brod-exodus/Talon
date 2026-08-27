@@ -414,6 +414,28 @@ async function notificationQueueCheck(): Promise<HealthCheck> {
   }
 }
 
+async function storageCleanupQueueCheck(): Promise<HealthCheck> {
+  const { data, error } = await supabaseAdmin
+    .from("storage_cleanup_tasks")
+    .select("status, created_at, run_after, locked_at")
+    .in("status", ["queued", "running", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(100)
+  if (error) return { status: "error", message: "Could not inspect storage cleanup queue" }
+  const rows = data ?? []
+  const queued = rows.filter((row) => row.status === "queued")
+  const due = queued.filter((row) => new Date(row.run_after).getTime() <= Date.now())
+  const running = rows.filter((row) => row.status === "running")
+  const failed = rows.filter((row) => row.status === "failed")
+  const stale = running.filter((row) => row.locked_at && Date.now() - new Date(row.locked_at).getTime() > 10 * 60 * 1000)
+  const status: CheckStatus = stale.length || failed.length ? "error" : due.length ? "warn" : "ok"
+  return {
+    status,
+    message: `${queued.length} queued, ${running.length} running, ${failed.length} terminally failed`,
+    detail: `${due.length} due; ${stale.length} stale running`,
+  }
+}
+
 function scrapeReliabilityCheck(snapshot: ReturnType<typeof buildScrapeSloSnapshot>): HealthCheck {
   const target = `Target ≥${SCRAPE_SUCCESS_TARGET_PERCENT}% over ${SCRAPE_SLO_WINDOW_DAYS} days`
   if (snapshot.sampleSize < SCRAPE_SLO_MIN_SAMPLE) {
@@ -537,7 +559,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError
 
   const githubCooldown = await githubCooldownCheck()
-  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, notificationQueue, scrapeSlos, sloAlerting] = await Promise.all([
+  const [database, databaseSchema, github, keepalive, scrapeWorker, scrapeQueue, notificationQueue, storageCleanupQueue, scrapeSlos, sloAlerting] = await Promise.all([
     dbCheck(),
     schemaVersionCheck(),
     githubCheck(githubCooldown.cooldown),
@@ -545,6 +567,7 @@ export async function GET(request: NextRequest) {
     lastSystemRunCheck("scrape_worker", 10),
     queueCheck(githubCooldown.cooldown),
     notificationQueueCheck(),
+    storageCleanupQueueCheck(),
     scrapeSloChecks(),
     sloAlertingCheck(),
   ])
@@ -564,6 +587,7 @@ export async function GET(request: NextRequest) {
     scrapeWorker,
     scrapeQueue,
     notificationQueue,
+    storageCleanupQueue,
     sloAlerting,
     ...scrapeSlos,
   }
