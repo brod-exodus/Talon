@@ -20,6 +20,7 @@ type HealthCheck = {
   status: CheckStatus
   message: string
   detail?: string
+  recovery?: "storage_cleanup"
 }
 
 function parseContractIssues(data: unknown): string[] {
@@ -433,6 +434,7 @@ async function storageCleanupQueueCheck(): Promise<HealthCheck> {
     status,
     message: `${queued.length} queued, ${running.length} running, ${failed.length} terminally failed`,
     detail: `${due.length} due; ${stale.length} stale running`,
+    recovery: failed.length > 0 ? "storage_cleanup" : undefined,
   }
 }
 

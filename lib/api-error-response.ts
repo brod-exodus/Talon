@@ -42,6 +42,7 @@ const INTERNAL_ERROR_MESSAGES = {
   share_public_read_failed: "Failed to fetch share",
   share_revoke_failed: "Failed to revoke share link",
   slack_test_failed: "Failed to send test message",
+  storage_cleanup_retry_failed: "Failed to retry profile photo cleanup",
   team_member_remove_failed: "Failed to remove team member",
   team_member_save_failed: "Failed to save team member",
   team_member_update_failed: "Failed to update team member",

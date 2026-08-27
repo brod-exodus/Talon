@@ -39,3 +39,20 @@ export async function runStorageCleanupTask(taskId?: string): Promise<StorageCle
     return { taskId: task.id, status: nextStatus === "failed" ? "failed" : nextStatus === "queued" ? "queued" : "skipped", recoveredStaleTasks: Number(recovered ?? 0) }
   }
 }
+
+export async function requeueFailedStorageCleanupTasks(): Promise<number> {
+  const now = new Date().toISOString()
+  const { data, error } = await supabaseAdmin
+    .from("storage_cleanup_tasks")
+    .update({
+      status: "queued",
+      attempts: 0,
+      run_after: now,
+      completed_at: null,
+      updated_at: now,
+    })
+    .eq("status", "failed")
+    .select("id")
+  if (error) throw error
+  return data?.length ?? 0
+}

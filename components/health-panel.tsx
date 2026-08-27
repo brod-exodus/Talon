@@ -13,6 +13,7 @@ type HealthCheck = {
   status: CheckStatus
   message: string
   detail?: string
+  recovery?: "storage_cleanup"
 }
 
 type HealthResponse = {
@@ -62,6 +63,8 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [recoveringCleanup, setRecoveringCleanup] = useState(false)
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null)
 
   const visibleChecks = useMemo(() => {
     if (!health?.checks) return []
@@ -75,7 +78,7 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
     try {
       const res = await fetch("/api/health", { cache: "no-store" })
       const data = await res.json().catch(() => null)
-      if (!res.ok) {
+      if (!res.ok && !isHealthResponse(data)) {
         throw new Error(
           data && typeof data.error === "string"
             ? data.error
@@ -92,6 +95,25 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
       setRefreshing(false)
     }
   }, [])
+
+  const retryStorageCleanup = useCallback(async () => {
+    setRecoveringCleanup(true)
+    setRecoveryMessage(null)
+    try {
+      const res = await fetch("/api/storage-cleanup/retry", { method: "POST" })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data && typeof data.error === "string" ? data.error : "Cleanup could not be retried")
+      }
+      const count = data && typeof data.requeued === "number" ? data.requeued : 0
+      setRecoveryMessage(count === 1 ? "1 cleanup task queued." : `${count} cleanup tasks queued.`)
+      await loadHealth()
+    } catch (error) {
+      setRecoveryMessage(error instanceof Error ? error.message : "Cleanup could not be retried")
+    } finally {
+      setRecoveringCleanup(false)
+    }
+  }, [loadHealth])
 
   useEffect(() => {
     if (!canAdmin) {
@@ -168,9 +190,21 @@ export function HealthPanel({ showHealthy = false }: HealthPanelProps) {
               <p className="text-sm font-medium text-foreground">{formatLabel(key)}</p>
               <p className="text-sm text-muted-foreground">{check.message}</p>
               {check.detail && <p className="break-words text-xs text-muted-foreground">{check.detail}</p>}
+              {check.recovery === "storage_cleanup" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={recoveringCleanup}
+                  onClick={retryStorageCleanup}
+                >
+                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${recoveringCleanup ? "animate-spin" : ""}`} />
+                  {recoveringCleanup ? "Queuing cleanup..." : "Retry failed cleanup"}
+                </Button>
+              )}
             </div>
           </div>
         ))}
+        {recoveryMessage && <p role="status" className="text-xs text-muted-foreground">{recoveryMessage}</p>}
         {health?.checkedAt && !loadError && (
           <p className="text-xs text-muted-foreground">
             Last checked {new Date(health.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
