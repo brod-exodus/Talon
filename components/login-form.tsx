@@ -12,9 +12,10 @@ import { TalonLogo } from "@/components/talon-logo"
 
 type LoginFormProps = {
   allowSelfServiceSignup: boolean
+  allowPasswordRecovery: boolean
 }
 
-export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
+export function LoginForm({ allowSelfServiceSignup, allowPasswordRecovery }: LoginFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [displayName, setDisplayName] = useState("")
@@ -142,7 +143,7 @@ export function LoginForm({ allowSelfServiceSignup }: LoginFormProps) {
                   ? "Sign In"
                   : "Create Workspace"}
             </Button>
-            {mode === "signin" && (
+            {mode === "signin" && allowPasswordRecovery && (
               <Button
                 type="button"
                 variant="ghost"

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => ({
@@ -46,6 +46,7 @@ function request(path: string, body: Record<string, unknown>, origin = "https://
 
 describe("password recovery routes", () => {
   beforeEach(() => {
+    vi.stubEnv("TALON_PASSWORD_RECOVERY_ENABLED", "true")
     vi.clearAllMocks()
     mocks.checkRateLimit.mockResolvedValue({ allowed: true })
     mocks.recordRequest.mockResolvedValue(undefined)
@@ -62,6 +63,26 @@ describe("password recovery routes", () => {
     })
     mocks.revokeSessions.mockResolvedValue(undefined)
     mocks.updateUserById.mockResolvedValue({ error: null })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  test("recovery stays dormant until the operator explicitly enables email delivery", async () => {
+    vi.stubEnv("TALON_PASSWORD_RECOVERY_ENABLED", "false")
+
+    const requestResponse = await requestReset(request("/api/auth/password/reset-request", { email: "user@example.com" }))
+    const completionResponse = await completeReset(request("/api/auth/password/reset", {
+      tokenHash: "a".repeat(64),
+      password: "new-secure-password",
+    }))
+
+    expect(requestResponse.status).toBe(503)
+    expect(completionResponse.status).toBe(503)
+    expect(mocks.checkRateLimit).not.toHaveBeenCalled()
+    expect(mocks.resetPasswordForEmail).not.toHaveBeenCalled()
+    expect(mocks.verifyOtp).not.toHaveBeenCalled()
   })
 
   test("reset requests are non-enumerating and use Talon's fixed recovery page", async () => {

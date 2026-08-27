@@ -34,7 +34,9 @@ them change it from Settings.
 ## Password Recovery
 
 Talon provides a non-enumerating **Forgot password?** flow for existing team
-users. Production activation requires Supabase Auth email delivery and a custom
+users. It is hidden and disabled unless `TALON_PASSWORD_RECOVERY_ENABLED=true`.
+Leave this setting absent or `false` until delivery is ready. Production
+activation requires Supabase Auth email delivery and a custom
 Recovery email template. In **Authentication → Email Templates → Reset
 Password**, use a link with this exact shape:
 
@@ -54,6 +56,11 @@ After changing the template, request a reset for a test team user, open the
 email, set a new password, confirm the old password no longer works, and confirm
 every previously active Talon session requires login again. Never paste a reset
 link into logs, tickets, SQL Editor, or a pull request.
+
+Only after that test succeeds, set `TALON_PASSWORD_RECOVERY_ENABLED=true` for
+Production in Vercel and redeploy. To disable recovery later, set it back to
+`false`; existing login and administrator-managed password changes are
+unaffected.
 
 ## Roles
 

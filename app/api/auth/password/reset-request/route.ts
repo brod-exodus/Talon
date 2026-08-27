@@ -4,6 +4,8 @@ import { checkPasswordResetRateLimit, recordPasswordResetRequest } from "@/lib/l
 import { logError } from "@/lib/logger"
 import { getRequestId } from "@/lib/request-id"
 import { requireSameOrigin } from "@/lib/request-origin"
+import { serviceErrorResponse } from "@/lib/api-error-response"
+import { isPasswordRecoveryEnabled } from "@/lib/password-recovery-policy"
 import { createSupabaseAuthClient } from "@/lib/supabase"
 import { readJsonObject } from "@/lib/validation"
 
@@ -18,6 +20,10 @@ function normalizeEmail(value: unknown): string | null {
 export async function POST(request: NextRequest) {
   const originError = requireSameOrigin(request)
   if (originError) return originError
+
+  if (!isPasswordRecoveryEnabled()) {
+    return serviceErrorResponse("auth_password_recovery_disabled", getRequestId(request))
+  }
 
   const rateLimit = await checkPasswordResetRateLimit(request)
   if (!rateLimit.allowed) {
