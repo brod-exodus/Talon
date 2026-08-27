@@ -42,6 +42,7 @@ automatic expiry for that data.
 | `scrape_enqueue_requests` | Idempotency key and request-to-job relationship | Workspace-owned operational data | Cascade with scrape job |
 | `service_cooldowns` | GitHub cooldown time, reason and optional source job | Global operational control | Retained as bounded single-row operational history |
 | `notification_deliveries` | Secret-free Slack outbox payload, lease, attempts and sanitized error | Workspace-owned operational data | Automatic: terminal deliveries after 90 days |
+| `storage_cleanup_tasks` | Deleted-workspace profile-photo paths and bounded retry state | Global operational cleanup | Retained terminal evidence; never browser-readable |
 | `activity_events` | Recruiter-visible product activity metadata | Workspace-owned | Automatic after 180 days |
 | `audit_events` | Append-only security actions, outcome, hashed IP and safe metadata | Workspace when available; some authentication events are global | Automatic after 180 days; direct application deletion denied |
 | `system_runs` | Scheduler and worker health outcomes with aggregate details | Global operational history | Automatic after 30 days |
@@ -99,10 +100,10 @@ transaction, so an old worker lease cannot recreate data after the team row is
 removed. Workspace-linked audit history is removed and replaced by one global,
 non-identifying deletion receipt.
 
-Profile-photo paths are captured by the transaction and removed from Supabase
-Storage immediately afterward. If that external cleanup fails, the database
-deletion remains committed and Talon returns `profilePhotoCleanup: required` so
-the operator can remove the orphaned objects from the `team-avatars` bucket.
+Profile-photo paths are captured into a private cleanup task by the deletion
+transaction and removed from Supabase Storage immediately afterward. If that
+external cleanup fails, the database deletion remains committed and the
+one-minute worker retries with bounded backoff and stale-lease recovery.
 Supabase Auth identities are intentionally retained because one identity may be
 used by another workspace; deleted members can no longer resolve live workspace
 membership for the deleted workspace.
@@ -112,6 +113,5 @@ The deletion boundary has these deliberate limitations:
 1. Live deletion does not immediately remove older encrypted backups.
 2. Talon cannot recall exports, CSV files, or public-share data already copied
    by another person.
-3. A failed post-transaction Storage cleanup requires operator follow-up; the
-   response and correlated server log identify that state without returning an
-   object path to the browser.
+3. A terminal Storage cleanup failure remains visible in Production Readiness
+   without returning an object path to the browser.

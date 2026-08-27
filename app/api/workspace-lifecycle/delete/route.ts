@@ -7,10 +7,9 @@ import { requirePermission } from "@/lib/permissions"
 import { getRequestId } from "@/lib/request-id"
 import { supabaseAdmin } from "@/lib/supabase"
 import { resolveTeamContext, teamContextError } from "@/lib/team-context"
+import { runStorageCleanupTask } from "@/lib/storage-cleanup-worker"
 
-const AVATAR_BUCKET = "team-avatars"
-
-type DatabaseReceipt = { version: 1; receiptId: string; deletedAt: string; avatarPaths: string[] }
+type DatabaseReceipt = { version: 1; receiptId: string; deletedAt: string; hasStorageCleanup: boolean }
 
 function validReceipt(value: unknown): value is DatabaseReceipt {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
@@ -20,8 +19,7 @@ function validReceipt(value: unknown): value is DatabaseReceipt {
     && /^[0-9a-f-]{36}$/i.test(receipt.receiptId)
     && typeof receipt.deletedAt === "string"
     && !Number.isNaN(Date.parse(receipt.deletedAt))
-    && Array.isArray(receipt.avatarPaths)
-    && receipt.avatarPaths.every((path) => typeof path === "string" && path.length > 0 && path.length <= 512)
+    && typeof receipt.hasStorageCleanup === "boolean"
 }
 
 export async function DELETE(request: NextRequest) {
@@ -74,12 +72,14 @@ export async function DELETE(request: NextRequest) {
     }
     if (!validReceipt(data)) throw new Error("Invalid workspace deletion receipt")
 
-    let profilePhotoCleanup: "complete" | "required" = "complete"
-    if (data.avatarPaths.length > 0) {
-      const { error: storageError } = await supabaseAdmin.storage.from(AVATAR_BUCKET).remove(data.avatarPaths)
-      if (storageError) {
-        profilePhotoCleanup = "required"
-        logError("workspace.profile_photo_cleanup_failed", storageError, { requestId })
+    let profilePhotoCleanup: "complete" | "queued" = "complete"
+    if (data.hasStorageCleanup) {
+      try {
+        const cleanup = await runStorageCleanupTask(data.receiptId)
+        profilePhotoCleanup = cleanup.status === "succeeded" ? "complete" : "queued"
+      } catch (cleanupError) {
+        profilePhotoCleanup = "queued"
+        logError("workspace.storage_cleanup_dispatch_failed", cleanupError, { requestId })
       }
     }
 

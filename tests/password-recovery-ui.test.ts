@@ -17,7 +17,7 @@ test("login exposes recovery without opening self-service registration", () => {
 
 test("workspace deletion outcomes remain visible after the session is cleared", () => {
   assert.match(loginPage, /Workspace data was permanently deleted/)
-  assert.match(loginPage, /Profile-photo storage cleanup still requires operator follow-up/)
+  assert.match(loginPage, /Profile-photo cleanup is queued and will retry automatically/)
   assert.match(loginForm, /initialNotice/)
 })
 

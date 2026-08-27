@@ -77,7 +77,7 @@ export function WorkspaceLifecycleControls({ teamSlug }: { teamSlug: string }) {
       })
       const data = await response.json().catch(() => null)
       if (!response.ok || data?.success !== true) throw new Error(message(data, "Failed to delete workspace data"))
-      const cleanup = data?.profilePhotoCleanup === "required" ? "&profilePhotoCleanup=required" : ""
+      const cleanup = data?.profilePhotoCleanup === "queued" ? "&profilePhotoCleanup=queued" : ""
       window.location.assign(`/login?workspaceDeleted=1${cleanup}`)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to delete workspace data")

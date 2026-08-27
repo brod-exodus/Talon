@@ -11,6 +11,7 @@ import {
   runNotificationDeliveryWorker,
   type NotificationDeliveryWorkerResult,
 } from "@/lib/notification-delivery-worker"
+import { runStorageCleanupTask, type StorageCleanupResult } from "@/lib/storage-cleanup-worker"
 
 export type ScrapeWorkerTrigger = "cron" | "manual" | "queue" | "retry"
 
@@ -24,6 +25,7 @@ export type ScrapeWorkerOperation = {
   elapsedMs: number
   stopReason: ScrapeWorkerStopReason
   notificationDeliveries: NotificationDeliveryWorkerResult & { error?: string }
+  storageCleanup: StorageCleanupResult & { error?: string }
 }
 
 export async function runScrapeWorkerOperation({
@@ -43,6 +45,17 @@ export async function runScrapeWorkerOperation({
   logInfo("scrape_worker.started", { requestId, systemRunId, details: { trigger, maxJobs } })
 
   try {
+    let storageCleanup: StorageCleanupResult & { error?: string } = {
+      taskId: null, status: "empty", recoveredStaleTasks: 0,
+    }
+    if (trigger === "cron" || trigger === "manual") {
+      try {
+        storageCleanup = await runStorageCleanupTask()
+      } catch (error) {
+        storageCleanup = { taskId: null, status: "failed", recoveredStaleTasks: 0, error: sanitizeOperationalError(error).message }
+        logError("storage_cleanup.worker_failed", error, { requestId, systemRunId })
+      }
+    }
     let notificationDeliveries: NotificationDeliveryWorkerResult & { error?: string } = {
       workerId: "not-run",
       recoveredStaleDeliveries: 0,
@@ -77,6 +90,8 @@ export async function runScrapeWorkerOperation({
     const hasFailedResult = results.some((result) => result.status === "failed")
       || Boolean(notificationDeliveries.error)
       || notificationDeliveries.results.some((result) => result.status === "failed")
+      || Boolean(storageCleanup.error)
+      || storageCleanup.status === "failed"
     const steps = results.reduce((total, result) => total + (result.steps ?? 0), 0)
     const maxElapsedMs = Math.max(0, ...results.map((result) => result.elapsedMs ?? 0))
 
@@ -92,6 +107,7 @@ export async function runScrapeWorkerOperation({
       trigger,
       originRequestIds: results.map((result) => result.originRequestId).filter(Boolean),
       notificationDeliveries,
+      storageCleanup,
     })
 
     logInfo("scrape_worker.finished", {
@@ -121,6 +137,7 @@ export async function runScrapeWorkerOperation({
       elapsedMs,
       stopReason,
       notificationDeliveries,
+      storageCleanup,
     }
   } catch (error) {
     await finishSystemRun(systemRunId, "failure", { trigger }, error)

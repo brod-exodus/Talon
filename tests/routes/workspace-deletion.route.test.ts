@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requirePermission: vi.fn(), getAuthSession: vi.fn(), clearAuthCookie: vi.fn(),
   resolveTeamContext: vi.fn(), teamContextError: vi.fn(), rpc: vi.fn(), remove: vi.fn(),
   recordAuditEvent: vi.fn(), logError: vi.fn(),
+  runStorageCleanupTask: vi.fn(),
 }))
 
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
@@ -12,8 +13,9 @@ vi.mock("@/lib/auth", () => ({ getAuthSession: mocks.getAuthSession, clearAuthCo
 vi.mock("@/lib/team-context", () => ({ resolveTeamContext: mocks.resolveTeamContext, teamContextError: mocks.teamContextError }))
 vi.mock("@/lib/audit", () => ({ recordAuditEvent: mocks.recordAuditEvent }))
 vi.mock("@/lib/logger", () => ({ logError: mocks.logError }))
+vi.mock("@/lib/storage-cleanup-worker", () => ({ runStorageCleanupTask: mocks.runStorageCleanupTask }))
 vi.mock("@/lib/supabase", () => ({
-  supabaseAdmin: { rpc: mocks.rpc, storage: { from: () => ({ remove: mocks.remove }) } },
+  supabaseAdmin: { rpc: mocks.rpc },
 }))
 
 import { DELETE } from "@/app/api/workspace-lifecycle/delete/route"
@@ -32,10 +34,10 @@ describe("guarded workspace deletion", () => {
     mocks.getAuthSession.mockReturnValue({ actor: "user", email: "owner@example.com" })
     mocks.resolveTeamContext.mockResolvedValue({ actor: "user", teamId: "team-1", teamSlug: "engineering", role: "owner" })
     mocks.rpc.mockResolvedValue({
-      data: { version: 1, receiptId: "12345678-1234-1234-1234-123456789abc", deletedAt: "2026-08-27T12:00:00Z", avatarPaths: [] },
+      data: { version: 1, receiptId: "12345678-1234-1234-1234-123456789abc", deletedAt: "2026-08-27T12:00:00Z", hasStorageCleanup: false },
       error: null,
     })
-    mocks.remove.mockResolvedValue({ error: null })
+    mocks.runStorageCleanupTask.mockResolvedValue({ status: "succeeded", taskId: "task-1", recoveredStaleTasks: 0 })
     mocks.recordAuditEvent.mockResolvedValue(undefined)
   })
 
@@ -62,7 +64,7 @@ describe("guarded workspace deletion", () => {
     mocks.rpc.mockResolvedValue({
       data: {
         version: 1, receiptId: "12345678-1234-1234-1234-123456789abc",
-        deletedAt: "2026-08-27T12:00:00Z", avatarPaths: ["team-1/avatar.png"],
+        deletedAt: "2026-08-27T12:00:00Z", hasStorageCleanup: true,
       },
       error: null,
     })
@@ -70,7 +72,7 @@ describe("guarded workspace deletion", () => {
     const body = await response.json()
     expect(response.status).toBe(200)
     expect(mocks.rpc).toHaveBeenCalledWith("delete_workspace_data", { p_team_id: "team-1", p_confirmation: "engineering" })
-    expect(mocks.remove).toHaveBeenCalledWith(["team-1/avatar.png"])
+    expect(mocks.runStorageCleanupTask).toHaveBeenCalledWith("12345678-1234-1234-1234-123456789abc")
     expect(body).toEqual({
       success: true,
       receipt: { version: 1, receiptId: "12345678-1234-1234-1234-123456789abc", deletedAt: "2026-08-27T12:00:00Z" },
@@ -80,18 +82,31 @@ describe("guarded workspace deletion", () => {
     expect(mocks.clearAuthCookie).toHaveBeenCalledWith(response)
   })
 
-  test("reports storage cleanup separately after committed database deletion", async () => {
+  test("queues retryable storage cleanup after committed database deletion", async () => {
     mocks.rpc.mockResolvedValue({
       data: {
         version: 1, receiptId: "12345678-1234-1234-1234-123456789abc",
-        deletedAt: "2026-08-27T12:00:00Z", avatarPaths: ["team-1/avatar.png"],
+        deletedAt: "2026-08-27T12:00:00Z", hasStorageCleanup: true,
       }, error: null,
     })
-    mocks.remove.mockResolvedValue({ error: new Error("private storage detail") })
+    mocks.runStorageCleanupTask.mockResolvedValue({ status: "queued", taskId: "task-1", recoveredStaleTasks: 0 })
     const response = await DELETE(request())
     expect(response.status).toBe(200)
-    expect((await response.json()).profilePhotoCleanup).toBe("required")
-    expect(mocks.logError).toHaveBeenCalledWith("workspace.profile_photo_cleanup_failed", expect.any(Error), expect.anything())
+    expect((await response.json()).profilePhotoCleanup).toBe("queued")
+  })
+
+  test("does not report a committed deletion as failed when immediate cleanup dispatch is unavailable", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        version: 1, receiptId: "12345678-1234-1234-1234-123456789abc",
+        deletedAt: "2026-08-27T12:00:00Z", hasStorageCleanup: true,
+      }, error: null,
+    })
+    mocks.runStorageCleanupTask.mockRejectedValue(new Error("private cleanup detail"))
+    const response = await DELETE(request())
+    expect(response.status).toBe(200)
+    expect((await response.json()).profilePhotoCleanup).toBe("queued")
+    expect(mocks.logError).toHaveBeenCalledWith("workspace.storage_cleanup_dispatch_failed", expect.any(Error), expect.anything())
   })
 
   test("returns a retryable conflict for active work and sanitizes other failures", async () => {

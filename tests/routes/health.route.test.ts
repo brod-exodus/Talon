@@ -20,7 +20,7 @@ const healthMocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   state: {
     databaseError: null as Error | null,
-    schemaVersion: 50 as number | null,
+    schemaVersion: 51 as number | null,
     schemaError: null as Error | null,
     schemaContractIssues: [] as Array<{ requirement_type: string; requirement_name: string }>,
     schemaContractError: null as Error | null,
@@ -44,6 +44,8 @@ const healthMocks = vi.hoisted(() => ({
     queueError: null as Error | null,
     notificationRows: [] as QueueRow[],
     notificationError: null as Error | null,
+    storageCleanupRows: [] as QueueRow[],
+    storageCleanupError: null as Error | null,
     githubCooldown: null as {
       service: "github"
       blocked_until: string
@@ -147,6 +149,9 @@ vi.mock("@/lib/supabase", () => ({
         if (table === "notification_deliveries") {
           return { data: healthMocks.state.notificationRows, error: healthMocks.state.notificationError }
         }
+        if (table === "storage_cleanup_tasks") {
+          return { data: healthMocks.state.storageCleanupRows, error: healthMocks.state.storageCleanupError }
+        }
         throw new Error(`Unexpected health query table: ${table}`)
       }
       const builder = {
@@ -218,7 +223,7 @@ describe("GET /api/health", () => {
     configureHealthyEnvironment()
     healthMocks.requirePermission.mockReturnValue(null)
     healthMocks.state.databaseError = null
-    healthMocks.state.schemaVersion = 50
+    healthMocks.state.schemaVersion = 51
     healthMocks.state.schemaError = null
     healthMocks.state.schemaContractIssues = []
     healthMocks.state.schemaContractError = null
@@ -248,6 +253,8 @@ describe("GET /api/health", () => {
     healthMocks.state.queueRows = []
     healthMocks.state.notificationRows = []
     healthMocks.state.notificationError = null
+    healthMocks.state.storageCleanupRows = []
+    healthMocks.state.storageCleanupError = null
     healthMocks.state.githubCooldown = null
     healthMocks.state.systemRuns = {
       keepalive: recentRun,
@@ -304,7 +311,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "ok",
       message: "Database schema matches this application",
-      detail: "Current v50; expected v50",
+      detail: "Current v51; expected v51",
     })
     expect(body.checks.scrapeReliability.detail).toContain("100% success")
     expect(body.checks.scrapeLatency.detail).toContain("p95 3 minutes")
@@ -376,6 +383,27 @@ describe("GET /api/health", () => {
     expect(body.checks.notificationQueue.detail).toBe("0 stale sending; oldest due 20 minutes")
   })
 
+  test("returns 503 when profile photo cleanup exhausts its retries", async () => {
+    healthMocks.state.storageCleanupRows = [
+      {
+        status: "failed",
+        created_at: "2026-08-13T17:40:00.000Z",
+        run_after: "2026-08-13T17:40:00.000Z",
+        locked_at: null,
+      },
+    ]
+
+    const response = await GET(healthRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body.checks.storageCleanupQueue).toEqual({
+      status: "error",
+      message: "0 queued, 0 running, 1 terminally failed",
+      detail: "0 due; 0 stale running",
+    })
+  })
+
   test("returns 503 when production migrations are behind the application", async () => {
     healthMocks.state.schemaVersion = 46
 
@@ -386,7 +414,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database migrations are behind this application",
-      detail: "Current v46; expected v50",
+      detail: "Current v46; expected v51",
     })
   })
 
@@ -406,7 +434,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database schema contract is incomplete",
-      detail: "Current v50; missing table public.project_contributors_cache, constraint public.scrape_jobs.scrape_jobs_team_scrape_fkey",
+      detail: "Current v51; missing table public.project_contributors_cache, constraint public.scrape_jobs.scrape_jobs_team_scrape_fkey",
     })
   })
 
@@ -434,7 +462,7 @@ describe("GET /api/health", () => {
     expect(body.checks.databaseSchema).toEqual({
       status: "error",
       message: "Database schema contract is incomplete",
-      detail: "Current v50; missing table_privilege service_role DELETE on public.audit_events must be denied",
+      detail: "Current v51; missing table_privilege service_role DELETE on public.audit_events must be denied",
     })
   })
 
@@ -548,14 +576,14 @@ describe("GET /api/health", () => {
   })
 
   test("warns when the database is ahead of a rolled-back application", async () => {
-    healthMocks.state.schemaVersion = 51
+    healthMocks.state.schemaVersion = 52
 
     const response = await GET(healthRequest())
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.status).toBe("warn")
-    expect(body.checks.databaseSchema.detail).toBe("Current v51; application expects v50")
+    expect(body.checks.databaseSchema.detail).toBe("Current v52; application expects v51")
   })
 
   test("reports a missing schema contract without exposing database error details", async () => {
