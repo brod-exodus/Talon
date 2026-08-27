@@ -7,6 +7,7 @@ import { getRequestId } from "@/lib/request-id"
 import { requireSameOrigin } from "@/lib/request-origin"
 import { createSupabaseAuthClient, supabaseAdmin } from "@/lib/supabase"
 import { getPrimaryTeamMembershipForEmail } from "@/lib/team-membership"
+import { isPasswordRecoveryEnabled } from "@/lib/password-recovery-policy"
 import { readJsonObject } from "@/lib/validation"
 
 const INVALID_LINK_MESSAGE = "This password reset link is invalid or has expired. Request a new link and try again."
@@ -30,6 +31,10 @@ export async function POST(request: NextRequest) {
   if (originError) return originError
 
   const requestId = getRequestId(request)
+  if (!isPasswordRecoveryEnabled()) {
+    return serviceErrorResponse("auth_password_recovery_disabled", requestId)
+  }
+
   const body = await readJsonObject(request)
   const tokenHash = normalizeTokenHash(body?.tokenHash)
   const password = normalizePassword(body?.password)

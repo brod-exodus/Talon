@@ -121,6 +121,9 @@ Effort is a rough estimate for one experienced engineer.
   Talon-session revocation flow. Production activation remains dependent on the
   documented Supabase recovery template, redirect allowlist, SMTP sender, and a
   real delivery test.
+- **Safe activation delivered:** The login action and public request endpoint
+  remain off unless `TALON_PASSWORD_RECOVERY_ENABLED=true`, so an unconfigured
+  deployment never advertises a reset email that cannot arrive.
 
 ### 5. Add privacy-aware data lifecycle controls
 

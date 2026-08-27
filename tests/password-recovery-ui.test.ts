@@ -11,6 +11,7 @@ test("login exposes recovery without opening self-service registration", () => {
   assert.match(loginForm, /Forgot password\?/)
   assert.match(loginForm, /\/api\/auth\/password\/reset-request/)
   assert.match(loginForm, /allowSelfServiceSignup && !resetMode/)
+  assert.match(loginForm, /mode === "signin" && allowPasswordRecovery/)
 })
 
 test("the recovery token is removed from the address bar and never persisted", () => {
