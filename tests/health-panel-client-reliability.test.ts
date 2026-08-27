@@ -21,8 +21,25 @@ test("Production Readiness validates HTTP and response contracts before replacin
 
   assert.match(source, /function isHealthResponse/)
   assert.match(source, /await res\.json\(\)\.catch\(\(\) => null\)/)
-  assert.match(source, /if \(!res\.ok\)/)
+  assert.match(source, /if \(!res\.ok && !isHealthResponse\(data\)\)/)
   assert.match(source, /if \(!isHealthResponse\(data\)\)/)
   assert.match(source, /!loadError && visibleChecks\.length === 0/)
   assert.match(source, /!showHealthy && !loadError && health\?\.status === "ok"/)
+})
+
+test("Production Readiness keeps validated blocked diagnostics visible", async () => {
+  const source = await readFile(panelPath, "utf8")
+
+  assert.match(source, /if \(!res\.ok && !isHealthResponse\(data\)\)/)
+  assert.match(source, /setHealth\(data\)/)
+  assert.match(source, /statusBadge\(loadError \? "error" : \(health\?\.status \?\? "error"\)\)/)
+})
+
+test("Production Readiness offers contextual recovery only for failed storage cleanup", async () => {
+  const source = await readFile(panelPath, "utf8")
+
+  assert.match(source, /check\.recovery === "storage_cleanup"/)
+  assert.match(source, /fetch\("\/api\/storage-cleanup\/retry", \{ method: "POST" \}\)/)
+  assert.match(source, /Retry failed cleanup/)
+  assert.match(source, /role="status"/)
 })

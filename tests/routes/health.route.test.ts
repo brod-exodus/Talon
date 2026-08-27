@@ -401,6 +401,7 @@ describe("GET /api/health", () => {
       status: "error",
       message: "0 queued, 0 running, 1 terminally failed",
       detail: "0 due; 0 stale running",
+      recovery: "storage_cleanup",
     })
   })
 

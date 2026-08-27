@@ -353,6 +353,17 @@ They create or enforce:
 
 If Settings cannot load recent security events, confirm migration `007` has been applied. If scrapes fail after removing temporary Supabase policies, confirm `SUPABASE_SERVICE_ROLE_KEY` is configured and migration `010` has been applied.
 
+### Terminal profile-photo cleanup recovery
+
+Workspace profile-photo cleanup retries automatically five times through the
+one-minute worker. If every attempt fails, **Settings → Production Readiness**
+shows the aggregate terminal count and an admin-only **Retry failed cleanup**
+action. Correct the underlying Supabase Storage problem first, then use that
+action once. It resets only terminal cleanup tasks, records the recovery action,
+and lets the durable worker process them; it does not reveal workspace IDs,
+object paths, or provider errors. A concurrent second click is harmless and
+reports that no additional task changed.
+
 Apply migration `026` before deploying the matching application release. It is
 expand-first: the prior release can continue creating and opening shares during
 the rollout, while the new release resolves only token hashes. After deployment,
