@@ -325,6 +325,7 @@ Useful tuning variables are `SMOKE_CANCEL_REPO`, `POLL_SECONDS`, and
 ## Operations and security
 
 - [Product and engineering roadmap](docs/roadmap.md)
+- [Sourcing validation protocol](docs/product-validation.md)
 - [Operations runbook](docs/ops.md)
 - [Disaster recovery](docs/disaster-recovery.md)
 - [Capacity benchmark](docs/capacity-benchmark.md)
@@ -364,6 +365,7 @@ oldest session when concurrent logins would exceed that bound.
 
 Billing, self-serve customer onboarding, formal SLAs, high-volume worker
 parallelism, and advanced contributor scoring are outside this portfolio
-release. The next product experiments are relationship mapping, ecosystem graph
-visualization, contributor migration tracking, and AI-assisted recruiting
-workflows.
+release. Talon will validate its existing contact-focused sourcing workflow
+before selecting another product change. Relationship mapping, ecosystem graphs,
+integrations, and AI-assisted recruiting remain hypotheses until repeated user
+evidence justifies their cost and risk.
