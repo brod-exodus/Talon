@@ -6,6 +6,7 @@ DECLARE
   team_a UUID := gen_random_uuid();
   team_b UUID := gen_random_uuid();
   receipt JSONB;
+  cleanup_id UUID;
 BEGIN
   INSERT INTO public.teams (id, slug, name)
   VALUES (team_a, 'delete-a', 'Delete A'), (team_b, 'keep-b', 'Keep B');
@@ -50,5 +51,20 @@ BEGIN
       AND object_paths = jsonb_build_array(team_a::TEXT || '/avatar.png')
   ) THEN
     RAISE EXCEPTION 'durable storage cleanup was not created atomically';
+  END IF;
+
+  cleanup_id := (receipt->>'receiptId')::UUID;
+  PERFORM 1
+  FROM public.claim_storage_cleanup_task('workspace-deletion-test', cleanup_id);
+  IF NOT public.complete_storage_cleanup_task(cleanup_id, 'workspace-deletion-test') THEN
+    RAISE EXCEPTION 'active cleanup lease could not complete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.storage_cleanup_tasks
+    WHERE id = cleanup_id
+      AND status = 'succeeded'
+      AND object_paths = '[]'::JSONB
+  ) THEN
+    RAISE EXCEPTION 'successful storage cleanup retained deleted object paths';
   END IF;
 END $$;

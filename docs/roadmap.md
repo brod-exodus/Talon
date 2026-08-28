@@ -171,6 +171,10 @@ Effort is a rough estimate for one experienced engineer.
   its retry budget, Production Readiness offers an admin-only recovery action.
   It requeues only terminal cleanup work, records the operation, and leaves the
   one-minute worker responsible for durable execution.
+- **Cleanup data minimization delivered:** Successful profile-photo cleanup now
+  erases its object paths in the lease-validated completion transaction. Existing
+  completed rows are scrubbed during migration, while retryable work retains the
+  paths it still needs.
 
 ### 6. Finish teammate invitations and email onboarding
 

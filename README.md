@@ -193,7 +193,8 @@ The database transaction that removes a workspace first creates a private
 profile-photo cleanup task. An immediate bounded attempt handles the common
 case, while the one-minute worker atomically claims retries, recovers stale
 leases, applies bounded backoff, and exposes terminal failures in health
-diagnostics. Object paths never enter browser responses or logs.
+diagnostics. Object paths never enter browser responses or logs, and successful
+cleanup erases them while retaining path-free operational evidence.
 
 ## Stack
 
