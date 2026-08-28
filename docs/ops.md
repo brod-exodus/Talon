@@ -343,6 +343,7 @@ db/migrations/049_workspace_data_export.sql
 db/migrations/050_transactional_workspace_deletion.sql
 db/migrations/051_durable_workspace_storage_cleanup.sql
 db/migrations/052_minimize_completed_storage_cleanup.sql
+db/migrations/053_storage_cleanup_retention.sql
 ```
 
 They create or enforce:
@@ -369,6 +370,11 @@ Migration `052_minimize_completed_storage_cleanup.sql` scrubs profile-photo
 paths from successful cleanup tasks, including existing completed rows. Queued,
 running, and failed tasks retain their paths because the worker still needs them
 for recovery. The successful task row remains as path-free operational evidence.
+
+Migration `053_storage_cleanup_retention.sql` removes that path-free successful
+evidence after 90 days through the daily keepalive. It never deletes queued,
+running, or failed cleanup tasks; unresolved external deletion work therefore
+remains visible and recoverable without a time limit.
 
 Apply migration `026` before deploying the matching application release. It is
 expand-first: the prior release can continue creating and opening shares during
@@ -397,6 +403,7 @@ row counts in `system_runs.details`. Current retention windows are:
 | Inactive authentication rate-limit records | 30 days |
 | Expired authentication sessions | 7 days after expiry |
 | Terminal scrape jobs and their staging/events | 90 days |
+| Successful path-free storage cleanup evidence | 90 days |
 | Completed scrape results and contributors | Kept until an operator deletes them |
 
 To verify the cleanup manually in Supabase SQL Editor without deleting anything,

@@ -38,7 +38,11 @@ describe("GET /api/keepalive", () => {
     keepaliveMocks.state.sloRows = []
     keepaliveMocks.fetch.mockResolvedValue({ ok: true, status: 200 })
     keepaliveMocks.rpc.mockImplementation(async (name: string) => {
-      if (name === "cleanup_notification_delivery_retention" || name === "cleanup_talon_auth_sessions") {
+      if (
+        name === "cleanup_notification_delivery_retention"
+        || name === "cleanup_storage_cleanup_retention"
+        || name === "cleanup_talon_auth_sessions"
+      ) {
         return { data: 0, error: null }
       }
       return { data: { shares: 1, systemRuns: 2, scrapeJobs: 3 }, error: null }
@@ -106,6 +110,7 @@ describe("GET /api/keepalive", () => {
       systemRuns: 2,
       scrapeJobs: 3,
       notificationDeliveries: 0,
+      storageCleanupTasks: 0,
       authSessions: 0,
     })
     expect(keepaliveMocks.rpc).toHaveBeenCalledWith("cleanup_talon_retention")
@@ -119,6 +124,7 @@ describe("GET /api/keepalive", () => {
           systemRuns: 2,
           scrapeJobs: 3,
           notificationDeliveries: 0,
+          storageCleanupTasks: 0,
           authSessions: 0,
         },
         sloMonitor: expect.objectContaining({
@@ -164,7 +170,9 @@ describe("GET /api/keepalive", () => {
       if (name === "cleanup_talon_auth_sessions") {
         return { data: null, error: new Error("auth cleanup missing") }
       }
-      if (name === "cleanup_notification_delivery_retention") return { data: 0, error: null }
+      if (name === "cleanup_notification_delivery_retention" || name === "cleanup_storage_cleanup_retention") {
+        return { data: 0, error: null }
+      }
       return { data: { shares: 1 }, error: null }
     })
 
@@ -174,6 +182,26 @@ describe("GET /api/keepalive", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Auth session retention cleanup failed",
       code: "keepalive_auth_session_retention_failed",
+      requestId: expect.any(String),
+    })
+    expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()
+  })
+
+  test("fails visibly when storage cleanup retention cannot run", async () => {
+    keepaliveMocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "cleanup_storage_cleanup_retention") {
+        return { data: null, error: new Error("storage retention missing") }
+      }
+      if (name === "cleanup_notification_delivery_retention") return { data: 0, error: null }
+      return { data: { shares: 1 }, error: null }
+    })
+
+    const response = await GET(request())
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({
+      error: "Storage cleanup retention failed",
+      code: "keepalive_storage_cleanup_retention_failed",
       requestId: expect.any(String),
     })
     expect(keepaliveMocks.insertRun).not.toHaveBeenCalled()

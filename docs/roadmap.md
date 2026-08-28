@@ -175,6 +175,9 @@ Effort is a rough estimate for one experienced engineer.
   erases its object paths in the lease-validated completion transaction. Existing
   completed rows are scrubbed during migration, while retryable work retains the
   paths it still needs.
+- **Cleanup retention delivered:** Daily keepalive now removes successful,
+  path-free cleanup evidence after 90 days while retaining every queued,
+  running, or failed task until its external deletion is actually resolved.
 
 ### 6. Finish teammate invitations and email onboarding
 

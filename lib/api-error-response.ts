@@ -72,6 +72,7 @@ const SERVICE_ERROR_MESSAGES = {
   keepalive_notification_retention_failed: { message: "Notification retention cleanup failed", status: 500 },
   keepalive_retention_failed: { message: "Supabase retention cleanup failed", status: 500 },
   keepalive_run_persist_failed: { message: "Supabase keepalive status recording failed", status: 500 },
+  keepalive_storage_cleanup_retention_failed: { message: "Storage cleanup retention failed", status: 500 },
   profile_photo_storage_not_ready: { message: "Profile photo storage is not ready. Apply db/migrations/012_team_profile_photos.sql.", status: 500 },
   profile_storage_not_ready: { message: "Profile storage is not ready. Apply db/migrations/012_team_profile_photos.sql.", status: 500 },
   project_tracking_migration_missing: { message: "Project outreach tracking is not installed. Apply db/migrations/017_project_contributor_tracking.sql in Supabase, then redeploy or retry.", status: 503 },
