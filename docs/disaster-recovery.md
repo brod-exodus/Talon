@@ -56,6 +56,20 @@ before a migration. Store it in encrypted storage with access limited to the
 operator. Do not commit, email, or attach it to a pull request because it may
 contain recruiter notes and public contact data.
 
+Check whether the newest backup and restore-drill evidence still meet Talon's
+24-hour and quarterly targets:
+
+```bash
+pnpm backup:status -- /path/to/encrypted/talon-backups /path/to/encrypted/talon-recovery-evidence
+```
+
+This read-only check recalculates the newest backup's checksum and fails if the
+newest archive is too old, corrupt, or missing its sidecar. It also fails if the
+newest restore evidence is malformed, unsuccessful, or older than 92 days. The
+cleanup status is displayed as an operator reminder; confirm disposal of the
+temporary recovery project separately because Talon must not delete it
+automatically.
+
 ## Isolated restore drill
 
 Never test a restore against Production. Create an empty disposable Supabase
