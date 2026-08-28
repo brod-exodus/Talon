@@ -1642,7 +1642,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-2xl font-semibold tracking-tight">Completed Scrapes</h2>
           <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="h-9 w-full bg-transparent sm:w-64">
+            <SelectTrigger
+              aria-label="Filter completed scrapes by project"
+              className="h-9 w-full bg-transparent sm:w-64"
+            >
               <SelectValue placeholder="Filter by project" />
             </SelectTrigger>
             <SelectContent>

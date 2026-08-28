@@ -1315,6 +1315,12 @@ substitute a false empty state, and recover through the visible Retry action.
 CI installs only Chromium, retains traces, screenshots,
 and video on failure, and uploads the HTML report for seven days.
 
+The same suite scans the login page and primary dashboard at desktop and
+390-pixel mobile widths. It fails on serious or critical automated
+accessibility violations and page-wide horizontal overflow. This is a fast
+regression gate, not a claim of complete WCAG conformance; keyboard and real
+screen-reader checks remain part of periodic manual review.
+
 Install the local browser once with `pnpm exec playwright install chromium`.
 Use `pnpm test:e2e:ui` for interactive debugging. This release has no migration,
 environment-variable, or scheduler change. Roll back by reverting the browser

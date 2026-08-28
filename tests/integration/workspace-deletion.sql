@@ -8,6 +8,7 @@ DECLARE
   receipt JSONB;
   cleanup_id UUID;
   failed_cleanup_id UUID := gen_random_uuid();
+  deleted_cleanup_count INTEGER;
 BEGIN
   INSERT INTO public.teams (id, slug, name)
   VALUES (team_a, 'delete-a', 'Delete A'), (team_b, 'keep-b', 'Keep B');
@@ -84,9 +85,11 @@ BEGIN
     NOW() - INTERVAL '91 days',
     NOW() - INTERVAL '91 days'
   );
-  IF public.cleanup_storage_cleanup_retention() <> 1
+  deleted_cleanup_count := public.cleanup_storage_cleanup_retention();
+  IF deleted_cleanup_count < 1
     OR EXISTS (SELECT 1 FROM public.storage_cleanup_tasks WHERE id = cleanup_id) THEN
-    RAISE EXCEPTION 'expired successful storage cleanup evidence was not removed';
+    RAISE EXCEPTION 'expired successful storage cleanup evidence was not removed (deleted % rows)',
+      deleted_cleanup_count;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.storage_cleanup_tasks

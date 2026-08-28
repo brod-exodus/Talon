@@ -84,6 +84,26 @@ Effort is a rough estimate for one experienced engineer.
 
 ## Next
 
+### Accessible critical-path browser gate — completed
+
+- **User problem:** Talon's browser tests proved scrape recovery behavior, but
+  did not detect serious accessibility regressions or page-wide horizontal
+  overflow on a phone-sized screen.
+- **Outcome:** Test the login and primary dashboard at desktop and mobile sizes
+  with an automated accessibility engine and responsive-layout assertion.
+- **Why it matters:** Recruiters should be able to use Talon's core workflow
+  with assistive technology and smaller screens, and portfolio claims should be
+  supported by repeatable evidence.
+- **Effort / risk:** Small / low; test and documentation changes only.
+- **Dependencies:** Existing deterministic Playwright fixtures and Chromium CI.
+- **Acceptance:** CI fails for serious or critical automated accessibility
+  violations or page-wide horizontal overflow on login or the dashboard at
+  desktop and 390-pixel mobile widths; failures retain the existing browser
+  trace, screenshot, video, and report artifacts.
+- **Delivered:** The browser suite now runs this gate without Production data,
+  credentials, or mutations. Automated scanning supplements rather than
+  replaces keyboard and screen-reader review.
+
 ### Release sequencing guard — completed
 
 - **User problem:** A migration PR could be merged even when its checklist still
