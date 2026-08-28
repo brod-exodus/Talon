@@ -59,7 +59,9 @@ Effort is a rough estimate for one experienced engineer.
 - **Delivered:** The operator-triggered restore command enforces an empty,
   explicitly named non-production target, validates the restored physical schema
   and aggregate row counts, and writes a secret-free evidence record on success
-  or post-restore failure.
+  or post-restore failure. A read-only readiness command now verifies the newest
+  backup checksum and reports whether backup and drill evidence remain inside
+  the documented 24-hour and quarterly targets.
 
 ### 3. Add worker fault-injection integration coverage — completed
 
