@@ -233,6 +233,7 @@ function OutreachFields({ scrapeId, contributor, onUpdate }: OutreachFieldsProps
       <div className="flex items-center gap-3">
         <Switch
           id={`contacted-${contributor.username}`}
+          aria-label={`Mark ${contributor.username} as contacted`}
           checked={contributor.contacted || false}
           onCheckedChange={(checked) =>
             // Do NOT auto-populate the date — let the user set it manually.
@@ -1048,9 +1049,9 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    className="flex-1 shadow-lg shadow-none transition-all duration-300"
+                    className="w-full shadow-lg shadow-none transition-all duration-300 sm:w-auto sm:flex-1"
                     onClick={() => toggleExpanded(scrape)}
                     onMouseEnter={() => scheduleListPrefetch(scrape.id)}
                     onMouseLeave={() => cancelListPrefetch(scrape.id)}
@@ -1198,7 +1199,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                               value={sortOrder}
                               onValueChange={(v) => updateSort(scrape.id, v as "high-low" | "low-high")}
                             >
-                              <SelectTrigger className="h-7 w-52 text-xs bg-transparent border-border">
+                              <SelectTrigger
+                                aria-label="Sort contributors"
+                                className="h-7 w-52 text-xs bg-transparent border-border"
+                              >
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1256,10 +1260,10 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                           onBlur={() => cancelPreviewPrefetch(contributor.id)}
                           className="flex flex-col gap-3 p-3 rounded-lg border border-border bg-card hover:border-primary/30 transition-all duration-300 hover:shadow-md"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col items-stretch gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                             <Link
                               href={`/contributors/${contributor.id}`}
-                              className="flex min-w-0 items-center gap-3 rounded-lg transition-colors hover:text-primary"
+                              className="flex min-w-0 w-full items-center gap-3 rounded-lg transition-colors hover:text-primary 2xl:w-auto 2xl:flex-1"
                             >
                               <img
                                 src={contributor.avatar || "/placeholder.svg?height=40&width=40"}
@@ -1279,7 +1283,7 @@ export const RecentScrapes = forwardRef<RecentScrapesHandle>(function RecentScra
                                 )}
                               </div>
                             </Link>
-                            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                            <div className="flex shrink-0 flex-wrap justify-start gap-2 2xl:justify-end">
                               <Button
                                 size="sm"
                                 variant="outline"

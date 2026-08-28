@@ -102,7 +102,8 @@ Effort is a rough estimate for one experienced engineer.
   trace, screenshot, video, and report artifacts.
 - **Delivered:** The browser suite now runs this gate without Production data,
   credentials, or mutations. Automated scanning supplements rather than
-  replaces keyboard and screen-reader review.
+  replaces keyboard and screen-reader review. The gate also covers an expanded
+  contactable candidate result and a populated Pipeline at both viewport sizes.
 
 ### Release sequencing guard — completed
 
