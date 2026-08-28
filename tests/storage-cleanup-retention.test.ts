@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 const migrationPath = new URL("../db/migrations/053_storage_cleanup_retention.sql", import.meta.url)
+const integrationPath = new URL("integration/workspace-deletion.sql", import.meta.url)
 
 test("storage cleanup retention removes only old successful path-free evidence", async () => {
   const migration = await readFile(migrationPath, "utf8")
@@ -20,4 +21,13 @@ test("storage cleanup retention is private, attestable, and advances schema v53"
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.cleanup_storage_cleanup_retention\(\)[\s\S]*service_role/i)
   assert.match(migration, /get_talon_lifecycle_contract_issues[\s\S]*cleanup_storage_cleanup_retention\(\)/i)
   assert.match(migration, /VALUES \(53, 'storage_cleanup_retention'\)/i)
+})
+
+test("storage cleanup integration verifies scoped outcomes without assuming a globally exact delete count", async () => {
+  const integration = await readFile(integrationPath, "utf8")
+
+  assert.match(integration, /deleted_cleanup_count := public\.cleanup_storage_cleanup_retention\(\)/i)
+  assert.match(integration, /deleted_cleanup_count < 1[\s\S]*WHERE id = cleanup_id/i)
+  assert.match(integration, /WHERE id = failed_cleanup_id[\s\S]*status = 'failed'/i)
+  assert.doesNotMatch(integration, /cleanup_storage_cleanup_retention\(\)\s*<>\s*1/i)
 })
