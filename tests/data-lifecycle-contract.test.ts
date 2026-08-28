@@ -39,6 +39,6 @@ test("the lifecycle contract preserves privacy and deletion boundaries", () => {
   assert.match(lifecycle, /Talon cannot erase an offline copy it does not control/)
   assert.match(lifecycle, /available only to a signed-in owner/)
   assert.match(lifecycle, /deletes all Postgres-owned workspace data in one\s+transaction/)
-  assert.match(lifecycle, /successful rows retain path-free evidence/)
+  assert.match(lifecycle, /path-free successful evidence expires after 90 days/)
   assert.match(lifecycle, /Supabase Auth identities are intentionally retained/)
 })

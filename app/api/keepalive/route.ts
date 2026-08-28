@@ -96,6 +96,13 @@ export async function GET(request: NextRequest) {
       logError("keepalive.notification_retention_failed", notificationRetentionError, { requestId })
       return serviceErrorResponse("keepalive_notification_retention_failed", requestId)
     }
+    const { data: storageCleanupRetention, error: storageCleanupRetentionError } = await supabase.rpc(
+      "cleanup_storage_cleanup_retention"
+    )
+    if (storageCleanupRetentionError) {
+      logError("keepalive.storage_cleanup_retention_failed", storageCleanupRetentionError, { requestId })
+      return serviceErrorResponse("keepalive_storage_cleanup_retention_failed", requestId)
+    }
     const { data: authSessionRetention, error: authSessionRetentionError } = await supabase.rpc(
       "cleanup_talon_auth_sessions"
     )
@@ -106,6 +113,7 @@ export async function GET(request: NextRequest) {
     const retentionDetails = {
       ...(retention && typeof retention === "object" && !Array.isArray(retention) ? retention : {}),
       notificationDeliveries: Number(notificationRetention ?? 0),
+      storageCleanupTasks: Number(storageCleanupRetention ?? 0),
       authSessions: Number(authSessionRetention ?? 0),
     }
 

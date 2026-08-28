@@ -42,7 +42,7 @@ automatic expiry for that data.
 | `scrape_enqueue_requests` | Idempotency key and request-to-job relationship | Workspace-owned operational data | Cascade with scrape job |
 | `service_cooldowns` | GitHub cooldown time, reason and optional source job | Global operational control | Retained as bounded single-row operational history |
 | `notification_deliveries` | Secret-free Slack outbox payload, lease, attempts and sanitized error | Workspace-owned operational data | Automatic: terminal deliveries after 90 days |
-| `storage_cleanup_tasks` | Deleted-workspace profile-photo paths and bounded retry state | Global operational cleanup | Paths retained only while work can retry; successful rows retain path-free evidence and are never browser-readable |
+| `storage_cleanup_tasks` | Deleted-workspace profile-photo paths and bounded retry state | Global operational cleanup | Paths retained while work can retry; path-free successful evidence expires after 90 days; failures remain until recovered and are never browser-readable |
 | `activity_events` | Recruiter-visible product activity metadata | Workspace-owned | Automatic after 180 days |
 | `audit_events` | Append-only security actions, outcome, hashed IP and safe metadata | Workspace when available; some authentication events are global | Automatic after 180 days; direct application deletion denied |
 | `system_runs` | Scheduler and worker health outcomes with aggregate details | Global operational history | Automatic after 30 days |

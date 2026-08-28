@@ -7,6 +7,7 @@ DECLARE
   team_b UUID := gen_random_uuid();
   receipt JSONB;
   cleanup_id UUID;
+  failed_cleanup_id UUID := gen_random_uuid();
 BEGIN
   INSERT INTO public.teams (id, slug, name)
   VALUES (team_a, 'delete-a', 'Delete A'), (team_b, 'keep-b', 'Keep B');
@@ -66,5 +67,33 @@ BEGIN
       AND object_paths = '[]'::JSONB
   ) THEN
     RAISE EXCEPTION 'successful storage cleanup retained deleted object paths';
+  END IF;
+
+  UPDATE public.storage_cleanup_tasks
+  SET completed_at = NOW() - INTERVAL '91 days'
+  WHERE id = cleanup_id;
+  INSERT INTO public.storage_cleanup_tasks (
+    id, bucket, object_paths, status, attempts, completed_at, created_at, updated_at
+  ) VALUES (
+    failed_cleanup_id,
+    'team-avatars',
+    '["failed/avatar.png"]'::JSONB,
+    'failed',
+    5,
+    NOW() - INTERVAL '91 days',
+    NOW() - INTERVAL '91 days',
+    NOW() - INTERVAL '91 days'
+  );
+  IF public.cleanup_storage_cleanup_retention() <> 1
+    OR EXISTS (SELECT 1 FROM public.storage_cleanup_tasks WHERE id = cleanup_id) THEN
+    RAISE EXCEPTION 'expired successful storage cleanup evidence was not removed';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.storage_cleanup_tasks
+    WHERE id = failed_cleanup_id
+      AND status = 'failed'
+      AND object_paths = '["failed/avatar.png"]'::JSONB
+  ) THEN
+    RAISE EXCEPTION 'retention removed unresolved storage cleanup work';
   END IF;
 END $$;
