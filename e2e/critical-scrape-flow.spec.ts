@@ -137,7 +137,9 @@ test("login, queue a scrape, observe completion, inspect contributors, and expor
 
   await expect(page.getByRole("button", { name: "View Contributors (1)" })).toBeVisible({ timeout: 10_000 })
   await page.getByRole("button", { name: "View Contributors (1)" }).click()
-  await expect(page.getByText("The Octocat", { exact: true })).toBeVisible()
+  const candidateName = page.getByText("The Octocat", { exact: true })
+  await candidateName.scrollIntoViewIfNeeded()
+  await expect(candidateName).toBeVisible()
   await expect(page.getByText("octocat@example.com", { exact: true })).toBeVisible()
   const mergedPullRequestsHref = await page.getByRole("link", { name: "Merged PRs" }).getAttribute("href")
   expect(mergedPullRequestsHref).toBeTruthy()

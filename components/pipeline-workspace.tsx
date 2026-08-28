@@ -376,7 +376,7 @@ export function PipelineWorkspace() {
               <div className="space-y-2">
                 <Label>Project</Label>
                 <Select value={projectFilter} onValueChange={setProjectFilter}>
-                  <SelectTrigger className="bg-card">
+                  <SelectTrigger aria-label="Filter Pipeline by project" className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -392,7 +392,7 @@ export function PipelineWorkspace() {
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-                  <SelectTrigger className="bg-card">
+                  <SelectTrigger aria-label="Filter Pipeline by status" className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -408,7 +408,7 @@ export function PipelineWorkspace() {
               <div className="space-y-2">
                 <Label>Due date</Label>
                 <Select value={dueFilter} onValueChange={(value) => setDueFilter(value as DueFilter)}>
-                  <SelectTrigger className="bg-card">
+                  <SelectTrigger aria-label="Filter Pipeline by due date" className="bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -652,19 +652,9 @@ function PipelineRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
       onClick={() => onOpenPreview(item)}
       onMouseEnter={() => onPrefetchPreview(item)}
       onMouseLeave={() => onCancelPreviewPrefetch(item.contributor.id)}
-      onFocus={() => onPrefetchPreview(item)}
-      onBlur={() => onCancelPreviewPrefetch(item.contributor.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault()
-          onOpenPreview(item)
-        }
-      }}
       className="cursor-pointer rounded-lg border border-border bg-card p-3 shadow-none transition hover:-translate-y-0.5 hover:border-primary/20 hover:bg-muted/30"
     >
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
@@ -730,7 +720,10 @@ function PipelineRow({
               onValueChange={(value) => onUpdateTracking(item, { status: value as ProjectOutreachStatus })}
               disabled={saving}
             >
-              <SelectTrigger className="h-9 bg-card">
+              <SelectTrigger
+                aria-label={`Set ${item.contributor.username} Pipeline status`}
+                className="h-9 bg-card"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -762,7 +755,34 @@ function PipelineRow({
               <Archive className="h-4 w-4" />
               Archive
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="bg-card"
+              onClick={() => onOpenPreview(item)}
+              onFocus={() => onPrefetchPreview(item)}
+              onBlur={() => onCancelPreviewPrefetch(item.contributor.id)}
+            >
+              View details
+            </Button>
           </div>
+        )}
+        {!canWrite && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="bg-card xl:justify-self-end"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenPreview(item)
+            }}
+            onFocus={() => onPrefetchPreview(item)}
+            onBlur={() => onCancelPreviewPrefetch(item.contributor.id)}
+          >
+            View details
+          </Button>
         )}
       </div>
     </div>

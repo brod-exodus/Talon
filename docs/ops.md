@@ -1317,7 +1317,8 @@ and video on failure, and uploads the HTML report for seven days.
 
 The same suite scans the login page and primary dashboard at desktop and
 390-pixel mobile widths. It fails on serious or critical automated
-accessibility violations and page-wide horizontal overflow. This is a fast
+accessibility violations and page-wide horizontal overflow, including an
+expanded completed candidate result and a populated Pipeline. This is a fast
 regression gate, not a claim of complete WCAG conformance; keyboard and real
 screen-reader checks remain part of periodic manual review.
 
