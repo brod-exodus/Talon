@@ -3,7 +3,9 @@
 Talon is a contributor-intelligence platform for technical recruiting and
 ecosystem discovery. It finds the engineers actually building public software,
 enriches their GitHub profiles with contact signals, and turns open-source
-activity into a searchable sourcing workflow.
+activity into a searchable sourcing workflow. It does not rank contributors in
+any fashion, therefore it is still the operator's responsibility to evaluate a
+contributor's merged PRs.
 
 ![Talon logo](public/talon-logo.png)
 
@@ -13,7 +15,6 @@ Recruiting tools usually begin with resumes, LinkedIn profiles, or keyword
 matching. Talon begins with contribution activity:
 
 - Analyze a GitHub repository or organization.
-- Rank contributors by contribution depth.
 - Enrich public profiles with email, LinkedIn, X, website, bio, company, and
   location signals.
 - Group related scrapes into technical ecosystems.
